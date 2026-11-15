@@ -46,8 +46,11 @@ import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
+import org.readium.r2.shared.util.*
 
 @OptIn(ExperimentalReadiumApi::class)
 @Composable
@@ -123,21 +126,21 @@ actual fun EpubNavigatorHost(
         controller.search = { query ->
             val pub = publication
             if (pub != null) {
-                val searchTry = pub.search(query)
+                val searchIterator: SearchIterator? = pub.search(query).getOrNull()
                 val results = mutableListOf<Locator>()
-                searchTry.onSuccess { iterator ->
+                if (searchIterator != null) {
                     try {
-                        var page = iterator.next().getOrNull()
+                        var page: LocatorCollection? = searchIterator.next().getOrNull()
                         var count = 0
                         while (page != null && count < 100) {
                             for (loc in page.locators) {
                                 results.add(loc.toDomain())
                                 count++
                             }
-                            page = iterator.next().getOrNull()
+                            page = searchIterator.next().getOrNull()
                         }
                     } finally {
-                        iterator.close()
+                        searchIterator.close()
                     }
                 }
                 results
