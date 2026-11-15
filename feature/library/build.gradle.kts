@@ -37,6 +37,23 @@ kotlin {
             implementation(compose.components.resources)
 
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.okio)
+        }
+        androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.core.ktx)
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines.swing)
+            }
+        }
+        val nativeMain by creating {
+            dependsOn(commonMain.get())
+        }
+        listOf(iosX64Main, iosArm64Main, iosSimulatorArm64Main).forEach {
+            it.get().dependsOn(nativeMain)
         }
     }
 }
