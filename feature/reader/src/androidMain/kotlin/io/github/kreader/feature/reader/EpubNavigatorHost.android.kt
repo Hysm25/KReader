@@ -50,7 +50,6 @@ import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
-import org.readium.r2.shared.util.Try
 
 @OptIn(ExperimentalReadiumApi::class)
 @Composable
@@ -127,22 +126,22 @@ actual fun EpubNavigatorHost(
             val pub = publication
             val results = mutableListOf<Locator>()
             if (pub != null) {
-                val searchResult = pub.search(query)
-                if (searchResult is Try.Success) {
-                    val searchIterator: SearchIterator = searchResult.value
+                val searchIterator: SearchIterator? = pub.search(query).fold(
+                    onSuccess = { it },
+                    onFailure = { null }
+                )
+                if (searchIterator != null) {
                     try {
                         var count = 0
                         while (count < 100) {
-                            val pageResult = searchIterator.next()
-                            if (pageResult is Try.Success) {
-                                val page: LocatorCollection? = pageResult.value
-                                if (page == null || page.locators.isEmpty()) break
-                                for (loc in page.locators) {
-                                    results.add(loc.toDomain())
-                                    count++
-                                }
-                            } else {
-                                break
+                            val page: LocatorCollection? = searchIterator.next().fold(
+                                onSuccess = { it },
+                                onFailure = { null }
+                            )
+                            if (page == null || page.locators.isEmpty()) break
+                            for (loc in page.locators) {
+                                results.add(loc.toDomain())
+                                count++
                             }
                         }
                     } finally {
