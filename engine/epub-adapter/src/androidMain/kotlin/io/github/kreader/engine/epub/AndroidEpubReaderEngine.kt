@@ -1,5 +1,6 @@
 package io.github.kreader.engine.epub
 
+import android.content.Context
 import io.github.kreader.core.engine.ReaderEngine
 import io.github.kreader.core.engine.ReaderEngineEvent
 import io.github.kreader.core.engine.ReaderEngineState
@@ -13,7 +14,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Publication
 
+@OptIn(ExperimentalReadiumApi::class)
 actual class EpubReaderEngine actual constructor() : ReaderEngine {
 
     private val _state = MutableStateFlow<ReaderEngineState>(ReaderEngineState.Idle)
@@ -22,40 +26,83 @@ actual class EpubReaderEngine actual constructor() : ReaderEngine {
     private val _events = MutableSharedFlow<ReaderEngineEvent>(extraBufferCapacity = 64)
     override val events: SharedFlow<ReaderEngineEvent> = _events.asSharedFlow()
 
-    private var currentBook: Book? = null
+    var publication: Publication? = null
+        private set
+
+    private var opener: ReadiumEpubOpener? = null
+
+    fun initialize(context: Context) {
+        if (opener == null) {
+            opener = ReadiumEpubOpener(context.applicationContext)
+        }
+    }
 
     override suspend fun open(book: Book, initialLocator: Locator?): Result<Unit> {
-        _state.value = ReaderEngineState.Loading("Opening ${book.title} with Readium Android...")
-        currentBook = book
-        val startLocator = initialLocator ?: book.lastLocator ?: Locator.initial(
-            href = "content.xhtml",
-            type = book.format.mimeType
+        _state.value = ReaderEngineState.Loading("Opening ${book.title} with Readium...")
+
+        val currentOpener = opener
+        if (currentOpener == null) {
+            val startLocator = initialLocator ?: book.lastLocator ?: Locator.initial(
+                href = "content.xhtml",
+                type = book.format.mimeType
+            )
+            _state.value = ReaderEngineState.Ready(
+                currentLocator = startLocator,
+                totalProgression = startLocator.locations.totalProgression ?: 0f,
+                canGoPrevious = false,
+                canGoNext = true
+            )
+            return Result.success(Unit)
+        }
+
+        return currentOpener.open(book.source, book.id).fold(
+            onSuccess = { pub ->
+                publication = pub
+                val toc = pub.tableOfContents.map { it.toTocItem(pub) }
+                val startLocator = initialLocator ?: book.lastLocator ?: pub.readingOrder.firstOrNull()?.let {
+                    pub.locatorFromLink(it)?.toDomain()
+                } ?: Locator.initial(
+                    href = pub.readingOrder.firstOrNull()?.href?.toString() ?: "content.xhtml",
+                    type = book.format.mimeType
+                )
+
+                _state.value = ReaderEngineState.Ready(
+                    currentLocator = startLocator,
+                    totalProgression = startLocator.locations.totalProgression ?: 0f,
+                    tableOfContents = toc,
+                    canGoPrevious = true,
+                    canGoNext = true
+                )
+                Result.success(Unit)
+            },
+            onFailure = { error ->
+                _state.value = ReaderEngineState.Error(
+                    error = error,
+                    userFriendlyMessage = error.message ?: "Failed to open EPUB publication"
+                )
+                Result.failure(error)
+            }
         )
-        _state.value = ReaderEngineState.Ready(
-            currentLocator = startLocator,
-            totalProgression = startLocator.locations.totalProgression ?: 0f,
-            canGoPrevious = false,
-            canGoNext = true
-        )
-        return Result.success(Unit)
     }
 
     override suspend fun close() {
+        publication?.close()
+        publication = null
         _state.value = ReaderEngineState.Idle
-        currentBook = null
     }
 
     override suspend fun goTo(locator: Locator): Result<Unit> {
         val currentState = _state.value
         if (currentState is ReaderEngineState.Ready) {
-            _state.value = currentState.copy(
+            val updated = currentState.copy(
                 currentLocator = locator,
                 totalProgression = locator.locations.totalProgression ?: currentState.totalProgression
             )
+            _state.value = updated
             _events.emit(ReaderEngineEvent.PageChanged(locator))
             return Result.success(Unit)
         }
-        return Result.failure(IllegalStateException("Engine not in ready state"))
+        return Result.failure(IllegalStateException("Engine not ready"))
     }
 
     override suspend fun next(): Result<Unit> {
@@ -88,15 +135,7 @@ actual class EpubReaderEngine actual constructor() : ReaderEngine {
         return Result.failure(IllegalStateException("Engine not ready"))
     }
 
-    override suspend fun applyTheme(theme: ReaderTheme) {
-        // Platform WebView theme injection (CSS Variables & background/foreground)
-    }
-
-    override suspend fun applyTypography(typography: ReaderTypography) {
-        // Platform WebView font family, sizing, line-height & RTL direction injection
-    }
-
-    override suspend fun search(query: String): List<Locator> {
-        return emptyList()
-    }
+    override suspend fun applyTheme(theme: ReaderTheme) {}
+    override suspend fun applyTypography(typography: ReaderTypography) {}
+    override suspend fun search(query: String): List<Locator> = emptyList()
 }

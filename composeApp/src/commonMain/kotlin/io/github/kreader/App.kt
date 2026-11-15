@@ -7,6 +7,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.github.kreader.core.model.Book
 import io.github.kreader.feature.library.LibraryScreen
@@ -15,6 +16,8 @@ import io.github.kreader.feature.library.rememberLibraryViewModel
 import io.github.kreader.feature.library.repository.rememberBookRepository
 import io.github.kreader.feature.reader.ReaderScreen
 import io.github.kreader.feature.reader.ReaderUiState
+import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 @Composable
 fun App() {
@@ -24,6 +27,7 @@ fun App() {
             val metadataExtractor = rememberBookMetadataExtractor()
             val libraryViewModel = rememberLibraryViewModel(bookRepository, metadataExtractor)
             val libraryUiState by libraryViewModel.uiState.collectAsState()
+            val scope = rememberCoroutineScope()
 
             var selectedBook by remember { mutableStateOf<Book?>(null) }
 
@@ -38,7 +42,13 @@ fun App() {
                 )
             } else {
                 var readerState by remember(bookToRead.id) {
-                    mutableStateOf(ReaderUiState(book = bookToRead))
+                    mutableStateOf(
+                        ReaderUiState(
+                            book = bookToRead,
+                            currentLocator = bookToRead.lastLocator,
+                            totalProgression = bookToRead.totalProgression
+                        )
+                    )
                 }
                 ReaderScreen(
                     state = readerState,
@@ -48,9 +58,43 @@ fun App() {
                     },
                     onPreviousPage = {},
                     onNextPage = {},
-                    onSeek = {},
-                    onTocClick = {},
-                    onSettingsClick = {}
+                    onSeek = { targetProgression ->
+                        readerState = readerState.copy(totalProgression = targetProgression)
+                    },
+                    onTocClick = {
+                        readerState = readerState.copy(isTocOpen = true, isControlsVisible = false)
+                    },
+                    onSettingsClick = {
+                        readerState = readerState.copy(isSettingsOpen = true, isControlsVisible = false)
+                    },
+                    onDismissToc = {
+                        readerState = readerState.copy(isTocOpen = false)
+                    },
+                    onDismissSettings = {
+                        readerState = readerState.copy(isSettingsOpen = false)
+                    },
+                    onThemeChange = { newTheme ->
+                        readerState = readerState.copy(theme = newTheme)
+                    },
+                    onTypographyChange = { newTypography ->
+                        readerState = readerState.copy(typography = newTypography)
+                    },
+                    onScrollModeChange = { isScroll ->
+                        readerState = readerState.copy(isScrollMode = isScroll)
+                    },
+                    onProgressChanged = { progression, locator ->
+                        readerState = readerState.copy(
+                            totalProgression = progression,
+                            currentLocator = locator
+                        )
+                        scope.launch {
+                            val now = Clock.System.now().toEpochMilliseconds()
+                            bookRepository.updateProgress(bookToRead.id, progression, locator, now)
+                        }
+                    },
+                    onTableOfContentsLoaded = { toc ->
+                        readerState = readerState.copy(tocItems = toc)
+                    }
                 )
             }
         }

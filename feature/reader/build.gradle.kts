@@ -39,6 +39,27 @@ kotlin {
             implementation(compose.components.resources)
 
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.kotlinx.serialization.json)
+        }
+        androidMain.dependencies {
+            implementation(libs.androidx.fragment)
+            implementation(libs.androidx.appcompat)
+            implementation(libs.readium.navigator)
+            implementation(libs.readium.shared)
+            implementation(libs.readium.streamer)
+            implementation(libs.androidx.core.ktx)
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines.swing)
+            }
+        }
+        val nativeMain by creating {
+            dependsOn(commonMain.get())
+        }
+        listOf(iosX64Main, iosArm64Main, iosSimulatorArm64Main).forEach {
+            it.get().dependsOn(nativeMain)
         }
     }
 }

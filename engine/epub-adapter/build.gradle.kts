@@ -32,6 +32,7 @@ kotlin {
             implementation(libs.readium.shared)
             implementation(libs.readium.streamer)
             implementation(libs.readium.navigator)
+            implementation(libs.androidx.fragment)
             implementation(libs.androidx.core.ktx)
         }
         val desktopMain by getting {
