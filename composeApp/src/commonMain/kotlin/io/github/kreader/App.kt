@@ -111,7 +111,7 @@ fun App() {
                             if (existing != null) {
                                 bookRepository.deleteBookmark(existing.id)
                             } else {
-                                val currentLoc = currentUiState.currentLocator ?: bookToRead.lastLocator ?: Locator(href = "", mediaType = "application/epub+zip")
+                                val currentLoc = currentUiState.currentLocator ?: bookToRead.lastLocator ?: Locator(href = "", type = "application/epub+zip")
                                 val chapterTitle = currentUiState.tocItems.find {
                                     it.locator.href.substringBefore("#") == currentLoc.href.substringBefore("#")
                                 }?.title ?: currentLoc.title ?: "Bookmark at ${(currentUiState.totalProgression * 100).toInt()}%"
