@@ -33,7 +33,7 @@ fun org.readium.r2.shared.publication.Locator.toDomain(): Locator {
 @OptIn(ExperimentalReadiumApi::class)
 fun Locator.toReadium(): org.readium.r2.shared.publication.Locator {
     val parsedUrl = Url(href) ?: Url.fromDecodedPath(href) ?: Url("#")!!
-    val parsedMediaType = MediaType.parse(type) ?: MediaType.BINARY
+    val parsedMediaType = MediaType(type) ?: MediaType.BINARY
 
     return org.readium.r2.shared.publication.Locator(
         href = parsedUrl,
@@ -60,7 +60,7 @@ fun Link.toTocItem(publication: Publication): TocItem {
     val readiumLocator = publication.locatorFromLink(this)
     val domainLocator = readiumLocator?.toDomain() ?: Locator(
         href = href.toString(),
-        type = type ?: "application/xhtml+xml",
+        type = mediaType?.toString() ?: "application/xhtml+xml",
         title = title
     )
 

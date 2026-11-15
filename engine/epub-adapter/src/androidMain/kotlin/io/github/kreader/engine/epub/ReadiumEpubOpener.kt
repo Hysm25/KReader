@@ -46,11 +46,11 @@ class ReadiumEpubOpener(private val context: Context) {
             }
 
             val asset = assetRetriever.retrieve(file).getOrElse { error ->
-                throw IllegalStateException("Failed to retrieve EPUB asset: ${error.message}", error.cause)
+                throw IllegalStateException("Failed to retrieve EPUB asset: ${error.message}")
             }
 
-            publicationOpener.open(asset).getOrElse { error ->
-                throw IllegalStateException("Failed to open publication: ${error.message}", error.cause)
+            publicationOpener.open(asset, allowUserInteraction = false).getOrElse { error ->
+                throw IllegalStateException("Failed to open publication: ${error.message}")
             }
         }
     }
