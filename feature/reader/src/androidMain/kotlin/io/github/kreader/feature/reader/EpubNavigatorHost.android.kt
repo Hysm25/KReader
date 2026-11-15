@@ -50,6 +50,7 @@ import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
+import org.readium.r2.shared.util.Try
 
 @OptIn(ExperimentalReadiumApi::class)
 @Composable
@@ -126,18 +127,12 @@ actual fun EpubNavigatorHost(
             val pub = publication
             val results = mutableListOf<Locator>()
             if (pub != null) {
-                val searchIterator: SearchIterator? = pub.search(query).fold(
-                    onSuccess = { it },
-                    onFailure = { null }
-                )
+                val searchIterator = pub.search(query).unwrapReadium<SearchIterator>()
                 if (searchIterator != null) {
                     try {
                         var count = 0
                         while (count < 100) {
-                            val page: LocatorCollection? = searchIterator.next().fold(
-                                onSuccess = { it },
-                                onFailure = { null }
-                            )
+                            val page = searchIterator.next().unwrapReadium<LocatorCollection>()
                             if (page == null || page.locators.isEmpty()) break
                             for (loc in page.locators) {
                                 results.add(loc.toDomain())
@@ -345,5 +340,11 @@ private fun Context.findFragmentActivity(): FragmentActivity? {
         if (ctx is FragmentActivity) return ctx
         ctx = ctx.baseContext
     }
+    return null
+}
+
+private inline fun <reified T> Any?.unwrapReadium(): T? {
+    if (this is T) return this
+    if (this is Try.Success<*, *>) return this.value as? T
     return null
 }
