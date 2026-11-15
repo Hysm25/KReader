@@ -137,7 +137,7 @@ class SqlDelightBookRepository(
                         bookId = entity.bookId,
                         locator = json.decodeFromString(entity.locatorJson),
                         colorHex = entity.colorHex,
-                        annotation = entity.annotation,
+                        annotation = entity.annotation_,
                         createdTimestamp = entity.createdTimestamp,
                         modifiedTimestamp = entity.modifiedTimestamp
                     )
