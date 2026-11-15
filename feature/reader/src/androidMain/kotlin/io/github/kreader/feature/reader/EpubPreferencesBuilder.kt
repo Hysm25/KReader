@@ -6,8 +6,8 @@ import io.github.kreader.core.model.ThemeMode
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.FontFamily
+import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.publication.ReadingProgression
 
 @OptIn(ExperimentalReadiumApi::class)
 fun buildReadiumPreferences(
