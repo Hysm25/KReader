@@ -102,8 +102,10 @@ fun ReaderScreen(
             ) {
                 val readyState = state.engineState as? ReaderEngineState.Ready
                 val prog = readyState?.totalProgression ?: 0f
-                val pageInfo = if (readyState?.totalPages != null && readyState.currentPageIndex != null) {
-                    "${readyState.currentPageIndex + 1} / ${readyState.totalPages}"
+                val currentPage = readyState?.currentPageIndex
+                val totalPages = readyState?.totalPages
+                val pageInfo = if (currentPage != null && totalPages != null) {
+                    "${currentPage + 1} / $totalPages"
                 } else {
                     "${(prog * 100).toInt()}%"
                 }
