@@ -92,8 +92,9 @@ class LibraryViewModel(
                 if (!cover.isNullOrBlank()) {
                     deleteLocalFile(cover)
                 }
-                if (book.source is BookSource.FilePath) {
-                    deleteLocalFile(book.source.path)
+                val src = book.source
+                if (src is BookSource.FilePath) {
+                    deleteLocalFile(src.path)
                 }
                 bookRepository.deleteBook(book.id)
             }
