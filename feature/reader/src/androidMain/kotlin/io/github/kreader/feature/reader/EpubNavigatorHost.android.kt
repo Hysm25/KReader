@@ -316,7 +316,7 @@ private class SelectionActionModeCallback(
                 val selection = fragment.currentSelection()
                 if (selection != null) {
                     val locator = selection.locator.toDomain()
-                    val text = locator.text.highlight ?: ""
+                    val text = locator.text?.highlight ?: ""
                     if (isNote) {
                         onAddNote(locator, text)
                     } else if (colorHex != null) {

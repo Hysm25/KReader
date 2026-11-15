@@ -366,7 +366,7 @@ private fun HighlightsTabContent(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = highlight.locator.text.highlight ?: "Highlighted text",
+                            text = highlight.locator.text?.highlight ?: "Highlighted text",
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                             maxLines = 3,
                             overflow = TextOverflow.Ellipsis
@@ -527,9 +527,9 @@ fun ReaderSearchSheet(
                                     }
                                     .padding(12.dp)
                             ) {
-                                val before = result.text.before ?: ""
-                                val highlight = result.text.highlight ?: ""
-                                val after = result.text.after ?: ""
+                                val before = result.text?.before ?: ""
+                                val highlight = result.text?.highlight ?: ""
+                                val after = result.text?.after ?: ""
                                 Text(
                                     text = "$before[$highlight]$after",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -571,7 +571,7 @@ fun HighlightDetailDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Highlighted quote
                 Text(
-                    text = "\"${highlight.locator.text.highlight ?: ""}\"",
+                    text = "\"${highlight.locator.text?.highlight ?: ""}\"",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
