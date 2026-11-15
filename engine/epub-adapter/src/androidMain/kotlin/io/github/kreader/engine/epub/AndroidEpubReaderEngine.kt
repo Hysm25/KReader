@@ -19,7 +19,7 @@ import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
-import org.readium.r2.shared.util.*
+import org.readium.r2.shared.util.Try
 
 @OptIn(ExperimentalReadiumApi::class)
 actual class EpubReaderEngine actual constructor() : ReaderEngine {
@@ -143,20 +143,28 @@ actual class EpubReaderEngine actual constructor() : ReaderEngine {
     override suspend fun applyTypography(typography: ReaderTypography) {}
     override suspend fun search(query: String): List<Locator> {
         val pub = publication ?: return emptyList()
-        val searchIterator: SearchIterator = pub.search(query).getOrNull() ?: return emptyList()
         val results = mutableListOf<Locator>()
-        try {
-            var page: LocatorCollection? = searchIterator.next().getOrNull()
-            var count = 0
-            while (page != null && count < 100) {
-                for (loc in page.locators) {
-                    results.add(loc.toDomain())
-                    count++
+        val searchResult = pub.search(query)
+        if (searchResult is Try.Success) {
+            val searchIterator: SearchIterator = searchResult.value
+            try {
+                var count = 0
+                while (count < 100) {
+                    val pageResult = searchIterator.next()
+                    if (pageResult is Try.Success) {
+                        val page: LocatorCollection? = pageResult.value
+                        if (page == null || page.locators.isEmpty()) break
+                        for (loc in page.locators) {
+                            results.add(loc.toDomain())
+                            count++
+                        }
+                    } else {
+                        break
+                    }
                 }
-                page = searchIterator.next().getOrNull()
+            } finally {
+                searchIterator.close()
             }
-        } finally {
-            searchIterator.close()
         }
         return results
     }

@@ -50,7 +50,7 @@ import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
-import org.readium.r2.shared.util.*
+import org.readium.r2.shared.util.Try
 
 @OptIn(ExperimentalReadiumApi::class)
 @Composable
@@ -125,28 +125,32 @@ actual fun EpubNavigatorHost(
         }
         controller.search = { query ->
             val pub = publication
+            val results = mutableListOf<Locator>()
             if (pub != null) {
-                val searchIterator: SearchIterator? = pub.search(query).getOrNull()
-                val results = mutableListOf<Locator>()
-                if (searchIterator != null) {
+                val searchResult = pub.search(query)
+                if (searchResult is Try.Success) {
+                    val searchIterator: SearchIterator = searchResult.value
                     try {
-                        var page: LocatorCollection? = searchIterator.next().getOrNull()
                         var count = 0
-                        while (page != null && count < 100) {
-                            for (loc in page.locators) {
-                                results.add(loc.toDomain())
-                                count++
+                        while (count < 100) {
+                            val pageResult = searchIterator.next()
+                            if (pageResult is Try.Success) {
+                                val page: LocatorCollection? = pageResult.value
+                                if (page == null || page.locators.isEmpty()) break
+                                for (loc in page.locators) {
+                                    results.add(loc.toDomain())
+                                    count++
+                                }
+                            } else {
+                                break
                             }
-                            page = searchIterator.next().getOrNull()
                         }
                     } finally {
                         searchIterator.close()
                     }
                 }
-                results
-            } else {
-                emptyList()
             }
+            results
         }
         onDispose {
             controller.goTo = null
