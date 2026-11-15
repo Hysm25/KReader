@@ -1,0 +1,19 @@
+*.iml
+.gradle
+/build
+/*/build
+/*/*/build
+.idea
+.DS_Store
+*.apk
+*.aab
+local.properties
+.kotlin
+captures
+.externalNativeBuild
+.cxx
+.agents/
+
+# Keep Gradle Wrapper
+!gradle/wrapper/gradle-wrapper.jar
+
