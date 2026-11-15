@@ -15,16 +15,21 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.BookFormat
+import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
+import kotlin.random.Random
+import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 @Composable
 fun ReaderScreen(
@@ -36,6 +41,24 @@ fun ReaderScreen(
     onSeek: (Float) -> Unit,
     onTocClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onSearchClick: () -> Unit = {},
+    onBookmarkToggle: () -> Unit = {},
+    onDismissNavigationDrawer: () -> Unit = {},
+    onTabSelected: (NavigationDrawerTab) -> Unit = {},
+    onDeleteBookmark: (String) -> Unit = {},
+    onDeleteHighlight: (String) -> Unit = {},
+    onSaveHighlight: (Highlight) -> Unit = {},
+    onHighlightClicked: (Highlight) -> Unit = {},
+    onDismissHighlightDetail: () -> Unit = {},
+    onSaveHighlightDetail: (id: String, note: String, colorHex: String) -> Unit = { _, _, _ -> },
+    onOpenAddNoteDialog: (locator: Locator, selectedText: String) -> Unit = { _, _ -> },
+    onDismissAddNoteDialog: () -> Unit = {},
+    onSaveNewNote: (locator: Locator, note: String, colorHex: String) -> Unit = { _, _, _ -> },
+    onSearchQueryChange: (String) -> Unit = {},
+    onPerformSearch: ((String) -> Unit)? = null,
+    onSearchResultsChange: (List<Locator>) -> Unit = {},
+    onIsSearchingChange: (Boolean) -> Unit = {},
+    onDismissSearch: () -> Unit = {},
     onDismissToc: () -> Unit = {},
     onDismissSettings: () -> Unit = {},
     onThemeChange: (ReaderTheme) -> Unit = {},
@@ -47,6 +70,7 @@ fun ReaderScreen(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val epubController = rememberEpubNavigatorController()
+    val scope = rememberCoroutineScope()
 
     val screenBgColor = when (state.theme.mode) {
         ThemeMode.LIGHT -> Color(0xFFFFFFFF)
@@ -57,6 +81,22 @@ fun ReaderScreen(
             Color(0xFF1E1E1E)
         }
         ThemeMode.SYSTEM -> MaterialTheme.colorScheme.background
+    }
+
+    val executeSearch: () -> Unit = {
+        val q = state.searchQuery
+        if (q.isNotBlank()) {
+            if (onPerformSearch != null) {
+                onPerformSearch(q)
+            } else {
+                scope.launch {
+                    onIsSearchingChange(true)
+                    val results = epubController.search?.invoke(q) ?: emptyList()
+                    onSearchResultsChange(results)
+                    onIsSearchingChange(false)
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -70,7 +110,7 @@ fun ReaderScreen(
         ) {
             val book = state.book
             if (book != null && book.format == BookFormat.EPUB) {
-                // Readium EPUB Navigator Host
+                // Readium EPUB Navigator Host with Highlights & Selection Handling
                 EpubNavigatorHost(
                     book = book,
                     initialLocator = book.lastLocator,
@@ -78,6 +118,28 @@ fun ReaderScreen(
                     typography = state.typography,
                     isScrollMode = state.isScrollMode,
                     controller = epubController,
+                    highlights = state.highlights,
+                    onHighlightClicked = { highlightId ->
+                        val h = state.highlights.find { it.id == highlightId }
+                        if (h != null) {
+                            onHighlightClicked(h)
+                        }
+                    },
+                    onAddHighlight = { locator, colorHex ->
+                        val newHighlight = Highlight(
+                            id = "hl_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
+                            bookId = book.id,
+                            locator = locator,
+                            colorHex = colorHex,
+                            annotation = null,
+                            createdTimestamp = Clock.System.now().toEpochMilliseconds(),
+                            modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
+                        )
+                        onSaveHighlight(newHighlight)
+                    },
+                    onAddNoteRequested = { locator, selectedText ->
+                        onOpenAddNoteDialog(locator, selectedText)
+                    },
                     onProgressChanged = onProgressChanged,
                     onTableOfContentsLoaded = onTableOfContentsLoaded,
                     onTap = onToggleControls,
@@ -135,7 +197,10 @@ fun ReaderScreen(
             ) {
                 ReaderTopBar(
                     title = state.book?.title ?: "Reading",
+                    isBookmarked = state.isCurrentBookmarked,
                     onBackClick = onBackClick,
+                    onSearchClick = onSearchClick,
+                    onBookmarkToggle = onBookmarkToggle,
                     onTocClick = onTocClick,
                     onSettingsClick = onSettingsClick
                 )
@@ -183,15 +248,54 @@ fun ReaderScreen(
                 )
             }
 
-            // Table of Contents Modal Sheet
-            ReaderTocSheet(
-                isOpen = state.isTocOpen,
+            // Navigation Drawer (Contents / TOC, Bookmarks, Highlights & Notes)
+            ReaderNavigationDrawer(
+                isOpen = state.isNavigationDrawerOpen,
+                currentTab = state.navigationDrawerTab,
+                onTabSelected = onTabSelected,
                 tocItems = state.tocItems,
-                onItemClick = { locator ->
+                bookmarks = state.bookmarks,
+                highlights = state.highlights,
+                currentLocator = state.currentLocator,
+                onNavigateToLocator = { locator ->
                     epubController.goTo?.invoke(locator)
-                    onDismissToc()
+                    onDismissNavigationDrawer()
                 },
-                onDismiss = onDismissToc
+                onDeleteBookmark = onDeleteBookmark,
+                onDeleteHighlight = onDeleteHighlight,
+                onHighlightClicked = onHighlightClicked,
+                onDismiss = onDismissNavigationDrawer
+            )
+
+            // In-Book Full-Text Search Sheet
+            ReaderSearchSheet(
+                isOpen = state.isSearchOpen,
+                query = state.searchQuery,
+                results = state.searchResults,
+                isSearching = state.isSearching,
+                onQueryChange = onSearchQueryChange,
+                onSearch = executeSearch,
+                onResultClick = { locator ->
+                    epubController.goTo?.invoke(locator)
+                    onDismissSearch()
+                },
+                onDismiss = onDismissSearch
+            )
+
+            // Highlight Detail Dialog (View/Edit Annotation & Color, Delete)
+            HighlightDetailDialog(
+                highlight = state.selectedHighlightForDetail,
+                onSaveAnnotation = onSaveHighlightDetail,
+                onDeleteHighlight = onDeleteHighlight,
+                onDismiss = onDismissHighlightDetail
+            )
+
+            // Add Note Dialog (Prompted from Text Selection)
+            AddNoteDialog(
+                locator = state.pendingNoteLocator,
+                selectedText = state.pendingNoteText,
+                onSaveNote = onSaveNewNote,
+                onDismiss = onDismissAddNoteDialog
             )
 
             // Reading Settings Modal Sheet (Theme, Mode, Arabic Font, Tashkeel Spacing)

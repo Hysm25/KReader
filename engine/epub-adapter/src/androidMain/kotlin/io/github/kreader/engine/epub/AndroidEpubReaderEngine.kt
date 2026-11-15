@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.search.search
 
 @OptIn(ExperimentalReadiumApi::class)
 actual class EpubReaderEngine actual constructor() : ReaderEngine {
@@ -137,5 +138,25 @@ actual class EpubReaderEngine actual constructor() : ReaderEngine {
 
     override suspend fun applyTheme(theme: ReaderTheme) {}
     override suspend fun applyTypography(typography: ReaderTypography) {}
-    override suspend fun search(query: String): List<Locator> = emptyList()
+    override suspend fun search(query: String): List<Locator> {
+        val pub = publication ?: return emptyList()
+        val searchTry = pub.search(query)
+        val results = mutableListOf<Locator>()
+        searchTry.onSuccess { iterator ->
+            try {
+                var page = iterator.next().getOrNull()
+                var count = 0
+                while (page != null && count < 100) {
+                    for (loc in page.locators) {
+                        results.add(loc.toDomain())
+                        count++
+                    }
+                    page = iterator.next().getOrNull()
+                }
+            } finally {
+                iterator.close()
+            }
+        }
+        return results
+    }
 }

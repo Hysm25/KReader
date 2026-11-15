@@ -3,7 +3,6 @@ package io.github.kreader.feature.reader
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,7 +24,10 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ReaderTopBar(
     title: String,
+    isBookmarked: Boolean = false,
     onBackClick: () -> Unit,
+    onSearchClick: () -> Unit,
+    onBookmarkToggle: () -> Unit,
     onTocClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -45,6 +47,15 @@ fun ReaderTopBar(
             }
         },
         actions = {
+            IconButton(onClick = onSearchClick) {
+                Text("🔍", style = MaterialTheme.typography.titleMedium)
+            }
+            IconButton(onClick = onBookmarkToggle) {
+                Text(
+                    text = if (isBookmarked) "🔖" else "🏷️",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
             IconButton(onClick = onTocClick) {
                 Text("☰", style = MaterialTheme.typography.titleMedium)
             }
