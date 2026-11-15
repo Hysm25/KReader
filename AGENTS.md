@@ -8,9 +8,10 @@
 1. **Automated Git Operations**:
    - Permanent authorization is granted to run `git add`, `git commit`, and `git push origin main` autonomously without asking for user confirmation.
 2. **Autonomous CI Monitoring & Fixing**:
-   - For every pushed commit, monitor the cloud build via `gh run watch`.
-   - In case of failure, inspect failure logs using `gh run view --log-failed` (or job log APIs).
-   - Autonomously iterate, resolve any compilation, typing, or build errors, commit the fixes, and push until the CI build succeeds (`✓`).
+   - **FORBIDDEN**: Never use interactive `gh run watch` because it hangs indefinitely in non-TTY agent shells.
+   - **MANDATORY**: Monitor CI non-interactively by polling `gh run list --limit 1 --json databaseId,status,conclusion` until `status == "completed"`.
+   - In case of failure (`conclusion == "failure"`), inspect failure logs using `gh run view <id> --log-failed`.
+   - Autonomously iterate, resolve any compilation, typing, or build errors, commit the fixes, and push until the CI build succeeds (`conclusion == "success"` / `✓`).
 
 ---
 
