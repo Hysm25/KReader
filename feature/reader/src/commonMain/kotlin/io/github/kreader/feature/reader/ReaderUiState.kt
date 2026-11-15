@@ -32,6 +32,8 @@ data class ReaderUiState(
     val typography: ReaderTypography = ReaderTypography(lineHeightMultiplier = 1.6f),
     val currentLocator: Locator? = null,
     val totalProgression: Float = 0f,
+    val currentPageIndex: Int? = null,
+    val totalPages: Int? = null,
     val tocItems: List<TocItem> = emptyList(),
     val bookmarks: List<Bookmark> = emptyList(),
     val highlights: List<Highlight> = emptyList(),
@@ -41,6 +43,11 @@ data class ReaderUiState(
 ) {
     val isCurrentBookmarked: Boolean
         get() {
+            val currPos = currentLocator?.locations?.position
+            if (currPos != null) {
+                val matched = bookmarks.any { b -> b.locator.locations.position == currPos }
+                if (matched) return true
+            }
             val currHref = currentLocator?.href ?: return false
             val currProg = currentLocator.locations.progression ?: totalProgression
             return bookmarks.any { b ->

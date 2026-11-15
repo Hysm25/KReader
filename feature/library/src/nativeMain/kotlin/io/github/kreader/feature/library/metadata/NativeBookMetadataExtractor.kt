@@ -11,7 +11,8 @@ class NativeBookMetadataExtractor : BookMetadataExtractor {
             title = source.displayName.substringBeforeLast('.'),
             format = BookFormat.EPUB,
             coverPath = null,
-            fileSizeBytes = 0L
+            fileSizeBytes = 0L,
+            localSource = source
         )
     }
 }

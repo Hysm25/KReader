@@ -28,15 +28,16 @@ class ReadiumEpubOpener(private val context: Context) {
             val file = when (source) {
                 is BookSource.FilePath -> File(source.path)
                 is BookSource.ContentUri -> {
-                    val cacheFile = File(context.cacheDir, "readium_${bookId}.epub")
-                    if (!cacheFile.exists() || cacheFile.length() == 0L) {
+                    val booksDir = File(context.filesDir, "books").apply { mkdirs() }
+                    val localFile = File(booksDir, "${bookId}.epub")
+                    if (!localFile.exists() || localFile.length() == 0L) {
                         context.contentResolver.openInputStream(Uri.parse(source.uriString))?.use { input ->
-                            cacheFile.outputStream().use { output ->
+                            localFile.outputStream().use { output ->
                                 input.copyTo(output)
                             }
                         } ?: throw IllegalStateException("Cannot open ContentUri: ${source.uriString}")
                     }
-                    cacheFile
+                    localFile
                 }
                 else -> throw IllegalArgumentException("Unsupported BookSource type: $source")
             }

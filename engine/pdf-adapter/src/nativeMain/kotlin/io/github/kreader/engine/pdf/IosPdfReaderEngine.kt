@@ -22,6 +22,9 @@ actual class PdfReaderEngine actual constructor() : ReaderEngine {
     private val _events = MutableSharedFlow<ReaderEngineEvent>(extraBufferCapacity = 64)
     override val events: SharedFlow<ReaderEngineEvent> = _events.asSharedFlow()
 
+    actual val pageCount: Int
+        get() = 1
+
     override suspend fun open(book: Book, initialLocator: Locator?): Result<Unit> {
         val locator = initialLocator ?: book.lastLocator ?: Locator.initial("page-0", "application/pdf")
         _state.value = ReaderEngineState.Ready(

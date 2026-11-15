@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +75,13 @@ actual fun EpubNavigatorHost(
     val fragmentActivity = remember(context) { context.findFragmentActivity() }
     val scope = rememberCoroutineScope()
 
+    val currentOnProgressChanged by rememberUpdatedState(onProgressChanged)
+    val currentOnTap by rememberUpdatedState(onTap)
+    val currentOnHighlightClicked by rememberUpdatedState(onHighlightClicked)
+    val currentOnAddHighlight by rememberUpdatedState(onAddHighlight)
+    val currentOnAddNoteRequested by rememberUpdatedState(onAddNoteRequested)
+    val currentOnTableOfContentsLoaded by rememberUpdatedState(onTableOfContentsLoaded)
+
     var publication by remember { mutableStateOf<Publication?>(null) }
     var currentFragment by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -89,7 +97,7 @@ actual fun EpubNavigatorHost(
             onSuccess = { pub ->
                 publication = pub
                 val toc = pub.tableOfContents.map { it.toTocItem(pub) }
-                onTableOfContentsLoaded(toc)
+                currentOnTableOfContentsLoaded(toc)
                 isLoading = false
             },
             onFailure = { err ->
@@ -106,7 +114,9 @@ actual fun EpubNavigatorHost(
 
     // 3. Submit preferences on change
     LaunchedEffect(currentFragment, preferences) {
-        currentFragment?.submitPreferences(preferences)
+        currentFragment?.let { frag ->
+            runCatching { frag.submitPreferences(preferences) }
+        }
     }
 
     // 4. Wire controller navigation commands & search
@@ -173,14 +183,30 @@ actual fun EpubNavigatorHost(
         publication != null && fragmentActivity != null -> {
             val pub = publication!!
             val containerId = remember(book.id) { View.generateViewId() }
+            val fragmentTag = remember(book.id) { "epub_nav_${book.id}" }
 
             val selectionCallback = remember(scope) {
                 SelectionActionModeCallback(
                     scope = scope,
                     fragmentProvider = { currentFragment },
-                    onHighlight = onAddHighlight,
-                    onAddNote = onAddNoteRequested
+                    onHighlight = { loc, color -> currentOnAddHighlight(loc, color) },
+                    onAddNote = { loc, text -> currentOnAddNoteRequested(loc, text) }
                 )
+            }
+
+            DisposableEffect(book.id) {
+                onDispose {
+                    val fm = fragmentActivity.supportFragmentManager
+                    if (!fragmentActivity.isFinishing && !fragmentActivity.isDestroyed) {
+                        val frag = fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(containerId)
+                        if (frag != null) {
+                            runCatching {
+                                fm.beginTransaction().remove(frag).commitNowAllowingStateLoss()
+                            }
+                        }
+                    }
+                    currentFragment = null
+                }
             }
 
             AndroidView(
@@ -194,50 +220,57 @@ actual fun EpubNavigatorHost(
                     }
                 },
                 update = { view ->
-                    val fm = fragmentActivity.supportFragmentManager
-                    var fragment = fm.findFragmentById(view.id) as? EpubNavigatorFragment
-                    if (fragment == null) {
-                        val factory = EpubNavigatorFactory(pub)
-                        val fragmentFactory = factory.createFragmentFactory(
-                            initialLocator = initialLocator?.toReadium(),
-                            initialPreferences = preferences,
-                            configuration = EpubNavigatorFragment.Configuration(
-                                selectionActionModeCallback = selectionCallback
+                    runCatching {
+                        val fm = fragmentActivity.supportFragmentManager
+                        var fragment = (fm.findFragmentById(view.id) ?: fm.findFragmentByTag(fragmentTag)) as? EpubNavigatorFragment
+                        if (fragment == null) {
+                            val factory = EpubNavigatorFactory(pub)
+                            val fragmentFactory = factory.createFragmentFactory(
+                                initialLocator = initialLocator?.toReadium(),
+                                initialPreferences = preferences,
+                                configuration = EpubNavigatorFragment.Configuration(
+                                    selectionActionModeCallback = selectionCallback
+                                )
                             )
-                        )
-                        fragment = fragmentFactory.instantiate(
-                            view.context.classLoader,
-                            EpubNavigatorFragment::class.java.name
-                        ) as EpubNavigatorFragment
+                            fm.fragmentFactory = fragmentFactory
+                            fragment = fragmentFactory.instantiate(
+                                view.context.classLoader,
+                                EpubNavigatorFragment::class.java.name
+                            ) as EpubNavigatorFragment
 
-                        fragment.addInputListener(
-                            DirectionalNavigationAdapter(
-                                navigator = fragment,
-                                animatedTransition = true
+                            fragment.addInputListener(
+                                DirectionalNavigationAdapter(
+                                    navigator = fragment,
+                                    animatedTransition = true
+                                )
                             )
-                        )
-                        fragment.addInputListener(object : InputListener {
-                            override fun onTap(event: TapEvent): Boolean {
-                                onTap()
-                                return true
-                            }
-                        })
-
-                        fragment.addDecorationListener(
-                            "highlights",
-                            object : DecorableNavigator.Listener {
-                                override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
-                                    onHighlightClicked(event.decoration.id)
+                            fragment.addInputListener(object : InputListener {
+                                override fun onTap(event: TapEvent): Boolean {
+                                    currentOnTap()
                                     return true
                                 }
-                            }
-                        )
+                            })
 
-                        fm.beginTransaction()
-                            .replace(view.id, fragment)
-                            .commitAllowingStateLoss()
+                            fragment.addDecorationListener(
+                                "highlights",
+                                object : DecorableNavigator.Listener {
+                                    override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
+                                        currentOnHighlightClicked(event.decoration.id)
+                                        return true
+                                    }
+                                }
+                            )
+
+                            fm.beginTransaction()
+                                .replace(view.id, fragment, fragmentTag)
+                                .commitNowAllowingStateLoss()
+                        }
+                        if (currentFragment !== fragment) {
+                            currentFragment = fragment
+                        }
+                    }.onFailure { e ->
+                        errorMessage = "Failed to initialize reader: ${e.message}"
                     }
-                    currentFragment = fragment
                 },
                 modifier = modifier.fillMaxSize()
             )
@@ -245,29 +278,34 @@ actual fun EpubNavigatorHost(
             // Render Highlights as Decorations
             LaunchedEffect(currentFragment, highlights) {
                 val frag = currentFragment ?: return@LaunchedEffect
-                val decorations = highlights.map { h ->
-                    val tintColor = try {
-                        android.graphics.Color.parseColor(h.colorHex)
-                    } catch (_: Exception) {
-                        android.graphics.Color.YELLOW
+                runCatching {
+                    val decorations = highlights.map { h ->
+                        val tintColor = try {
+                            android.graphics.Color.parseColor(h.colorHex)
+                        } catch (_: Exception) {
+                            android.graphics.Color.YELLOW
+                        }
+                        Decoration(
+                            id = h.id,
+                            locator = h.locator.toReadium(),
+                            style = Decoration.Style.Highlight(tint = tintColor, isActive = true)
+                        )
                     }
-                    Decoration(
-                        id = h.id,
-                        locator = h.locator.toReadium(),
-                        style = Decoration.Style.Highlight(tint = tintColor, isActive = true)
-                    )
+                    frag.applyDecorations(decorations, group = "highlights")
                 }
-                frag.applyDecorations(decorations, group = "highlights")
             }
 
             // Observe currentLocator for progress persistence
             LaunchedEffect(currentFragment) {
-                currentFragment?.currentLocator?.collect { readiumLocator ->
-                    val domainLocator = readiumLocator.toDomain()
-                    val prog = domainLocator.locations.totalProgression
-                        ?: domainLocator.locations.progression
-                        ?: 0f
-                    onProgressChanged(prog, domainLocator)
+                val frag = currentFragment ?: return@LaunchedEffect
+                frag.currentLocator.collect { readiumLocator ->
+                    runCatching {
+                        val domainLocator = readiumLocator.toDomain()
+                        val prog = domainLocator.locations.totalProgression
+                            ?: domainLocator.locations.progression
+                            ?: 0f
+                        currentOnProgressChanged(prog, domainLocator)
+                    }
                 }
             }
         }

@@ -22,11 +22,13 @@ class DesktopBookMetadataExtractor(
         val format = detectFormat(file.name)
         val fileSizeBytes = if (file.exists()) file.length() else 0L
 
-        when (format) {
+        val metadata = when (format) {
             BookFormat.EPUB -> extractEpub(file, source, bookId, fileSizeBytes)
             BookFormat.PDF -> extractPdf(file, source, fileSizeBytes)
             BookFormat.CBZ -> extractGeneric(source, format, fileSizeBytes)
         }
+        val effectiveSource = if (file.exists()) BookSource.FilePath(path = file.absolutePath, displayName = source.displayName) else source
+        metadata.copy(localSource = effectiveSource)
     }
 
     private fun detectFormat(name: String): BookFormat {

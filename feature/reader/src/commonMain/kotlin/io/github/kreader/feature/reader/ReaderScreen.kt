@@ -65,11 +65,13 @@ fun ReaderScreen(
     onTypographyChange: (ReaderTypography) -> Unit = {},
     onScrollModeChange: (Boolean) -> Unit = {},
     onProgressChanged: (progression: Float, locator: Locator) -> Unit = { _, _ -> },
+    onPdfPageChanged: (pageIndex: Int, totalPages: Int, locator: Locator) -> Unit = { _, _, _ -> },
     onTableOfContentsLoaded: (List<TocItem>) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val epubController = rememberEpubNavigatorController()
+    val pdfController = rememberPdfViewerController()
     val scope = rememberCoroutineScope()
 
     val screenBgColor = when (state.theme.mode) {
@@ -145,8 +147,23 @@ fun ReaderScreen(
                     onTap = onToggleControls,
                     modifier = Modifier.fillMaxSize()
                 )
+            } else if (book != null && book.format == BookFormat.PDF) {
+                // Native PDF Reader Host with Pan/Zoom & Color Filters
+                val initialPage = state.currentPageIndex ?: (book.lastLocator?.locations?.position?.minus(1) ?: 0).coerceAtLeast(0)
+                PdfViewerHost(
+                    book = book,
+                    initialPage = initialPage,
+                    theme = state.theme,
+                    isScrollMode = state.isScrollMode,
+                    controller = pdfController,
+                    onPageChanged = { pageIdx, total, loc ->
+                        onPdfPageChanged(pageIdx, total, loc)
+                    },
+                    onTap = onToggleControls,
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
-                // Fallback for PDF or Other Formats
+                // Fallback for Other Formats
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -214,13 +231,10 @@ fun ReaderScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 val readyState = state.engineState as? ReaderEngineState.Ready
-                val prog = if (state.book?.format == BookFormat.EPUB) {
-                    state.totalProgression.takeIf { it > 0f } ?: (state.book?.totalProgression ?: 0f)
-                } else {
-                    readyState?.totalProgression ?: 0f
-                }
-                val currentPage = readyState?.currentPageIndex
-                val totalPages = readyState?.totalPages
+                val prog = state.totalProgression.takeIf { it > 0f }
+                    ?: (state.book?.totalProgression ?: (readyState?.totalProgression ?: 0f))
+                val currentPage = state.currentPageIndex ?: readyState?.currentPageIndex
+                val totalPages = state.totalPages ?: readyState?.totalPages
                 val pageInfo = if (currentPage != null && totalPages != null) {
                     "${currentPage + 1} / $totalPages"
                 } else {
@@ -230,10 +244,19 @@ fun ReaderScreen(
                 ReaderBottomBar(
                     progression = prog,
                     pageInfo = pageInfo,
-                    onSeek = onSeek,
+                    onSeek = { targetProg ->
+                        onSeek(targetProg)
+                        if (book?.format == BookFormat.PDF) {
+                            val total = state.totalPages ?: 1
+                            val targetPage = (targetProg * total).toInt().coerceIn(0, total - 1)
+                            pdfController.goToPage?.invoke(targetPage)
+                        }
+                    },
                     onPreviousPage = {
                         if (book?.format == BookFormat.EPUB) {
                             epubController.goPrevious?.invoke()
+                        } else if (book?.format == BookFormat.PDF) {
+                            pdfController.goPrevious?.invoke()
                         } else {
                             onPreviousPage()
                         }
@@ -241,6 +264,8 @@ fun ReaderScreen(
                     onNextPage = {
                         if (book?.format == BookFormat.EPUB) {
                             epubController.goNext?.invoke()
+                        } else if (book?.format == BookFormat.PDF) {
+                            pdfController.goNext?.invoke()
                         } else {
                             onNextPage()
                         }
@@ -258,7 +283,14 @@ fun ReaderScreen(
                 highlights = state.highlights,
                 currentLocator = state.currentLocator,
                 onNavigateToLocator = { locator ->
-                    epubController.goTo?.invoke(locator)
+                    if (state.book?.format == BookFormat.EPUB) {
+                        epubController.goTo?.invoke(locator)
+                    } else if (state.book?.format == BookFormat.PDF) {
+                        val pos = locator.locations.position
+                        if (pos != null) {
+                            pdfController.goToPage?.invoke((pos - 1).coerceAtLeast(0))
+                        }
+                    }
                     onDismissNavigationDrawer()
                 },
                 onDeleteBookmark = onDeleteBookmark,

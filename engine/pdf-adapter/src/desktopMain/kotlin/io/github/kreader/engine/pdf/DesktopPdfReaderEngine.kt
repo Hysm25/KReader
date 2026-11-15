@@ -25,6 +25,9 @@ actual class PdfReaderEngine actual constructor() : ReaderEngine {
     private var currentPage: Int = 0
     private var totalPagesCount: Int = 1
 
+    actual val pageCount: Int
+        get() = totalPagesCount
+
     override suspend fun open(book: Book, initialLocator: Locator?): Result<Unit> {
         _state.value = ReaderEngineState.Loading("Opening ${book.title} with Desktop PDFium...")
         val targetPage = initialLocator?.locations?.position ?: 0

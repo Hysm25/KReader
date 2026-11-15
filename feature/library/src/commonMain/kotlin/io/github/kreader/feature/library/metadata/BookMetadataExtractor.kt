@@ -11,7 +11,8 @@ data class ExtractedBookMetadata(
     val format: BookFormat,
     val coverPath: String? = null,
     val isRtl: Boolean = false,
-    val fileSizeBytes: Long = 0L
+    val fileSizeBytes: Long = 0L,
+    val localSource: BookSource? = null
 )
 
 interface BookMetadataExtractor {

@@ -68,7 +68,7 @@ class LibraryViewModel(
                     description = metadata.description,
                     coverPath = metadata.coverPath,
                     format = metadata.format,
-                    source = source,
+                    source = metadata.localSource ?: source,
                     fileSizeBytes = metadata.fileSizeBytes,
                     addedTimestamp = Clock.System.now().toEpochMilliseconds(),
                     totalProgression = 0f
@@ -91,6 +91,9 @@ class LibraryViewModel(
                 val cover = book.coverPath
                 if (!cover.isNullOrBlank()) {
                     deleteLocalFile(cover)
+                }
+                if (book.source is BookSource.FilePath) {
+                    deleteLocalFile(book.source.path)
                 }
                 bookRepository.deleteBook(book.id)
             }

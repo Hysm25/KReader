@@ -25,15 +25,51 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
         File(context.filesDir, "covers").apply { mkdirs() }
     }
 
+    private val booksDir: File by lazy {
+        File(context.filesDir, "books").apply { mkdirs() }
+    }
+
     override suspend fun extract(source: BookSource, bookId: String): ExtractedBookMetadata = withContext(Dispatchers.IO) {
         val format = detectFormat(source)
-        val fileSizeBytes = queryFileSize(source)
-
-        when (format) {
-            BookFormat.EPUB -> extractEpub(source, bookId, fileSizeBytes)
-            BookFormat.PDF -> extractPdf(source, bookId, fileSizeBytes)
-            BookFormat.CBZ -> extractGeneric(source, format, fileSizeBytes)
+        val ext = when (format) {
+            BookFormat.EPUB -> "epub"
+            BookFormat.PDF -> "pdf"
+            BookFormat.CBZ -> "cbz"
         }
+        val targetBookFile = File(booksDir, "${bookId}.$ext")
+        val copiedSuccessfully = copySourceToInternalFile(source, targetBookFile)
+        val effectiveSource = if (copiedSuccessfully && targetBookFile.exists() && targetBookFile.length() > 0L) {
+            BookSource.FilePath(path = targetBookFile.absolutePath, displayName = source.displayName)
+        } else {
+            source
+        }
+
+        val fileSizeBytes = if (targetBookFile.exists() && targetBookFile.length() > 0L) {
+            targetBookFile.length()
+        } else {
+            queryFileSize(source)
+        }
+
+        val metadata = when (format) {
+            BookFormat.EPUB -> extractEpub(effectiveSource, targetBookFile, bookId, fileSizeBytes)
+            BookFormat.PDF -> extractPdf(effectiveSource, targetBookFile, bookId, fileSizeBytes)
+            BookFormat.CBZ -> extractGeneric(effectiveSource, format, fileSizeBytes)
+        }
+        metadata.copy(localSource = effectiveSource)
+    }
+
+    private fun copySourceToInternalFile(source: BookSource, targetFile: File): Boolean {
+        return runCatching {
+            if (source is BookSource.FilePath && File(source.path).absolutePath == targetFile.absolutePath) {
+                return true
+            }
+            openInputStream(source)?.use { input ->
+                targetFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            targetFile.exists() && targetFile.length() > 0L
+        }.getOrDefault(false)
     }
 
     private fun detectFormat(source: BookSource): BookFormat {
@@ -78,17 +114,27 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
         }
     }
 
-    private fun extractEpub(source: BookSource, bookId: String, fileSizeBytes: Long): ExtractedBookMetadata {
-        val tempFile = File(context.cacheDir, "temp_${bookId}.epub")
-        try {
+    private fun extractEpub(
+        source: BookSource,
+        bookFile: File,
+        bookId: String,
+        fileSizeBytes: Long
+    ): ExtractedBookMetadata {
+        val workingFile = if (bookFile.exists() && bookFile.length() > 0L) {
+            bookFile
+        } else {
+            val temp = File(context.cacheDir, "temp_${bookId}.epub")
             val input = openInputStream(source) ?: return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
             input.use { inStream ->
-                tempFile.outputStream().use { outStream ->
+                temp.outputStream().use { outStream ->
                     inStream.copyTo(outStream)
                 }
             }
+            temp
+        }
 
-            ZipFile(tempFile).use { zip ->
+        try {
+            ZipFile(workingFile).use { zip ->
                 val containerEntry = zip.getEntry("META-INF/container.xml")
                     ?: zip.entries().asSequence().firstOrNull { it.name.equals("META-INF/container.xml", ignoreCase = true) }
                 val containerXml = containerEntry?.let { zip.getInputStream(it).bufferedReader().readText() }
@@ -131,7 +177,9 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
         } catch (e: Exception) {
             return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
         } finally {
-            tempFile.delete()
+            if (workingFile != bookFile) {
+                workingFile.delete()
+            }
         }
     }
 
@@ -172,11 +220,20 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
         return targetCoverFile.absolutePath
     }
 
-    private fun extractPdf(source: BookSource, bookId: String, fileSizeBytes: Long): ExtractedBookMetadata {
+    private fun extractPdf(
+        source: BookSource,
+        bookFile: File,
+        bookId: String,
+        fileSizeBytes: Long
+    ): ExtractedBookMetadata {
         val title = source.displayName.removeSuffix(".pdf").removeSuffix(".PDF")
         var coverPath: String? = null
 
-        val pfd = openParcelFileDescriptor(source)
+        val pfd = if (bookFile.exists() && bookFile.length() > 0L) {
+            runCatching { ParcelFileDescriptor.open(bookFile, ParcelFileDescriptor.MODE_READ_ONLY) }.getOrNull()
+        } else {
+            openParcelFileDescriptor(source)
+        }
         if (pfd != null) {
             try {
                 PdfRenderer(pfd).use { renderer ->

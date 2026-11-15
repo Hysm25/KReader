@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
@@ -51,11 +52,13 @@ fun App() {
                 val highlights by bookRepository.observeHighlights(bookToRead.id).collectAsState(emptyList())
 
                 var readerState by remember(bookToRead.id) {
+                    val initialPage = (bookToRead.lastLocator?.locations?.position?.minus(1) ?: 0).coerceAtLeast(0)
                     mutableStateOf(
                         ReaderUiState(
                             book = bookToRead,
                             currentLocator = bookToRead.lastLocator,
-                            totalProgression = bookToRead.totalProgression
+                            totalProgression = bookToRead.totalProgression,
+                            currentPageIndex = if (bookToRead.format == BookFormat.PDF) initialPage else null
                         )
                     )
                 }
@@ -102,27 +105,57 @@ fun App() {
                     },
                     onBookmarkToggle = {
                         scope.launch {
-                            val currHref = currentUiState.currentLocator?.href ?: bookToRead.lastLocator?.href
-                            val currProg = currentUiState.currentLocator?.locations?.progression ?: currentUiState.totalProgression
-                            val existing = bookmarks.find { b ->
-                                (currHref != null && b.locator.href == currHref) &&
-                                abs((b.locator.locations.progression ?: 0f) - currProg) < 0.05f
-                            }
-                            if (existing != null) {
-                                bookRepository.deleteBookmark(existing.id)
+                            if (bookToRead.format == BookFormat.PDF) {
+                                val currPos = currentUiState.currentPageIndex?.let { it + 1 }
+                                    ?: (currentUiState.currentLocator?.locations?.position ?: 1)
+                                val existing = bookmarks.find { it.locator.locations.position == currPos }
+                                if (existing != null) {
+                                    bookRepository.deleteBookmark(existing.id)
+                                } else {
+                                    val total = currentUiState.totalPages ?: 1
+                                    val prog = if (total > 0) (currPos - 1).toFloat() / total else currentUiState.totalProgression
+                                    val currentLoc = Locator(
+                                        href = "page-$currPos",
+                                        type = "application/pdf",
+                                        title = "Page $currPos",
+                                        locations = Locator.Locations(
+                                            position = currPos,
+                                            progression = prog,
+                                            totalProgression = prog
+                                        )
+                                    )
+                                    val newBookmark = Bookmark(
+                                        id = "bm_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
+                                        bookId = bookToRead.id,
+                                        locator = currentLoc,
+                                        title = "Page $currPos",
+                                        createdTimestamp = Clock.System.now().toEpochMilliseconds()
+                                    )
+                                    bookRepository.saveBookmark(newBookmark)
+                                }
                             } else {
-                                val currentLoc = currentUiState.currentLocator ?: bookToRead.lastLocator ?: Locator(href = "", type = "application/epub+zip")
-                                val chapterTitle = currentUiState.tocItems.find {
-                                    it.locator.href.substringBefore("#") == currentLoc.href.substringBefore("#")
-                                }?.title ?: currentLoc.title ?: "Bookmark at ${(currentUiState.totalProgression * 100).toInt()}%"
-                                val newBookmark = Bookmark(
-                                    id = "bm_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
-                                    bookId = bookToRead.id,
-                                    locator = currentLoc,
-                                    title = chapterTitle,
-                                    createdTimestamp = Clock.System.now().toEpochMilliseconds()
-                                )
-                                bookRepository.saveBookmark(newBookmark)
+                                val currHref = currentUiState.currentLocator?.href ?: bookToRead.lastLocator?.href
+                                val currProg = currentUiState.currentLocator?.locations?.progression ?: currentUiState.totalProgression
+                                val existing = bookmarks.find { b ->
+                                    (currHref != null && b.locator.href == currHref) &&
+                                    abs((b.locator.locations.progression ?: 0f) - currProg) < 0.05f
+                                }
+                                if (existing != null) {
+                                    bookRepository.deleteBookmark(existing.id)
+                                } else {
+                                    val currentLoc = currentUiState.currentLocator ?: bookToRead.lastLocator ?: Locator(href = "", type = "application/epub+zip")
+                                    val chapterTitle = currentUiState.tocItems.find {
+                                        it.locator.href.substringBefore("#") == currentLoc.href.substringBefore("#")
+                                    }?.title ?: currentLoc.title ?: "Bookmark at ${(currentUiState.totalProgression * 100).toInt()}%"
+                                    val newBookmark = Bookmark(
+                                        id = "bm_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
+                                        bookId = bookToRead.id,
+                                        locator = currentLoc,
+                                        title = chapterTitle,
+                                        createdTimestamp = Clock.System.now().toEpochMilliseconds()
+                                    )
+                                    bookRepository.saveBookmark(newBookmark)
+                                }
                             }
                         }
                     },
@@ -214,6 +247,19 @@ fun App() {
                         scope.launch {
                             val now = Clock.System.now().toEpochMilliseconds()
                             bookRepository.updateProgress(bookToRead.id, progression, locator, now)
+                        }
+                    },
+                    onPdfPageChanged = { pageIndex, totalPages, locator ->
+                        val prog = if (totalPages > 0) pageIndex.toFloat() / totalPages else 0f
+                        readerState = readerState.copy(
+                            currentPageIndex = pageIndex,
+                            totalPages = totalPages,
+                            totalProgression = prog,
+                            currentLocator = locator
+                        )
+                        scope.launch {
+                            val now = Clock.System.now().toEpochMilliseconds()
+                            bookRepository.updateProgress(bookToRead.id, prog, locator, now)
                         }
                     },
                     onTableOfContentsLoaded = { toc ->
