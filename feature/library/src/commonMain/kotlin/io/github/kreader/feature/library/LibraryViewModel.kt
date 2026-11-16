@@ -9,6 +9,7 @@ import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.feature.library.metadata.BookMetadataExtractor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,8 +17,11 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.datetime.Clock
 import kotlin.random.Random
+import java.util.Collections
 
 class LibraryViewModel(
     private val bookRepository: BookRepository,
@@ -26,6 +30,9 @@ class LibraryViewModel(
 ) {
     private val _uiState = MutableStateFlow(LibraryUiState(isLoading = true))
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
+
+    private val extractingBookIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val extractionSemaphore = Semaphore(3)
 
     init {
         observeVaultInfo()
@@ -54,19 +61,22 @@ class LibraryViewModel(
                     )
                 }
 
-                // Asynchronously extract metadata for books missing author or cover
+                // Asynchronously extract metadata for books missing author or cover (bounded concurrency & once per session)
                 for (book in allBooks) {
-                    if (book.author == null || book.coverPath == null) {
-                        scope.launch {
-                            runCatching {
-                                val meta = metadataExtractor.extract(book.source, book.id)
-                                val updated = book.copy(
-                                    title = meta.title.ifBlank { book.title },
-                                    author = meta.author,
-                                    description = meta.description,
-                                    coverPath = meta.coverPath ?: book.coverPath
-                                )
-                                bookRepository.upsertBook(updated)
+                    if ((book.author == null || book.coverPath == null) && !extractingBookIds.contains(book.id)) {
+                        extractingBookIds.add(book.id)
+                        scope.launch(Dispatchers.IO) {
+                            extractionSemaphore.withPermit {
+                                runCatching {
+                                    val meta = metadataExtractor.extract(book.source, book.id)
+                                    val updated = book.copy(
+                                        title = meta.title.ifBlank { book.title },
+                                        author = meta.author ?: book.author ?: "Unknown Author",
+                                        description = meta.description ?: book.description,
+                                        coverPath = meta.coverPath ?: book.coverPath
+                                    )
+                                    bookRepository.upsertBook(updated)
+                                }
                             }
                         }
                     }
@@ -76,10 +86,12 @@ class LibraryViewModel(
     }
 
     fun setVault(uriOrPath: String) {
+        extractingBookIds.clear()
         bookRepository.setVault(uriOrPath)
     }
 
     fun refreshVault() {
+        extractingBookIds.clear()
         scope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
             runCatching {
@@ -90,6 +102,7 @@ class LibraryViewModel(
     }
 
     fun clearVault() {
+        extractingBookIds.clear()
         bookRepository.clearVault()
     }
 
@@ -151,6 +164,7 @@ class LibraryViewModel(
     }
 
     fun deleteBook(book: Book) {
+        extractingBookIds.remove(book.id)
         scope.launch {
             runCatching {
                 bookRepository.deleteBook(book.id)
@@ -159,6 +173,7 @@ class LibraryViewModel(
     }
 
     fun deleteBooks(books: List<Book>) {
+        books.forEach { extractingBookIds.remove(it.id) }
         scope.launch {
             for (book in books) {
                 runCatching {

@@ -39,9 +39,11 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,6 +81,7 @@ import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
@@ -854,10 +857,15 @@ fun ReaderSettingsSheet(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
+    pageLayout: PageLayout = PageLayout.SINGLE,
+    isApplyToThisBookOnly: Boolean = false,
     customFonts: List<CustomFont> = emptyList(),
     onThemeChange: (ReaderTheme) -> Unit,
     onTypographyChange: (ReaderTypography) -> Unit,
     onScrollModeChange: (Boolean) -> Unit,
+    onPageLayoutChange: (PageLayout) -> Unit = {},
+    onScopeChange: (Boolean) -> Unit = {},
+    onResetToDefaults: () -> Unit = {},
     onImportCustomFont: (CustomFont) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
     onDismiss: () -> Unit
@@ -937,6 +945,31 @@ fun ReaderSettingsSheet(
                     thickness = 0.5.dp
                 )
 
+                // Scope Selector: Apply to This Book vs All Books
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Apply Settings To",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = isApplyToThisBookOnly,
+                            onClick = { onScopeChange(true) },
+                            label = { Text("This Book") }
+                        )
+                        FilterChip(
+                            selected = !isApplyToThisBookOnly,
+                            onClick = { onScopeChange(false) },
+                            label = { Text("All Books") }
+                        )
+                    }
+                }
+
                 // Theme Presets: System, Light, Sepia, Dark, AMOLED
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -998,6 +1031,43 @@ fun ReaderSettingsSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = !isScrollMode,
+                            onClick = { onScrollModeChange(false) },
+                            label = { Text("Paginated") }
+                        )
+                        FilterChip(
+                            selected = isScrollMode,
+                            onClick = { onScrollModeChange(true) },
+                            label = { Text("Continuous Scroll") }
+                        )
+                    }
+                }
+
+                // Page Layout: 1 Page vs 2 Pages
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Page Columns",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = pageLayout == PageLayout.SINGLE,
+                            onClick = { onPageLayoutChange(PageLayout.SINGLE) },
+                            label = { Text("1 Page") }
+                        )
+                        FilterChip(
+                            selected = pageLayout == PageLayout.DOUBLE,
+                            onClick = { onPageLayoutChange(PageLayout.DOUBLE) },
+                            label = { Text("2 Pages") }
+                        )
+                    }
+                }
                         FilterChip(
                             selected = !isScrollMode,
                             onClick = { onScrollModeChange(false) },
@@ -1220,6 +1290,24 @@ fun ReaderSettingsSheet(
                         steps = 7,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    thickness = 0.5.dp
+                )
+
+                OutlinedButton(
+                    onClick = onResetToDefaults,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reset to Defaults")
                 }
             }
         }

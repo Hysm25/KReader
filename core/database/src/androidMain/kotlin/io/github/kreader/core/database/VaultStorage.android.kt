@@ -207,12 +207,19 @@ actual class VaultStorage(private val context: Context) {
             }
         }
 
-        // 2. Cache in app cache directory for fast local loading in UI
+        // 2. Cache in app cache directory for fast local loading in UI (atomic write)
         runCatching {
             val cacheCoversDir = File(context.cacheDir, "covers").apply { mkdirs() }
+            val tempFile = File(cacheCoversDir, "$coverName.tmp")
+            tempFile.writeBytes(bytes)
             val localCover = File(cacheCoversDir, coverName)
-            localCover.writeBytes(bytes)
-            localCover.absolutePath
+            if (tempFile.renameTo(localCover)) {
+                localCover.absolutePath
+            } else {
+                tempFile.copyTo(localCover, overwrite = true)
+                tempFile.delete()
+                localCover.absolutePath
+            }
         }.getOrNull()
     }
 

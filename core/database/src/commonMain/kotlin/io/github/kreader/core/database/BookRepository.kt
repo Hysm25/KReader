@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,6 +50,10 @@ interface BookRepository {
     fun observeReaderPreferences(): Flow<ReaderPreferences>
     suspend fun getReaderPreferences(): ReaderPreferences
     suspend fun saveReaderPreferences(preferences: ReaderPreferences)
+    fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences>
+    suspend fun getEffectivePreferences(bookId: String): ReaderPreferences
+    suspend fun savePreferences(bookId: String, preferences: ReaderPreferences, applyToThisBookOnly: Boolean)
+    suspend fun resetPreferences(bookId: String)
     suspend fun addCustomFont(font: CustomFont)
     suspend fun deleteCustomFont(fontName: String)
 }
@@ -228,8 +233,8 @@ class JsonVaultBookRepository(
         // 2. Update workspace.json
         val currentWorkspace = _workspace.value
         val updatedBooks = currentWorkspace.books.toMutableMap()
-        updatedBooks[bookId] = BookProgressRecord(
-            relativePath = bookId,
+        val existingRecord = updatedBooks[bookId]
+        updatedBooks[bookId] = (existingRecord ?: BookProgressRecord(relativePath = bookId)).copy(
             totalProgression = progression,
             lastReadTimestamp = timestamp,
             lastLocator = locator
@@ -332,6 +337,54 @@ class JsonVaultBookRepository(
     override suspend fun saveReaderPreferences(preferences: ReaderPreferences): Unit = withContext(ioDispatcher) {
         _preferences.value = preferences
         vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(preferences))
+    }
+
+    override fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences> =
+        combine(_preferences, _workspace) { global, ws ->
+            ws.books[bookId]?.preferencesOverride ?: global
+        }
+
+    override suspend fun getEffectivePreferences(bookId: String): ReaderPreferences = withContext(ioDispatcher) {
+        _workspace.value.books[bookId]?.preferencesOverride ?: _preferences.value
+    }
+
+    override suspend fun savePreferences(bookId: String, preferences: ReaderPreferences, applyToThisBookOnly: Boolean): Unit = withContext(ioDispatcher) {
+        if (applyToThisBookOnly) {
+            val currentWorkspace = _workspace.value
+            val updatedBooks = currentWorkspace.books.toMutableMap()
+            val existingRecord = updatedBooks[bookId] ?: BookProgressRecord(relativePath = bookId)
+            updatedBooks[bookId] = existingRecord.copy(preferencesOverride = preferences)
+            val newWorkspace = currentWorkspace.copy(books = updatedBooks)
+            _workspace.value = newWorkspace
+            vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
+        } else {
+            _preferences.value = preferences
+            vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(preferences))
+            val currentWorkspace = _workspace.value
+            if (currentWorkspace.books[bookId]?.preferencesOverride != null) {
+                val updatedBooks = currentWorkspace.books.toMutableMap()
+                val existingRecord = updatedBooks[bookId]!!
+                updatedBooks[bookId] = existingRecord.copy(preferencesOverride = null)
+                val newWorkspace = currentWorkspace.copy(books = updatedBooks)
+                _workspace.value = newWorkspace
+                vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
+            }
+        }
+    }
+
+    override suspend fun resetPreferences(bookId: String): Unit = withContext(ioDispatcher) {
+        val defaultPrefs = ReaderPreferences()
+        val currentWorkspace = _workspace.value
+        val updatedBooks = currentWorkspace.books.toMutableMap()
+        val existingRecord = updatedBooks[bookId]
+        if (existingRecord?.preferencesOverride != null) {
+            updatedBooks[bookId] = existingRecord.copy(preferencesOverride = null)
+            val newWorkspace = currentWorkspace.copy(books = updatedBooks)
+            _workspace.value = newWorkspace
+            vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
+        }
+        _preferences.value = defaultPrefs
+        vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(defaultPrefs))
     }
 
     override suspend fun addCustomFont(font: CustomFont): Unit = withContext(ioDispatcher) {

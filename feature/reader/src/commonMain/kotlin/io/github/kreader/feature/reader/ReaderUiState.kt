@@ -6,6 +6,7 @@ import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import kotlin.math.abs
@@ -28,6 +29,8 @@ data class ReaderUiState(
     val searchResults: List<Locator> = emptyList(),
     val isSearching: Boolean = false,
     val isScrollMode: Boolean = false,
+    val pageLayout: PageLayout = PageLayout.SINGLE,
+    val isApplyToThisBookOnly: Boolean = false,
     val theme: ReaderTheme = ReaderTheme(),
     val typography: ReaderTypography = ReaderTypography(lineHeightMultiplier = 1.6f),
     val currentLocator: Locator? = null,

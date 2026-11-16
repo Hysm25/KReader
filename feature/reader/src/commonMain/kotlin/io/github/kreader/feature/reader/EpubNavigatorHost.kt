@@ -7,6 +7,7 @@ import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 
@@ -18,6 +19,7 @@ expect fun EpubNavigatorHost(
     typography: ReaderTypography,
     isScrollMode: Boolean,
     controller: EpubNavigatorController,
+    pageLayout: PageLayout = PageLayout.SINGLE,
     customFonts: List<CustomFont> = emptyList(),
     highlights: List<Highlight> = emptyList(),
     onHighlightClicked: (String) -> Unit = {},

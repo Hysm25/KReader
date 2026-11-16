@@ -25,6 +25,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        configureHighRefreshRateAndHardwareAcceleration()
+    }
+
     private fun configureHighRefreshRateAndHardwareAcceleration() {
         // 1. Enable Hardware Acceleration for the Window & WebViews
         window.setFlags(
@@ -49,10 +54,27 @@ class MainActivity : FragmentActivity() {
                     .maxByOrNull { it.refreshRate }
                     ?: supportedModes.maxByOrNull { it.refreshRate }
 
+                val params = window.attributes
                 if (bestMode != null && bestMode.modeId != 0) {
-                    val params = window.attributes
                     params.preferredDisplayModeId = bestMode.modeId
-                    window.attributes = params
+                    params.preferredRefreshRate = bestMode.refreshRate
+                } else {
+                    params.preferredRefreshRate = 120f
+                }
+                window.attributes = params
+
+                // Android 12+ (API 31+): Lock frame rate on RootSurfaceControl
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val targetRate = bestMode?.refreshRate ?: 120f
+                    window.decorView.post {
+                        runCatching {
+                            window.decorView.rootSurfaceControl?.setFrameRate(
+                                targetRate,
+                                android.view.Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
+                                android.view.Surface.CHANGE_FRAME_RATE_ALWAYS
+                            )
+                        }
+                    }
                 }
             }
         }

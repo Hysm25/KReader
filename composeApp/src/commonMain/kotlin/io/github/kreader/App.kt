@@ -18,6 +18,7 @@ import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.ExternalBookOpener
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderPreferences
 import io.github.kreader.core.model.isRtlText
 import io.github.kreader.feature.library.LibraryScreen
@@ -74,6 +75,7 @@ fun App() {
                     onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) }
                 )
             } else {
+                val effectivePreferences by bookRepository.observeEffectivePreferences(bookToRead.id).collectAsState(persistedPreferences)
                 val bookmarks by bookRepository.observeBookmarks(bookToRead.id).collectAsState(emptyList())
                 val highlights by bookRepository.observeHighlights(bookToRead.id).collectAsState(emptyList())
 
@@ -86,11 +88,21 @@ fun App() {
                             book = bookToRead,
                             currentLocator = bookToRead.lastLocator,
                             totalProgression = bookToRead.totalProgression,
-                            theme = persistedPreferences.theme,
-                            typography = persistedPreferences.typography,
-                            isScrollMode = persistedPreferences.isScrollMode,
+                            theme = effectivePreferences.theme,
+                            typography = effectivePreferences.typography,
+                            isScrollMode = effectivePreferences.isScrollMode,
+                            pageLayout = effectivePreferences.pageLayout,
                             isRtl = initialIsRtl
                         )
+                    )
+                }
+
+                LaunchedEffect(effectivePreferences) {
+                    readerState = readerState.copy(
+                        theme = effectivePreferences.theme,
+                        typography = effectivePreferences.typography,
+                        isScrollMode = effectivePreferences.isScrollMode,
+                        pageLayout = effectivePreferences.pageLayout
                     )
                 }
 
@@ -234,19 +246,37 @@ fun App() {
                     onThemeChange = { newTheme ->
                         readerState = readerState.copy(theme = newTheme)
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(theme = newTheme))
+                            val updated = effectivePreferences.copy(theme = newTheme)
+                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
                         }
                     },
                     onTypographyChange = { newTypography ->
                         readerState = readerState.copy(typography = newTypography)
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = newTypography))
+                            val updated = effectivePreferences.copy(typography = newTypography)
+                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
                         }
                     },
                     onScrollModeChange = { isScroll ->
                         readerState = readerState.copy(isScrollMode = isScroll)
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(isScrollMode = isScroll))
+                            val updated = effectivePreferences.copy(isScrollMode = isScroll)
+                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                        }
+                    },
+                    onPageLayoutChange = { newLayout ->
+                        readerState = readerState.copy(pageLayout = newLayout)
+                        scope.launch {
+                            val updated = effectivePreferences.copy(pageLayout = newLayout)
+                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                        }
+                    },
+                    onScopeChange = { isThisBookOnly ->
+                        readerState = readerState.copy(isApplyToThisBookOnly = isThisBookOnly)
+                    },
+                    onResetToDefaults = {
+                        scope.launch {
+                            bookRepository.resetPreferences(bookToRead.id)
                         }
                     },
                     onProgressChanged = { progression, locator ->
@@ -262,13 +292,14 @@ fun App() {
                     onTableOfContentsLoaded = { toc ->
                         readerState = readerState.copy(tocItems = toc)
                     },
-                    customFonts = persistedPreferences.customFonts,
+                    customFonts = effectivePreferences.customFonts,
                     onImportCustomFont = { font ->
                         scope.launch {
                             bookRepository.addCustomFont(font)
                             val updatedTypography = readerState.typography.copy(fontFamily = font.name)
                             readerState = readerState.copy(typography = updatedTypography)
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = updatedTypography))
+                            val updated = effectivePreferences.copy(typography = updatedTypography)
+                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
                         }
                     },
                     onDeleteCustomFont = { fontName ->
@@ -277,7 +308,8 @@ fun App() {
                             if (readerState.typography.fontFamily.equals(fontName, ignoreCase = true)) {
                                 val updatedTypography = readerState.typography.copy(fontFamily = "Default")
                                 readerState = readerState.copy(typography = updatedTypography)
-                                bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = updatedTypography))
+                                val updated = effectivePreferences.copy(typography = updatedTypography)
+                                bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
                             }
                         }
                     },

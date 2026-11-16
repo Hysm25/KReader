@@ -4,6 +4,7 @@ import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.ReaderPreferences
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -11,7 +12,8 @@ data class BookProgressRecord(
     val relativePath: String,
     val totalProgression: Float = 0f,
     val lastReadTimestamp: Long? = null,
-    val lastLocator: Locator? = null
+    val lastLocator: Locator? = null,
+    val preferencesOverride: ReaderPreferences? = null
 )
 
 @Serializable
