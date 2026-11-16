@@ -1,5 +1,6 @@
 package io.github.kreader.core.database
 
+import io.github.kreader.core.model.CustomFont
 import kotlinx.coroutines.flow.StateFlow
 
 expect class VaultStorage {
@@ -16,5 +17,7 @@ expect class VaultStorage {
     suspend fun getCoverPath(coverName: String): String?
     suspend fun deleteCover(coverName: String): Boolean
     suspend fun saveFont(fontFileName: String, bytes: ByteArray): String?
+    suspend fun persistFont(font: CustomFont): CustomFont
+    suspend fun listFonts(): List<CustomFont>
     suspend fun deleteFont(fontFileName: String): Boolean
 }

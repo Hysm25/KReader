@@ -1,6 +1,7 @@
 package io.github.kreader.core.database
 
 import io.github.kreader.core.model.BookSource
+import io.github.kreader.core.model.CustomFont
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -134,8 +135,43 @@ actual class VaultStorage {
         fontFile.absolutePath
     }
 
+    actual suspend fun persistFont(font: CustomFont): CustomFont = withContext(Dispatchers.IO) {
+        val kreader = getKReaderDir() ?: return@withContext font
+        val fontsDir = File(kreader, "fonts").apply { mkdirs() }
+        val srcFile = File(font.path)
+        if (srcFile.exists()) {
+            val destFile = File(fontsDir, srcFile.name)
+            srcFile.copyTo(destFile, overwrite = true)
+            font.copy(path = destFile.absolutePath)
+        } else {
+            font
+        }
+    }
+
+    actual suspend fun listFonts(): List<CustomFont> = withContext(Dispatchers.IO) {
+        val kreader = getKReaderDir() ?: return@withContext emptyList()
+        val fontsDir = File(kreader, "fonts")
+        if (!fontsDir.exists() || !fontsDir.isDirectory) return@withContext emptyList()
+        fontsDir.listFiles()?.filter {
+            it.isFile && (it.name.endsWith(".ttf", ignoreCase = true) || it.name.endsWith(".otf", ignoreCase = true))
+        }?.map {
+            CustomFont(name = it.nameWithoutExtension, path = it.absolutePath)
+        } ?: emptyList()
+    }
+
     actual suspend fun deleteFont(fontFileName: String): Boolean = withContext(Dispatchers.IO) {
         val kreader = getKReaderDir() ?: return@withContext false
-        File(kreader, "fonts/$fontFileName").delete()
+        val fontsDir = File(kreader, "fonts")
+        var deleted = false
+        if (fontsDir.exists()) {
+            fontsDir.listFiles()?.forEach { file ->
+                if (file.name.equals(fontFileName, ignoreCase = true) ||
+                    file.nameWithoutExtension.equals(fontFileName, ignoreCase = true)
+                ) {
+                    if (file.delete()) deleted = true
+                }
+            }
+        }
+        deleted
     }
 }

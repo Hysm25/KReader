@@ -39,7 +39,6 @@ import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
-import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.isRtlLanguage
@@ -77,7 +76,6 @@ actual fun EpubNavigatorHost(
     typography: ReaderTypography,
     isScrollMode: Boolean,
     controller: EpubNavigatorController,
-    pageLayout: PageLayout,
     customFonts: List<CustomFont>,
     highlights: List<Highlight>,
     onHighlightClicked: (String) -> Unit,
@@ -150,14 +148,13 @@ actual fun EpubNavigatorHost(
     // 2. Build preferences (automatic reading direction + custom font support + system dark mode)
     val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val effectiveRtl = detectedRtl == true
-    val preferences = remember(theme, typography, isScrollMode, pageLayout, book.id, effectiveRtl, isSystemDark) {
+    val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl, isSystemDark) {
         buildReadiumPreferences(
             theme = theme,
             typography = typography,
             isScrollMode = isScrollMode,
             isRtl = effectiveRtl,
-            isSystemInDarkTheme = isSystemDark,
-            pageLayout = pageLayout
+            isSystemInDarkTheme = isSystemDark
         )
     }
 
@@ -180,13 +177,14 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // One-shot realignment once navigator is ready to resolve initial padding overlap glitch
+    // One-shot realignment once navigator is ready to resolve initial padding overlap glitch & enforce full width
     LaunchedEffect(isNavigatorReady) {
         if (isNavigatorReady) {
             val frag = currentFragment ?: return@LaunchedEffect
             kotlinx.coroutines.delay(80)
             runCatching {
                 if (frag.isAdded && frag.context != null) {
+                    injectBaseStyles(frag)
                     val loc = frag.currentLocator.value
                     frag.go(loc, animated = false)
                     frag.view?.requestLayout()
@@ -195,8 +193,8 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // Re-snap to current locator when horizontal or vertical margin or page layout changes
-    LaunchedEffect(typography.paddingHorizontal, typography.paddingVertical, pageLayout) {
+    // Re-snap to current locator when horizontal or vertical margin changes
+    LaunchedEffect(typography.paddingHorizontal, typography.paddingVertical) {
         val frag = currentFragment ?: return@LaunchedEffect
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
             kotlinx.coroutines.delay(60)
@@ -359,10 +357,11 @@ actual fun EpubNavigatorHost(
                 val lifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
                     override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
-                            val fontName = typography.fontFamily
-                            val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                            if (selectedCustomFont != null) {
-                                scope.launch {
+                            scope.launch {
+                                injectBaseStyles(f)
+                                val fontName = typography.fontFamily
+                                val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                                if (selectedCustomFont != null) {
                                     injectFontFace(f, selectedCustomFont)
                                 }
                             }
@@ -395,10 +394,11 @@ actual fun EpubNavigatorHost(
                                     }
                                 )
                             }
-                            val fontName = typography.fontFamily
-                            val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                            if (selectedCustomFont != null) {
-                                scope.launch {
+                            scope.launch {
+                                injectBaseStyles(f)
+                                val fontName = typography.fontFamily
+                                val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                                if (selectedCustomFont != null) {
                                     injectFontFace(f, selectedCustomFont)
                                 }
                             }
@@ -568,6 +568,7 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
+                            injectBaseStyles(frag)
                             val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
                             if (selectedFont != null) {
                                 injectFontFace(frag, selectedFont)
@@ -589,6 +590,28 @@ actual fun EpubNavigatorHost(
 }
 
 private val fontBase64Cache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+private suspend fun injectBaseStyles(frag: EpubNavigatorFragment) {
+    runCatching {
+        val js = """
+            (function() {
+                var el = document.getElementById('kreader-base-styles');
+                if (!el) {
+                    el = document.createElement('style');
+                    el.id = 'kreader-base-styles';
+                    (document.head || document.documentElement).appendChild(el);
+                }
+                el.textContent = ':root { --USER__maxLineLength: 100% !important; --RS__maxLineLength: 100% !important; } body { box-sizing: border-box !important; }';
+            })();
+        """.trimIndent()
+        frag.evaluateJavascript(js)
+        frag.view?.let { root ->
+            findWebViews(root).forEach { wv ->
+                wv.evaluateJavascript(js, null)
+            }
+        }
+    }
+}
 
 private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont) {
     runCatching {

@@ -16,6 +16,12 @@
             android:hardwareAccelerated="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density"
             android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="android.max_aspect"
+                android:value="2.5" />
+            <meta-data
+                android:name="notch.config"
+                android:value="portrait|landscape" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

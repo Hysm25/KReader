@@ -17,7 +17,6 @@ import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
-import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.isRtlText
@@ -30,7 +29,6 @@ actual fun EpubNavigatorHost(
     typography: ReaderTypography,
     isScrollMode: Boolean,
     controller: EpubNavigatorController,
-    pageLayout: PageLayout,
     customFonts: List<CustomFont>,
     highlights: List<Highlight>,
     onHighlightClicked: (String) -> Unit,

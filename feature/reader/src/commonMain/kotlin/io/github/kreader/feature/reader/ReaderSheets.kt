@@ -70,10 +70,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.engine.TocItem
@@ -81,7 +84,6 @@ import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
-import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
@@ -495,7 +497,7 @@ fun ReaderSearchSheet(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxHeight(0.8f)
+                .fillMaxHeight(0.82f)
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .clickable(
@@ -526,7 +528,7 @@ fun ReaderSearchSheet(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // M3 Pill Search Bar
+                // M3 Pill Search Bar with embedded trailing clear button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -601,7 +603,7 @@ fun ReaderSearchSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 if (isSearching) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -642,44 +644,112 @@ fun ReaderSearchSheet(
                         }
                     }
                 } else {
-                    if (results.isNotEmpty()) {
-                        Text(
-                            text = "${results.size} matches found",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                    // Match counter pill
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "${results.size} matches",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            )
+                        }
                     }
+
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(results) { result ->
-                            Card(
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { onResultClick(result) },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                tonalElevation = 2.dp
                             ) {
                                 Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val chapterTitle = result.title
+                                            ?.takeIf { it.isNotBlank() }
+                                            ?: result.href.substringBefore('#').substringAfterLast('/')
+                                                .removeSuffix(".xhtml")
+                                                .removeSuffix(".html")
+                                                .replace('_', ' ')
+
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.secondaryContainer,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        ) {
+                                            Text(
+                                                text = chapterTitle,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        val prog = ((result.locations.totalProgression ?: result.locations.progression ?: 0f) * 100).toInt()
+                                        Text(
+                                            text = "$prog%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
                                     val before = result.text?.before.orEmpty()
-                                    val highlight = result.text?.highlight.orEmpty()
+                                    val highlight = result.text?.highlight.orEmpty().ifEmpty { query }
                                     val after = result.text?.after.orEmpty()
 
+                                    val snippetText = buildAnnotatedString {
+                                        if (before.isNotEmpty()) {
+                                            append("…")
+                                            append(before)
+                                        }
+                                        withStyle(
+                                            SpanStyle(
+                                                fontWeight = FontWeight.Bold,
+                                                background = MaterialTheme.colorScheme.primaryContainer,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        ) {
+                                            append(highlight)
+                                        }
+                                        if (after.isNotEmpty()) {
+                                            append(after)
+                                            append("…")
+                                        }
+                                    }
+
                                     Text(
-                                        text = if (highlight.isNotEmpty()) "...$before[$highlight]$after..." else (result.title ?: result.href),
+                                        text = snippetText,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 3,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 4,
                                         overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    val prog = ((result.locations.totalProgression ?: result.locations.progression ?: 0f) * 100).toInt()
-                                    Text(
-                                        text = "Progression: $prog%",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
@@ -857,13 +927,11 @@ fun ReaderSettingsSheet(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
-    pageLayout: PageLayout = PageLayout.SINGLE,
     isApplyToThisBookOnly: Boolean = false,
     customFonts: List<CustomFont> = emptyList(),
     onThemeChange: (ReaderTheme) -> Unit,
     onTypographyChange: (ReaderTypography) -> Unit,
     onScrollModeChange: (Boolean) -> Unit,
-    onPageLayoutChange: (PageLayout) -> Unit = {},
     onScopeChange: (Boolean) -> Unit = {},
     onResetToDefaults: () -> Unit = {},
     onImportCustomFont: (CustomFont) -> Unit = {},
@@ -1040,31 +1108,6 @@ fun ReaderSettingsSheet(
                             selected = isScrollMode,
                             onClick = { onScrollModeChange(true) },
                             label = { Text("Continuous Scroll") }
-                        )
-                    }
-                }
-
-                // Page Layout: 1 Page vs 2 Pages
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Page Columns",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = pageLayout == PageLayout.SINGLE,
-                            onClick = { onPageLayoutChange(PageLayout.SINGLE) },
-                            label = { Text("1 Page") }
-                        )
-                        FilterChip(
-                            selected = pageLayout == PageLayout.DOUBLE,
-                            onClick = { onPageLayoutChange(PageLayout.DOUBLE) },
-                            label = { Text("2 Pages") }
                         )
                     }
                 }

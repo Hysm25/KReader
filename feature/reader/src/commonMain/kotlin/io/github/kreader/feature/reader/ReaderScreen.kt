@@ -31,7 +31,6 @@ import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
-import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
@@ -72,7 +71,6 @@ fun ReaderScreen(
     onThemeChange: (ReaderTheme) -> Unit = {},
     onTypographyChange: (ReaderTypography) -> Unit = {},
     onScrollModeChange: (Boolean) -> Unit = {},
-    onPageLayoutChange: (PageLayout) -> Unit = {},
     onScopeChange: (Boolean) -> Unit = {},
     onResetToDefaults: () -> Unit = {},
     onProgressChanged: (progression: Float, locator: Locator) -> Unit = { _, _ -> },
@@ -172,7 +170,6 @@ fun ReaderScreen(
                     typography = state.typography,
                     isScrollMode = state.isScrollMode,
                     controller = epubController,
-                    pageLayout = state.pageLayout,
                     customFonts = customFonts,
                     highlights = state.highlights,
                     onHighlightClicked = { highlightId ->
@@ -349,13 +346,11 @@ fun ReaderScreen(
                 theme = state.theme,
                 typography = state.typography,
                 isScrollMode = state.isScrollMode,
-                pageLayout = state.pageLayout,
                 isApplyToThisBookOnly = state.isApplyToThisBookOnly,
                 customFonts = customFonts,
                 onThemeChange = onThemeChange,
                 onTypographyChange = onTypographyChange,
                 onScrollModeChange = onScrollModeChange,
-                onPageLayoutChange = onPageLayoutChange,
                 onScopeChange = onScopeChange,
                 onResetToDefaults = onResetToDefaults,
                 onImportCustomFont = onImportCustomFont,

@@ -1,6 +1,5 @@
 package io.github.kreader.feature.reader
 
-import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
@@ -18,8 +17,7 @@ fun buildReadiumPreferences(
     typography: ReaderTypography,
     isScrollMode: Boolean,
     isRtl: Boolean,
-    isSystemInDarkTheme: Boolean = false,
-    pageLayout: PageLayout = PageLayout.SINGLE
+    isSystemInDarkTheme: Boolean = false
 ): EpubPreferences {
     val backgroundColor = when (theme.mode) {
         ThemeMode.LIGHT -> Color(0xFFFFFFFF.toInt())
@@ -63,25 +61,15 @@ fun buildReadiumPreferences(
         FontFamily(typography.fontFamily)
     }
 
-    val columnCount = when (pageLayout) {
-        PageLayout.SINGLE -> ColumnCount.ONE
-        PageLayout.DOUBLE -> ColumnCount.TWO
-    }
-
-    val spread = when (pageLayout) {
-        PageLayout.SINGLE -> Spread.NEVER
-        PageLayout.DOUBLE -> Spread.ALWAYS
-    }
-
     return EpubPreferences(
         backgroundColor = backgroundColor,
         textColor = textColor,
         fontFamily = fontFamily,
         fontSize = (typography.fontSizeSp / 16.0).toDouble().coerceIn(0.6, 2.5),
         lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceAtLeast(1.5),
-        columnCount = columnCount,
-        spread = spread,
-        pageMargins = 0.0,
+        columnCount = ColumnCount.ONE,
+        spread = Spread.NEVER,
+        pageMargins = 0.5,
         scroll = isScrollMode,
         readingProgression = progression,
         ligatures = true,

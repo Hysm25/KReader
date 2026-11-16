@@ -18,7 +18,6 @@ import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.ExternalBookOpener
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
-import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderPreferences
 import io.github.kreader.core.model.isRtlText
 import io.github.kreader.feature.library.LibraryScreen
@@ -273,13 +272,6 @@ fun App() {
                         readerState = readerState.copy(isScrollMode = isScroll)
                         scope.launch {
                             val updated = effectivePreferences.copy(isScrollMode = isScroll)
-                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
-                        }
-                    },
-                    onPageLayoutChange = { newLayout ->
-                        readerState = readerState.copy(pageLayout = newLayout)
-                        scope.launch {
-                            val updated = effectivePreferences.copy(pageLayout = newLayout)
                             bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
                         }
                     },

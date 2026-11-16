@@ -24,8 +24,11 @@ class MainActivity : FragmentActivity() {
         window.decorView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
                 applyHighRefreshRateSurfaceTransaction()
+                startHighRefreshRateChoreographerPump()
             }
-            override fun onViewDetachedFromWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                stopHighRefreshRateChoreographerPump()
+            }
         })
         enableEdgeToEdge()
         handleIncomingIntent(intent)
@@ -38,6 +41,41 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         configureHighRefreshRateAndHardwareAcceleration()
         applyHighRefreshRateSurfaceTransaction()
+        startHighRefreshRateChoreographerPump()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopHighRefreshRateChoreographerPump()
+    }
+
+    private var isChoreographerPumpRunning = false
+
+    private fun startHighRefreshRateChoreographerPump() {
+        if (isChoreographerPumpRunning) return
+        isChoreographerPumpRunning = true
+        val choreographer = android.view.Choreographer.getInstance()
+        var frameCounter = 0
+        val callback = object : android.view.Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (!isChoreographerPumpRunning) return
+                frameCounter++
+                if (frameCounter % 60 == 0) {
+                    applyHighRefreshRateSurfaceTransaction()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        runCatching {
+                            window.decorView.setFrameContentVelocity(120f)
+                        }
+                    }
+                }
+                choreographer.postFrameCallback(this)
+            }
+        }
+        choreographer.postFrameCallback(callback)
+    }
+
+    private fun stopHighRefreshRateChoreographerPump() {
+        isChoreographerPumpRunning = false
     }
 
     private fun configureHighRefreshRateAndHardwareAcceleration() {

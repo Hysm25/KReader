@@ -113,12 +113,26 @@ class JsonVaultBookRepository(
 
         // 1. Load appearance.json
         val appearanceJson = vaultStorage.readConfig(APPEARANCE_FILE)
-        val loadedPrefs = if (!appearanceJson.isNullOrBlank()) {
+        var loadedPrefs = if (!appearanceJson.isNullOrBlank()) {
             runCatching { json.decodeFromString<ReaderPreferences>(appearanceJson) }.getOrDefault(ReaderPreferences())
         } else {
             val def = ReaderPreferences()
             vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(def))
             def
+        }
+
+        // 1b. Restore custom fonts from .kreader/fonts/ in vault
+        val scannedFonts = vaultStorage.listFonts()
+        if (scannedFonts.isNotEmpty()) {
+            val existingFontsMap = loadedPrefs.customFonts.associateBy { it.name.lowercase() }
+            val mergedFonts = scannedFonts.map { sf ->
+                existingFontsMap[sf.name.lowercase()] ?: sf
+            }
+            val remainingPrefsFonts = loadedPrefs.customFonts.filterNot { ef ->
+                scannedFonts.any { it.name.equals(ef.name, ignoreCase = true) }
+            }
+            loadedPrefs = loadedPrefs.copy(customFonts = mergedFonts + remainingPrefsFonts)
+            vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(loadedPrefs))
         }
         _preferences.value = loadedPrefs
 
@@ -388,8 +402,9 @@ class JsonVaultBookRepository(
     }
 
     override suspend fun addCustomFont(font: CustomFont): Unit = withContext(ioDispatcher) {
+        val persisted = vaultStorage.persistFont(font)
         val current = getReaderPreferences()
-        val updatedList = current.customFonts.filterNot { it.name.equals(font.name, ignoreCase = true) } + font
+        val updatedList = current.customFonts.filterNot { it.name.equals(persisted.name, ignoreCase = true) } + persisted
         val updated = current.copy(customFonts = updatedList)
         saveReaderPreferences(updated)
     }

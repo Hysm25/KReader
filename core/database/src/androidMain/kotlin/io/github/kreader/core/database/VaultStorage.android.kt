@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import io.github.kreader.core.model.BookSource
+import io.github.kreader.core.model.CustomFont
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -267,7 +268,8 @@ actual class VaultStorage(private val context: Context) {
         runCatching {
             val fontsDir = getOrCreateSubDir("fonts")
             if (fontsDir != null) {
-                val fontDoc = fontsDir.findFile(fontFileName) ?: fontsDir.createFile("font/ttf", fontFileName)
+                val mimeType = if (fontFileName.endsWith(".otf", ignoreCase = true)) "font/otf" else "font/ttf"
+                val fontDoc = fontsDir.findFile(fontFileName) ?: fontsDir.createFile(mimeType, fontFileName)
                 if (fontDoc != null) {
                     context.contentResolver.openOutputStream(fontDoc.uri, "wt")?.use { out ->
                         out.write(bytes)
@@ -285,13 +287,68 @@ actual class VaultStorage(private val context: Context) {
         }.getOrNull()
     }
 
+    actual suspend fun persistFont(font: CustomFont): CustomFont = withContext(Dispatchers.IO) {
+        runCatching {
+            val srcFile = File(font.path)
+            if (srcFile.exists() && srcFile.length() > 0L) {
+                val bytes = srcFile.readBytes()
+                val fileName = srcFile.name
+                val savedPath = saveFont(fileName, bytes)
+                if (savedPath != null) font.copy(path = savedPath) else font
+            } else {
+                font
+            }
+        }.getOrDefault(font)
+    }
+
+    actual suspend fun listFonts(): List<CustomFont> = withContext(Dispatchers.IO) {
+        runCatching {
+            val fontsDir = getOrCreateSubDir("fonts") ?: return@withContext emptyList()
+            val localFontsDir = File(context.filesDir, "fonts").apply { mkdirs() }
+            val fontDocs = fontsDir.listFiles()
+            val result = mutableListOf<CustomFont>()
+            for (doc in fontDocs) {
+                val name = doc.name ?: continue
+                if (!name.endsWith(".ttf", ignoreCase = true) && !name.endsWith(".otf", ignoreCase = true)) continue
+                val localFile = File(localFontsDir, name)
+                if (!localFile.exists() || localFile.length() == 0L || localFile.length() != doc.length()) {
+                    context.contentResolver.openInputStream(doc.uri)?.use { input ->
+                        localFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                if (localFile.exists() && localFile.length() > 0L) {
+                    val fontName = name.substringBeforeLast(".")
+                    result.add(CustomFont(name = fontName, path = localFile.absolutePath))
+                }
+            }
+            result
+        }.getOrDefault(emptyList())
+    }
+
     actual suspend fun deleteFont(fontFileName: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            val localFont = File(context.filesDir, "fonts/$fontFileName")
-            if (localFont.exists()) localFont.delete()
+            val localFontsDir = File(context.filesDir, "fonts")
+            localFontsDir.listFiles()?.forEach { file ->
+                if (file.name.equals(fontFileName, ignoreCase = true) ||
+                    file.nameWithoutExtension.equals(fontFileName, ignoreCase = true)
+                ) {
+                    file.delete()
+                }
+            }
 
             val fontsDir = getOrCreateSubDir("fonts")
-            fontsDir?.findFile(fontFileName)?.delete()
+            if (fontsDir != null) {
+                for (doc in fontsDir.listFiles()) {
+                    val name = doc.name ?: continue
+                    if (name.equals(fontFileName, ignoreCase = true) ||
+                        name.substringBeforeLast(".").equals(fontFileName, ignoreCase = true)
+                    ) {
+                        doc.delete()
+                    }
+                }
+            }
             true
         }.getOrDefault(false)
     }

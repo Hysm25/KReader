@@ -1,5 +1,6 @@
 package io.github.kreader.core.database
 
+import io.github.kreader.core.model.CustomFont
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,5 +21,7 @@ actual class VaultStorage {
     actual suspend fun getCoverPath(coverName: String): String? = null
     actual suspend fun deleteCover(coverName: String): Boolean = false
     actual suspend fun saveFont(fontFileName: String, bytes: ByteArray): String? = null
+    actual suspend fun persistFont(font: CustomFont): CustomFont = font
+    actual suspend fun listFonts(): List<CustomFont> = emptyList()
     actual suspend fun deleteFont(fontFileName: String): Boolean = false
 }
