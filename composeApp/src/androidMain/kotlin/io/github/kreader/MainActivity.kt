@@ -63,16 +63,23 @@ class MainActivity : FragmentActivity() {
                 }
                 window.attributes = params
 
-                // Android 12+ (API 31+): Lock frame rate on RootSurfaceControl
+                // Android 12+ (API 31+): Lock frame rate via reflection on rootSurfaceControl if supported
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     val targetRate = bestMode?.refreshRate ?: 120f
                     window.decorView.post {
-                        runCatching {
-                            window.decorView.rootSurfaceControl?.setFrameRate(
-                                targetRate,
-                                android.view.Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
-                                android.view.Surface.CHANGE_FRAME_RATE_ALWAYS
-                            )
+                        try {
+                            val rsc = window.decorView.rootSurfaceControl
+                            if (rsc != null) {
+                                val method = rsc.javaClass.getMethod(
+                                    "setFrameRate",
+                                    Float::class.javaPrimitiveType,
+                                    Int::class.javaPrimitiveType,
+                                    Int::class.javaPrimitiveType
+                                )
+                                method.invoke(rsc, targetRate, 0, 1)
+                            }
+                        } catch (_: Throwable) {
+                            // Ignore if OEM does not expose setFrameRate on rootSurfaceControl
                         }
                     }
                 }
