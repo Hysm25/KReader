@@ -9,6 +9,7 @@ import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.ReaderPreferences
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -32,6 +33,10 @@ interface BookRepository {
     fun observeHighlights(bookId: String): Flow<List<Highlight>>
     suspend fun saveHighlight(highlight: Highlight)
     suspend fun deleteHighlight(id: String)
+
+    fun observeReaderPreferences(): Flow<ReaderPreferences>
+    suspend fun getReaderPreferences(): ReaderPreferences
+    suspend fun saveReaderPreferences(preferences: ReaderPreferences)
 }
 
 class SqlDelightBookRepository(
@@ -159,6 +164,34 @@ class SqlDelightBookRepository(
 
     override suspend fun deleteHighlight(id: String): Unit = withContext(ioDispatcher) {
         queries.deleteHighlight(id)
+    }
+
+    override fun observeReaderPreferences(): Flow<ReaderPreferences> {
+        return queries.selectPreferences(PREFERENCES_KEY)
+            .asFlow()
+            .mapToOneOrNull(ioDispatcher)
+            .map { entity ->
+                entity?.let {
+                    runCatching { json.decodeFromString<ReaderPreferences>(it) }.getOrNull()
+                } ?: ReaderPreferences()
+            }
+    }
+
+    override suspend fun getReaderPreferences(): ReaderPreferences = withContext(ioDispatcher) {
+        queries.selectPreferences(PREFERENCES_KEY).executeAsOneOrNull()?.let {
+            runCatching { json.decodeFromString<ReaderPreferences>(it) }.getOrNull()
+        } ?: ReaderPreferences()
+    }
+
+    override suspend fun saveReaderPreferences(preferences: ReaderPreferences): Unit = withContext(ioDispatcher) {
+        queries.upsertPreferences(
+            id = PREFERENCES_KEY,
+            preferencesJson = json.encodeToString(preferences)
+        )
+    }
+
+    companion object {
+        private const val PREFERENCES_KEY = "global_reader_preferences"
     }
 
     private fun BookEntity.toDomain(json: Json): Book {

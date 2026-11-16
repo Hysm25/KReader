@@ -1,15 +1,23 @@
 package io.github.kreader.feature.library
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +51,8 @@ fun LibraryScreen(
     onImportBook: (BookSource) -> Unit,
     onDeleteBook: (Book) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
+    onFilterChanged: (BookFilter) -> Unit = {},
+    onSortOrderChanged: (BookSortOrder) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val filePickerLauncher = rememberFilePickerLauncher { source ->
@@ -109,74 +119,146 @@ fun LibraryScreen(
             }
         }
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when {
-                state.isLoading && state.books.isEmpty() -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                state.books.isEmpty() -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(24.dp)
-                    ) {
-                        Text(
-                            text = "📖",
-                            style = MaterialTheme.typography.displayMedium,
-                            modifier = Modifier.padding(bottom = 16.dp)
+            if (state.books.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = state.selectedFilter == BookFilter.ALL,
+                        onClick = { onFilterChanged(BookFilter.ALL) },
+                        label = { Text("All") }
+                    )
+                    FilterChip(
+                        selected = state.selectedFilter == BookFilter.EPUB,
+                        onClick = { onFilterChanged(BookFilter.EPUB) },
+                        label = { Text("EPUB") }
+                    )
+                    FilterChip(
+                        selected = state.selectedFilter == BookFilter.PDF,
+                        onClick = { onFilterChanged(BookFilter.PDF) },
+                        label = { Text("PDF") }
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    val sortLabel = when (state.selectedSortOrder) {
+                        BookSortOrder.RECENTLY_READ -> "⏳ Recent"
+                        BookSortOrder.RECENTLY_ADDED -> "✨ Added"
+                        BookSortOrder.TITLE -> "🔤 Title"
+                    }
+                    var sortMenuExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        FilterChip(
+                            selected = true,
+                            onClick = { sortMenuExpanded = true },
+                            label = { Text(sortLabel) },
+                            trailingIcon = { Text(" ▾") }
                         )
-                        Text(
-                            text = "Your library is empty",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Import EPUB and PDF e-books from your device to begin reading completely offline.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Button(onClick = filePickerLauncher) {
-                            Text("Import Book")
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Recently Read") },
+                                onClick = {
+                                    onSortOrderChanged(BookSortOrder.RECENTLY_READ)
+                                    sortMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Recently Added") },
+                                onClick = {
+                                    onSortOrderChanged(BookSortOrder.RECENTLY_ADDED)
+                                    sortMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Title") },
+                                onClick = {
+                                    onSortOrderChanged(BookSortOrder.TITLE)
+                                    sortMenuExpanded = false
+                                }
+                            )
                         }
                     }
                 }
-                state.displayBooks.isEmpty() -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(24.dp)
-                    ) {
-                        Text(
-                            text = "No books match '${state.searchQuery}'",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    state.isLoading && state.books.isEmpty() -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    state.books.isEmpty() -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(24.dp)
+                        ) {
+                            Text(
+                                text = "📖",
+                                style = MaterialTheme.typography.displayMedium,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
+                            Text(
+                                text = "Your library is empty",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Import EPUB and PDF e-books from your device to begin reading completely offline.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Button(onClick = filePickerLauncher) {
+                                Text("Import Book")
+                            }
+                        }
+                    }
+                    state.displayBooks.isEmpty() -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(24.dp)
+                        ) {
+                            Text(
+                                text = if (state.searchQuery.isNotBlank()) "No books match '${state.searchQuery}'" else "No books in this filter",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    else -> {
+                        BookGrid(
+                            books = state.displayBooks,
+                            onBookClick = onBookClick,
+                            onDeleteBook = onDeleteBook
                         )
                     }
                 }
-                else -> {
-                    BookGrid(
-                        books = state.displayBooks,
-                        onBookClick = onBookClick,
-                        onDeleteBook = onDeleteBook
+
+                if (state.isLoading && state.books.isNotEmpty()) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 8.dp)
                     )
                 }
-            }
-
-            if (state.isLoading && state.books.isNotEmpty()) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 8.dp)
-                )
             }
         }
     }

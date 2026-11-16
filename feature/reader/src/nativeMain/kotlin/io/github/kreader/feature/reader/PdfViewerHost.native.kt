@@ -17,6 +17,7 @@ actual fun PdfViewerHost(
     initialPage: Int,
     theme: ReaderTheme,
     isScrollMode: Boolean,
+    isRtl: Boolean,
     controller: PdfViewerController,
     onPageChanged: (pageIndex: Int, totalPages: Int, locator: Locator) -> Unit,
     onTap: () -> Unit,

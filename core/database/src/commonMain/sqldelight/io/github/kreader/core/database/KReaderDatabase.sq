@@ -82,3 +82,16 @@ VALUES (:id, :bookId, :locatorJson, :colorHex, :annotation, :createdTimestamp, :
 
 deleteHighlight:
 DELETE FROM HighlightEntity WHERE id = :id;
+
+-- Table & Queries for ReaderPreferencesEntity
+CREATE TABLE ReaderPreferencesEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    preferencesJson TEXT NOT NULL
+);
+
+selectPreferences:
+SELECT preferencesJson FROM ReaderPreferencesEntity WHERE id = :id;
+
+upsertPreferences:
+INSERT OR REPLACE INTO ReaderPreferencesEntity(id, preferencesJson)
+VALUES (:id, :preferencesJson);

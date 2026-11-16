@@ -14,12 +14,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import io.github.kreader.core.engine.ReaderEngineState
+import io.github.kreader.core.engine.ReaderKeyEventDispatcher
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Highlight
@@ -101,6 +103,31 @@ fun ReaderScreen(
         }
     }
 
+    ManageSystemBars(isControlsVisible = state.isControlsVisible)
+
+    DisposableEffect(state.book?.id, state.typography.isRtl) {
+        ReaderKeyEventDispatcher.onVolumeUp = {
+            if (state.book?.format == BookFormat.EPUB) {
+                if (state.typography.isRtl) epubController.goNext?.invoke() else epubController.goPrevious?.invoke()
+            } else if (state.book?.format == BookFormat.PDF) {
+                if (state.typography.isRtl) pdfController.goNext?.invoke() else pdfController.goPrevious?.invoke()
+            }
+            true
+        }
+        ReaderKeyEventDispatcher.onVolumeDown = {
+            if (state.book?.format == BookFormat.EPUB) {
+                if (state.typography.isRtl) epubController.goPrevious?.invoke() else epubController.goNext?.invoke()
+            } else if (state.book?.format == BookFormat.PDF) {
+                if (state.typography.isRtl) pdfController.goPrevious?.invoke() else pdfController.goNext?.invoke()
+            }
+            true
+        }
+        onDispose {
+            ReaderKeyEventDispatcher.onVolumeUp = null
+            ReaderKeyEventDispatcher.onVolumeDown = null
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
@@ -155,6 +182,7 @@ fun ReaderScreen(
                     initialPage = initialPage,
                     theme = state.theme,
                     isScrollMode = state.isScrollMode,
+                    isRtl = state.typography.isRtl,
                     controller = pdfController,
                     onPageChanged = { pageIdx, total, loc ->
                         onPdfPageChanged(pageIdx, total, loc)

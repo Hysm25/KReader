@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import io.github.kreader.core.database.BookRepository
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.feature.library.metadata.BookMetadataExtractor
 import io.github.kreader.feature.library.util.deleteLocalFile
@@ -37,7 +38,7 @@ class LibraryViewModel(
                 _uiState.update { current ->
                     current.copy(
                         books = allBooks,
-                        filteredBooks = filterBooks(allBooks, current.searchQuery),
+                        filteredBooks = filterAndSortBooks(allBooks, current.searchQuery, current.selectedFilter, current.selectedSortOrder),
                         isLoading = false,
                         errorMessage = null
                     )
@@ -50,7 +51,25 @@ class LibraryViewModel(
         _uiState.update { current ->
             current.copy(
                 searchQuery = query,
-                filteredBooks = filterBooks(current.books, query)
+                filteredBooks = filterAndSortBooks(current.books, query, current.selectedFilter, current.selectedSortOrder)
+            )
+        }
+    }
+
+    fun onFilterChanged(filter: BookFilter) {
+        _uiState.update { current ->
+            current.copy(
+                selectedFilter = filter,
+                filteredBooks = filterAndSortBooks(current.books, current.searchQuery, filter, current.selectedSortOrder)
+            )
+        }
+    }
+
+    fun onSortOrderChanged(sortOrder: BookSortOrder) {
+        _uiState.update { current ->
+            current.copy(
+                selectedSortOrder = sortOrder,
+                filteredBooks = filterAndSortBooks(current.books, current.searchQuery, current.selectedFilter, sortOrder)
             )
         }
     }
@@ -101,11 +120,31 @@ class LibraryViewModel(
         }
     }
 
-    private fun filterBooks(books: List<Book>, query: String): List<Book> {
-        if (query.isBlank()) return books
-        val lower = query.trim().lowercase()
-        return books.filter { book ->
-            book.title.lowercase().contains(lower) || (book.author?.lowercase()?.contains(lower) == true)
+    private fun filterAndSortBooks(
+        books: List<Book>,
+        query: String,
+        filter: BookFilter,
+        sortOrder: BookSortOrder
+    ): List<Book> {
+        val filtered = books.filter { book ->
+            val matchesFilter = when (filter) {
+                BookFilter.ALL -> true
+                BookFilter.EPUB -> book.format == BookFormat.EPUB
+                BookFilter.PDF -> book.format == BookFormat.PDF
+            }
+            val matchesQuery = if (query.isBlank()) {
+                true
+            } else {
+                val lower = query.trim().lowercase()
+                book.title.lowercase().contains(lower) || (book.author?.lowercase()?.contains(lower) == true)
+            }
+            matchesFilter && matchesQuery
+        }
+
+        return when (sortOrder) {
+            BookSortOrder.RECENTLY_READ -> filtered.sortedByDescending { it.lastReadTimestamp ?: 0L }
+            BookSortOrder.RECENTLY_ADDED -> filtered.sortedByDescending { it.addedTimestamp }
+            BookSortOrder.TITLE -> filtered.sortedBy { it.title.lowercase() }
         }
     }
 }

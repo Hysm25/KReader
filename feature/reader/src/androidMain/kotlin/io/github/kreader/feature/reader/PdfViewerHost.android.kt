@@ -55,6 +55,7 @@ actual fun PdfViewerHost(
     initialPage: Int,
     theme: ReaderTheme,
     isScrollMode: Boolean,
+    isRtl: Boolean,
     controller: PdfViewerController,
     onPageChanged: (pageIndex: Int, totalPages: Int, locator: Locator) -> Unit,
     onTap: () -> Unit,
@@ -223,6 +224,19 @@ actual fun PdfViewerHost(
                                 engine = engine,
                                 colorFilter = colorFilter,
                                 screenWidthPx = screenWidthPx,
+                                isRtl = isRtl,
+                                onNext = {
+                                    scope.launch {
+                                        val next = (listState.firstVisibleItemIndex + 1).coerceAtMost(totalPages - 1)
+                                        listState.animateScrollToItem(next)
+                                    }
+                                },
+                                onPrev = {
+                                    scope.launch {
+                                        val prev = (listState.firstVisibleItemIndex - 1).coerceAtLeast(0)
+                                        listState.animateScrollToItem(prev)
+                                    }
+                                },
                                 onTap = currentOnTap,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -285,6 +299,19 @@ actual fun PdfViewerHost(
                             engine = engine,
                             colorFilter = colorFilter,
                             screenWidthPx = screenWidthPx,
+                            isRtl = isRtl,
+                            onNext = {
+                                scope.launch {
+                                    val next = (pagerState.currentPage + 1).coerceAtMost(totalPages - 1)
+                                    pagerState.animateScrollToPage(next)
+                                }
+                            },
+                            onPrev = {
+                                scope.launch {
+                                    val prev = (pagerState.currentPage - 1).coerceAtLeast(0)
+                                    pagerState.animateScrollToPage(prev)
+                                }
+                            },
                             onTap = currentOnTap,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -301,6 +328,9 @@ private fun PdfPageItem(
     engine: PdfReaderEngine,
     colorFilter: ColorFilter?,
     screenWidthPx: Int,
+    isRtl: Boolean,
+    onNext: () -> Unit,
+    onPrev: () -> Unit,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -328,7 +358,7 @@ private fun PdfPageItem(
 
     Box(
         modifier = modifier
-            .pointerInput(pageIndex) {
+            .pointerInput(pageIndex, isRtl) {
                 detectTapGestures(
                     onDoubleTap = {
                         if (scale > 1f) {
@@ -338,7 +368,21 @@ private fun PdfPageItem(
                             scale = 2.5f
                         }
                     },
-                    onTap = { onTap() }
+                    onTap = { tapOffset ->
+                        val width = size.width
+                        if (width > 0 && scale <= 1.05f) {
+                            val fraction = tapOffset.x / width
+                            if (fraction < 0.25f) {
+                                if (isRtl) onNext() else onPrev()
+                            } else if (fraction > 0.75f) {
+                                if (isRtl) onPrev() else onNext()
+                            } else {
+                                onTap()
+                            }
+                        } else {
+                            onTap()
+                        }
+                    }
                 )
             }
             .graphicsLayer(

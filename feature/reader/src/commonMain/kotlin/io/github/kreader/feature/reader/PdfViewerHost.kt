@@ -12,6 +12,7 @@ expect fun PdfViewerHost(
     initialPage: Int,
     theme: ReaderTheme,
     isScrollMode: Boolean,
+    isRtl: Boolean = false,
     controller: PdfViewerController,
     onPageChanged: (pageIndex: Int, totalPages: Int, locator: Locator) -> Unit,
     onTap: () -> Unit,

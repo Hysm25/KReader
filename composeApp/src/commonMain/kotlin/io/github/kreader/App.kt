@@ -3,6 +3,7 @@ package io.github.kreader
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -12,8 +13,10 @@ import androidx.compose.runtime.setValue
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.ExternalBookOpener
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.ReaderPreferences
 import io.github.kreader.feature.library.LibraryScreen
 import io.github.kreader.feature.library.metadata.rememberBookMetadataExtractor
 import io.github.kreader.feature.library.rememberLibraryViewModel
@@ -34,9 +37,17 @@ fun App() {
             val metadataExtractor = rememberBookMetadataExtractor()
             val libraryViewModel = rememberLibraryViewModel(bookRepository, metadataExtractor)
             val libraryUiState by libraryViewModel.uiState.collectAsState()
+            val persistedPreferences by bookRepository.observeReaderPreferences().collectAsState(ReaderPreferences())
+            val incomingSource by ExternalBookOpener.incomingSource.collectAsState()
             val scope = rememberCoroutineScope()
 
             var selectedBook by remember { mutableStateOf<Book?>(null) }
+
+            LaunchedEffect(incomingSource) {
+                val src = incomingSource ?: return@LaunchedEffect
+                libraryViewModel.importBook(src)
+                ExternalBookOpener.clear()
+            }
 
             val bookToRead = selectedBook
             if (bookToRead == null) {
@@ -45,20 +56,25 @@ fun App() {
                     onBookClick = { book -> selectedBook = book },
                     onImportBook = { source -> libraryViewModel.importBook(source) },
                     onDeleteBook = { book -> libraryViewModel.deleteBook(book) },
-                    onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) }
+                    onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
+                    onFilterChanged = { filter -> libraryViewModel.onFilterChanged(filter) },
+                    onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) }
                 )
             } else {
                 val bookmarks by bookRepository.observeBookmarks(bookToRead.id).collectAsState(emptyList())
                 val highlights by bookRepository.observeHighlights(bookToRead.id).collectAsState(emptyList())
 
-                var readerState by remember(bookToRead.id) {
+                var readerState by remember(bookToRead.id, persistedPreferences) {
                     val initialPage = (bookToRead.lastLocator?.locations?.position?.minus(1) ?: 0).coerceAtLeast(0)
                     mutableStateOf(
                         ReaderUiState(
                             book = bookToRead,
                             currentLocator = bookToRead.lastLocator,
                             totalProgression = bookToRead.totalProgression,
-                            currentPageIndex = if (bookToRead.format == BookFormat.PDF) initialPage else null
+                            currentPageIndex = if (bookToRead.format == BookFormat.PDF) initialPage else null,
+                            theme = persistedPreferences.theme,
+                            typography = persistedPreferences.typography,
+                            isScrollMode = persistedPreferences.isScrollMode
                         )
                     )
                 }
@@ -232,12 +248,21 @@ fun App() {
                     },
                     onThemeChange = { newTheme ->
                         readerState = readerState.copy(theme = newTheme)
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(theme = newTheme))
+                        }
                     },
                     onTypographyChange = { newTypography ->
                         readerState = readerState.copy(typography = newTypography)
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = newTypography))
+                        }
                     },
                     onScrollModeChange = { isScroll ->
                         readerState = readerState.copy(isScrollMode = isScroll)
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(isScrollMode = isScroll))
+                        }
                     },
                     onProgressChanged = { progression, locator ->
                         readerState = readerState.copy(
