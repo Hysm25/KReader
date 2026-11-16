@@ -21,6 +21,14 @@ actual fun ManageSystemBars(isControlsVisible: Boolean, theme: ReaderTheme) {
         ThemeMode.LIGHT, ThemeMode.SEPIA -> false
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemDark
+        ThemeMode.CUSTOM -> {
+            val bg = theme.backgroundColorHex.removePrefix("#")
+            val r = if (bg.length >= 2) bg.substring(0, 2).toIntOrNull(16) ?: 255 else 255
+            val g = if (bg.length >= 4) bg.substring(2, 4).toIntOrNull(16) ?: 255 else 255
+            val b = if (bg.length >= 6) bg.substring(4, 6).toIntOrNull(16) ?: 255 else 255
+            val luminance = 0.299 * r + 0.587 * g + 0.114 * b
+            luminance < 128
+        }
     }
 
     DisposableEffect(isDarkTheme, activity) {
