@@ -28,7 +28,7 @@ actual fun rememberFilePickerLauncher(onFilePicked: (BookSource) -> Unit): () ->
         }
     }
     return {
-        launcher.launch(arrayOf("application/epub+zip", "application/pdf"))
+        launcher.launch(arrayOf("application/epub+zip"))
     }
 }
 

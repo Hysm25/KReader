@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
 import io.github.kreader.core.engine.TocItem
-import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
@@ -68,7 +67,6 @@ fun ReaderScreen(
     onTypographyChange: (ReaderTypography) -> Unit = {},
     onScrollModeChange: (Boolean) -> Unit = {},
     onProgressChanged: (progression: Float, locator: Locator) -> Unit = { _, _ -> },
-    onPdfPageChanged: (pageIndex: Int, totalPages: Int, locator: Locator) -> Unit = { _, _, _ -> },
     onTableOfContentsLoaded: (List<TocItem>) -> Unit = {},
     customFonts: List<CustomFont> = emptyList(),
     onImportCustomFont: (CustomFont) -> Unit = {},
@@ -78,7 +76,6 @@ fun ReaderScreen(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val epubController = rememberEpubNavigatorController()
-    val pdfController = rememberPdfViewerController()
     val scope = rememberCoroutineScope()
 
     val screenBgColor = when (state.theme.mode) {
@@ -110,21 +107,14 @@ fun ReaderScreen(
 
     ManageSystemBars(isControlsVisible = state.isControlsVisible)
 
-    DisposableEffect(state.book?.id, state.typography.isRtl) {
+    // Hardware volume button navigation respecting automatic RTL direction
+    DisposableEffect(state.book?.id, state.isRtl) {
         ReaderKeyEventDispatcher.onVolumeUp = {
-            if (state.book?.format == BookFormat.EPUB) {
-                if (state.typography.isRtl) epubController.goNext?.invoke() else epubController.goPrevious?.invoke()
-            } else if (state.book?.format == BookFormat.PDF) {
-                if (state.typography.isRtl) pdfController.goNext?.invoke() else pdfController.goPrevious?.invoke()
-            }
+            if (state.isRtl) epubController.goNext?.invoke() else epubController.goPrevious?.invoke()
             true
         }
         ReaderKeyEventDispatcher.onVolumeDown = {
-            if (state.book?.format == BookFormat.EPUB) {
-                if (state.typography.isRtl) epubController.goPrevious?.invoke() else epubController.goNext?.invoke()
-            } else if (state.book?.format == BookFormat.PDF) {
-                if (state.typography.isRtl) pdfController.goPrevious?.invoke() else pdfController.goNext?.invoke()
-            }
+            if (state.isRtl) epubController.goPrevious?.invoke() else epubController.goNext?.invoke()
             true
         }
         onDispose {
@@ -143,8 +133,8 @@ fun ReaderScreen(
                 .background(screenBgColor)
         ) {
             val book = state.book
-            if (book != null && book.format == BookFormat.EPUB) {
-                // Readium EPUB Navigator Host with Highlights & Selection Handling
+            if (book != null) {
+                // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
                 EpubNavigatorHost(
                     book = book,
                     initialLocator = book.lastLocator,
@@ -181,24 +171,8 @@ fun ReaderScreen(
                     onTap = onToggleControls,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else if (book != null && book.format == BookFormat.PDF) {
-                // Native PDF Reader Host with Pan/Zoom & Color Filters
-                val initialPage = state.currentPageIndex ?: (book.lastLocator?.locations?.position?.minus(1) ?: 0).coerceAtLeast(0)
-                PdfViewerHost(
-                    book = book,
-                    initialPage = initialPage,
-                    theme = state.theme,
-                    isScrollMode = state.isScrollMode,
-                    isRtl = state.typography.isRtl,
-                    controller = pdfController,
-                    onPageChanged = { pageIdx, total, loc ->
-                        onPdfPageChanged(pageIdx, total, loc)
-                    },
-                    onTap = onToggleControls,
-                    modifier = Modifier.fillMaxSize()
-                )
             } else {
-                // Fallback for Other Formats
+                // Fallback Idle/Error/Loading
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -258,7 +232,7 @@ fun ReaderScreen(
                 )
             }
 
-            // Bottom Bar Overlay
+            // Bottom Bar Overlay with RTL-Aware Progress Slider
             AnimatedVisibility(
                 visible = state.isControlsVisible,
                 enter = slideInVertically(initialOffsetY = { it }),
@@ -268,43 +242,20 @@ fun ReaderScreen(
                 val readyState = state.engineState as? ReaderEngineState.Ready
                 val prog = state.totalProgression.takeIf { it > 0f }
                     ?: (state.book?.totalProgression ?: (readyState?.totalProgression ?: 0f))
-                val currentPage = state.currentPageIndex ?: readyState?.currentPageIndex
-                val totalPages = state.totalPages ?: readyState?.totalPages
-                val pageInfo = if (currentPage != null && totalPages != null) {
-                    "${currentPage + 1} / $totalPages"
-                } else {
-                    "${(prog * 100).toInt()}%"
-                }
+                val pageInfo = "${(prog * 100).toInt()}%"
 
                 ReaderBottomBar(
                     progression = prog,
                     pageInfo = pageInfo,
-                    isRtl = state.typography.isRtl,
+                    isRtl = state.isRtl,
                     onSeek = { targetProg ->
                         onSeek(targetProg)
-                        if (book?.format == BookFormat.PDF) {
-                            val total = state.totalPages ?: 1
-                            val targetPage = (targetProg * total).toInt().coerceIn(0, total - 1)
-                            pdfController.goToPage?.invoke(targetPage)
-                        }
                     },
                     onPreviousPage = {
-                        if (book?.format == BookFormat.EPUB) {
-                            epubController.goPrevious?.invoke()
-                        } else if (book?.format == BookFormat.PDF) {
-                            pdfController.goPrevious?.invoke()
-                        } else {
-                            onPreviousPage()
-                        }
+                        epubController.goPrevious?.invoke()
                     },
                     onNextPage = {
-                        if (book?.format == BookFormat.EPUB) {
-                            epubController.goNext?.invoke()
-                        } else if (book?.format == BookFormat.PDF) {
-                            pdfController.goNext?.invoke()
-                        } else {
-                            onNextPage()
-                        }
+                        epubController.goNext?.invoke()
                     }
                 )
             }
@@ -319,14 +270,7 @@ fun ReaderScreen(
                 highlights = state.highlights,
                 currentLocator = state.currentLocator,
                 onNavigateToLocator = { locator ->
-                    if (state.book?.format == BookFormat.EPUB) {
-                        epubController.goTo?.invoke(locator)
-                    } else if (state.book?.format == BookFormat.PDF) {
-                        val pos = locator.locations.position
-                        if (pos != null) {
-                            pdfController.goToPage?.invoke((pos - 1).coerceAtLeast(0))
-                        }
-                    }
+                    epubController.goTo?.invoke(locator)
                     onDismissNavigationDrawer()
                 },
                 onDeleteBookmark = onDeleteBookmark,
@@ -366,7 +310,7 @@ fun ReaderScreen(
                 onDismiss = onDismissAddNoteDialog
             )
 
-            // Reading Settings Modal Sheet (Theme, Mode, Arabic Font, Tashkeel Spacing)
+            // Reading Settings Modal Sheet (Theme, Mode, Custom Fonts, Tashkeel Spacing)
             ReaderSettingsSheet(
                 isOpen = state.isSettingsOpen,
                 theme = state.theme,

@@ -4,9 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class BookFormat(val mimeType: String, val extensions: List<String>) {
-    EPUB("application/epub+zip", listOf("epub")),
-    PDF("application/pdf", listOf("pdf")),
-    CBZ("application/vnd.comicbook+zip", listOf("cbz", "zip"));
+    EPUB("application/epub+zip", listOf("epub"));
 
     companion object {
         fun fromExtension(ext: String): BookFormat? {

@@ -27,7 +27,6 @@ include(":core:engine-api")
 
 // Engine Adapters
 include(":engine:epub-adapter")
-include(":engine:pdf-adapter")
 
 // Features
 include(":feature:library")

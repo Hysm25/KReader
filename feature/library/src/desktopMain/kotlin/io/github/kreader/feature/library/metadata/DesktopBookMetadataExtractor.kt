@@ -19,27 +19,13 @@ class DesktopBookMetadataExtractor(
             else -> File(source.displayName)
         }
 
-        val format = detectFormat(file.name)
         val fileSizeBytes = if (file.exists()) file.length() else 0L
-
-        val metadata = when (format) {
-            BookFormat.EPUB -> extractEpub(file, source, bookId, fileSizeBytes)
-            BookFormat.PDF -> extractPdf(file, source, fileSizeBytes)
-            BookFormat.CBZ -> extractGeneric(source, format, fileSizeBytes)
-        }
+        val metadata = extractEpub(file, source, bookId, fileSizeBytes)
         val effectiveSource = if (file.exists()) BookSource.FilePath(path = file.absolutePath, displayName = source.displayName) else source
         metadata.copy(localSource = effectiveSource)
     }
 
-    private fun detectFormat(name: String): BookFormat {
-        val lower = name.lowercase()
-        return when {
-            lower.endsWith(".epub") -> BookFormat.EPUB
-            lower.endsWith(".pdf") -> BookFormat.PDF
-            lower.endsWith(".cbz") || lower.endsWith(".zip") -> BookFormat.CBZ
-            else -> BookFormat.EPUB
-        }
-    }
+    private fun detectFormat(name: String): BookFormat = BookFormat.EPUB
 
     private fun extractEpub(file: File, source: BookSource, bookId: String, fileSizeBytes: Long): ExtractedBookMetadata {
         if (!file.exists()) return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
@@ -133,16 +119,7 @@ class DesktopBookMetadataExtractor(
         return targetCoverFile.absolutePath
     }
 
-    private fun extractPdf(file: File, source: BookSource, fileSizeBytes: Long): ExtractedBookMetadata {
-        return ExtractedBookMetadata(
-            title = file.nameWithoutExtension.ifBlank { source.displayName.substringBeforeLast('.') },
-            format = BookFormat.PDF,
-            coverPath = null,
-            fileSizeBytes = fileSizeBytes
-        )
-    }
-
-    private fun extractGeneric(source: BookSource, format: BookFormat, fileSizeBytes: Long): ExtractedBookMetadata {
+    private fun extractGeneric(source: BookSource, format: BookFormat = BookFormat.EPUB, fileSizeBytes: Long): ExtractedBookMetadata {
         return ExtractedBookMetadata(
             title = source.displayName.substringBeforeLast('.'),
             format = format,

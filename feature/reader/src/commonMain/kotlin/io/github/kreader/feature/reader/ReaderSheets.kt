@@ -892,31 +892,6 @@ fun ReaderSettingsSheet(
                     }
                 }
 
-                // Progression Direction: LTR vs RTL
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Progression",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = !typography.isRtl,
-                            onClick = { onTypographyChange(typography.copy(isRtl = false)) },
-                            label = { Text("LTR") }
-                        )
-                        FilterChip(
-                            selected = typography.isRtl,
-                            onClick = { onTypographyChange(typography.copy(isRtl = true)) },
-                            label = { Text("RTL (العربية)") }
-                        )
-                    }
-                }
-
                 // Font Family: Default + User-imported Fonts (.ttf / .otf) + Import Button
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(

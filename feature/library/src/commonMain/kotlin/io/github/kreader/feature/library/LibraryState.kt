@@ -4,8 +4,7 @@ import io.github.kreader.core.model.Book
 
 enum class BookFilter {
     ALL,
-    EPUB,
-    PDF
+    EPUB
 }
 
 enum class BookSortOrder {

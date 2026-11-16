@@ -130,7 +130,6 @@ class LibraryViewModel(
             val matchesFilter = when (filter) {
                 BookFilter.ALL -> true
                 BookFilter.EPUB -> book.format == BookFormat.EPUB
-                BookFilter.PDF -> book.format == BookFormat.PDF
             }
             val matchesQuery = if (query.isBlank()) {
                 true

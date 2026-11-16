@@ -172,11 +172,6 @@ fun LibraryScreen(
                         onClick = { onFilterChanged(BookFilter.EPUB) },
                         label = { Text("EPUB") }
                     )
-                    FilterChip(
-                        selected = state.selectedFilter == BookFilter.PDF,
-                        onClick = { onFilterChanged(BookFilter.PDF) },
-                        label = { Text("PDF") }
-                    )
 
                     Spacer(modifier = Modifier.width(8.dp))
 
@@ -255,7 +250,7 @@ fun LibraryScreen(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Import EPUB and PDF e-books from your device to begin reading completely offline.",
+                                text = "Import EPUB e-books from your device to begin reading completely offline.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center

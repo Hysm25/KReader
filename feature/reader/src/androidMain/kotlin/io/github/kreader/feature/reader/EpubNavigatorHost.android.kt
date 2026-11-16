@@ -58,6 +58,8 @@ import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.Try
 import java.io.File
+import java.util.Collections
+import java.util.WeakHashMap
 
 @OptIn(ExperimentalReadiumApi::class)
 @Composable
@@ -98,6 +100,10 @@ actual fun EpubNavigatorHost(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    val configuredFragments = remember(book.id) {
+        Collections.newSetFromMap(WeakHashMap<EpubNavigatorFragment, Boolean>())
+    }
+
     val opener = remember(context) { ReadiumEpubOpener(context.applicationContext) }
 
     // 1. Open publication and auto-detect reading direction
@@ -131,8 +137,8 @@ actual fun EpubNavigatorHost(
         )
     }
 
-    // 2. Build preferences (automatic RTL direction + custom font support)
-    val effectiveRtl = typography.isRtl || (detectedRtl == true)
+    // 2. Build preferences (automatic reading direction + custom font support)
+    val effectiveRtl = detectedRtl == true
     val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl) {
         buildReadiumPreferences(theme, typography, isScrollMode, isRtl = effectiveRtl)
     }
@@ -245,12 +251,36 @@ actual fun EpubNavigatorHost(
                 )
             }
 
-            // Register FragmentLifecycleCallbacks to defer ViewModel access until fragment is STARTED
+            // Register FragmentLifecycleCallbacks to safely configure listeners AFTER fragment is STARTED
             DisposableEffect(fragmentActivity, fragmentTag) {
                 val fm = fragmentActivity.supportFragmentManager
                 val lifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
                     override fun onFragmentStarted(fm: FragmentManager, f: Fragment) {
-                        if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
+                        if (f.tag == fragmentTag && f is EpubNavigatorFragment && f.isAdded && f.context != null) {
+                            if (!configuredFragments.contains(f)) {
+                                configuredFragments.add(f)
+                                f.addInputListener(
+                                    DirectionalNavigationAdapter(
+                                        navigator = f,
+                                        animatedTransition = true
+                                    )
+                                )
+                                f.addInputListener(object : InputListener {
+                                    override fun onTap(event: TapEvent): Boolean {
+                                        currentOnTap()
+                                        return true
+                                    }
+                                })
+                                f.addDecorationListener(
+                                    "highlights",
+                                    object : DecorableNavigator.Listener {
+                                        override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
+                                            currentOnHighlightClicked(event.decoration.id)
+                                            return true
+                                        }
+                                    }
+                                )
+                            }
                             isNavigatorReady = true
                             if (currentFragment !== f) {
                                 currentFragment = f
@@ -280,6 +310,30 @@ actual fun EpubNavigatorHost(
                 if (existing != null && existing.isAdded && existing.context != null &&
                     existing.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                 ) {
+                    if (!configuredFragments.contains(existing)) {
+                        configuredFragments.add(existing)
+                        existing.addInputListener(
+                            DirectionalNavigationAdapter(
+                                navigator = existing,
+                                animatedTransition = true
+                            )
+                        )
+                        existing.addInputListener(object : InputListener {
+                            override fun onTap(event: TapEvent): Boolean {
+                                currentOnTap()
+                                return true
+                            }
+                        })
+                        existing.addDecorationListener(
+                            "highlights",
+                            object : DecorableNavigator.Listener {
+                                override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
+                                    currentOnHighlightClicked(event.decoration.id)
+                                    return true
+                                }
+                            }
+                        )
+                    }
                     isNavigatorReady = true
                     currentFragment = existing
                 }
@@ -312,11 +366,10 @@ actual fun EpubNavigatorHost(
                 update = { view ->
                     runCatching {
                         val fm = fragmentActivity.supportFragmentManager
-                        if (fm.isDestroyed) return@runCatching
+                        if (fm.isDestroyed || fragmentActivity.isFinishing) return@runCatching
 
-                        var fragment = (fm.findFragmentById(view.id) ?: fm.findFragmentByTag(fragmentTag)) as? EpubNavigatorFragment
+                        var fragment = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
 
-                        // Ensure EpubNavigatorFragment is strictly attached to supportFragmentManager
                         if (fragment != null && (!fragment.isAdded || fragment.isDetached || fragment.id != view.id)) {
                             fm.beginTransaction().remove(fragment).commitNowAllowingStateLoss()
                             fragment = null
@@ -332,46 +385,9 @@ actual fun EpubNavigatorHost(
                                 )
                             )
                             fm.fragmentFactory = fragmentFactory
-                            fragment = fragmentFactory.instantiate(
-                                view.context.classLoader,
-                                EpubNavigatorFragment::class.java.name
-                            ) as EpubNavigatorFragment
-
-                            fragment.addInputListener(
-                                DirectionalNavigationAdapter(
-                                    navigator = fragment,
-                                    animatedTransition = true
-                                )
-                            )
-                            fragment.addInputListener(object : InputListener {
-                                override fun onTap(event: TapEvent): Boolean {
-                                    currentOnTap()
-                                    return true
-                                }
-                            })
-
-                            fragment.addDecorationListener(
-                                "highlights",
-                                object : DecorableNavigator.Listener {
-                                    override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
-                                        currentOnHighlightClicked(event.decoration.id)
-                                        return true
-                                    }
-                                }
-                            )
-
                             fm.beginTransaction()
-                                .replace(view.id, fragment, fragmentTag)
+                                .replace(view.id, EpubNavigatorFragment::class.java, null, fragmentTag)
                                 .commitNowAllowingStateLoss()
-                        }
-
-                        if (fragment.isAdded && fragment.context != null &&
-                            fragment.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-                        ) {
-                            isNavigatorReady = true
-                            if (currentFragment !== fragment) {
-                                currentFragment = fragment
-                            }
                         }
                     }.onFailure { e ->
                         errorMessage = "Failed to initialize reader: ${e.message}"

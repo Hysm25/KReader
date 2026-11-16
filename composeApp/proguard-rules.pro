@@ -43,7 +43,6 @@
 # 5. Desugaring & System Compatibility
 -dontwarn j$.**
 -keep class androidx.sqlite.** { *; }
--keep class android.graphics.pdf.** { *; }
 -dontwarn okio.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.slf4j.**

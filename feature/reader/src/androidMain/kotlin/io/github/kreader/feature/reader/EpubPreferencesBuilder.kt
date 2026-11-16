@@ -34,7 +34,7 @@ fun buildReadiumPreferences(
         ThemeMode.SYSTEM -> null
     }
 
-    val progression = if (isRtl || typography.isRtl) {
+    val progression = if (isRtl) {
         ReadingProgression.RTL
     } else {
         ReadingProgression.LTR

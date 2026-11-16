@@ -139,20 +139,6 @@ fun BookItemCard(
                     }
                 }
 
-                // Format badge overlay on top-left of cover
-                Surface(
-                    shape = RoundedCornerShape(bottomEnd = 6.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                    modifier = Modifier.align(Alignment.TopStart)
-                ) {
-                    Text(
-                        text = book.format.name,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-
                 // Overflow menu button on top-right of cover
                 Box(modifier = Modifier.align(Alignment.TopEnd)) {
                     IconButton(
