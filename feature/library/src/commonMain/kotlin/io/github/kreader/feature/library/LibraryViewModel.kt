@@ -8,7 +8,6 @@ import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.feature.library.metadata.BookMetadataExtractor
-import io.github.kreader.feature.library.util.deleteLocalFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +28,18 @@ class LibraryViewModel(
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     init {
+        observeVaultInfo()
         observeBooks()
+    }
+
+    private fun observeVaultInfo() {
+        bookRepository.activeVaultUriOrPath.onEach { uri ->
+            _uiState.update { it.copy(vaultPath = uri) }
+        }.launchIn(scope)
+
+        bookRepository.activeVaultName.onEach { name ->
+            _uiState.update { it.copy(vaultName = name) }
+        }.launchIn(scope)
     }
 
     private fun observeBooks() {
@@ -43,8 +53,44 @@ class LibraryViewModel(
                         errorMessage = null
                     )
                 }
+
+                // Asynchronously extract metadata for books missing author or cover
+                for (book in allBooks) {
+                    if (book.author == null || book.coverPath == null) {
+                        scope.launch {
+                            runCatching {
+                                val meta = metadataExtractor.extract(book.source, book.id)
+                                val updated = book.copy(
+                                    title = meta.title.ifBlank { book.title },
+                                    author = meta.author,
+                                    description = meta.description,
+                                    coverPath = meta.coverPath ?: book.coverPath
+                                )
+                                bookRepository.upsertBook(updated)
+                            }
+                        }
+                    }
+                }
             }
             .launchIn(scope)
+    }
+
+    fun setVault(uriOrPath: String) {
+        bookRepository.setVault(uriOrPath)
+    }
+
+    fun refreshVault() {
+        scope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            runCatching {
+                bookRepository.refreshVault()
+            }
+            _uiState.update { it.copy(isRefreshing = false) }
+        }
+    }
+
+    fun clearVault() {
+        bookRepository.clearVault()
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -107,14 +153,6 @@ class LibraryViewModel(
     fun deleteBook(book: Book) {
         scope.launch {
             runCatching {
-                val cover = book.coverPath
-                if (!cover.isNullOrBlank()) {
-                    deleteLocalFile(cover)
-                }
-                val src = book.source
-                if (src is BookSource.FilePath) {
-                    deleteLocalFile(src.path)
-                }
                 bookRepository.deleteBook(book.id)
             }
         }
@@ -124,14 +162,6 @@ class LibraryViewModel(
         scope.launch {
             for (book in books) {
                 runCatching {
-                    val cover = book.coverPath
-                    if (!cover.isNullOrBlank()) {
-                        deleteLocalFile(cover)
-                    }
-                    val src = book.source
-                    if (src is BookSource.FilePath) {
-                        deleteLocalFile(src.path)
-                    }
                     bookRepository.deleteBook(book.id)
                 }
             }

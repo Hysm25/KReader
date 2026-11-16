@@ -6,6 +6,7 @@ android-targetSdk = "35"
 androidx-activityCompose = "1.9.3"
 androidx-appcompat = "1.7.0"
 androidx-core = "1.15.0"
+androidx-documentfile = "1.0.1"
 androidx-fragment = "1.8.5"
 compose-multiplatform = "1.7.1"
 kotlin = "2.1.0"
@@ -13,7 +14,6 @@ kotlinx-coroutines = "1.9.0"
 kotlinx-datetime = "0.6.1"
 kotlinx-serialization = "1.7.3"
 okio = "3.9.1"
-sqldelight = "2.0.2"
 readium = "3.0.0"
 desugar-jdk-libs = "2.1.4"
 
@@ -21,6 +21,7 @@ desugar-jdk-libs = "2.1.4"
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "androidx-documentfile" }
 androidx-fragment = { module = "androidx.fragment:fragment-ktx", version.ref = "androidx-fragment" }
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -30,13 +31,6 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
-
-# SQLDelight Database
-sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
-sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
-sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
-sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
-sqldelight-primitive-adapters = { module = "app.cash.sqldelight:primitive-adapters", version.ref = "sqldelight" }
 
 # Readium Kotlin Toolkit (Android EPUB Engine)
 readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version.ref = "readium" }
@@ -56,4 +50,3 @@ composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "compose-mu
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinxSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }

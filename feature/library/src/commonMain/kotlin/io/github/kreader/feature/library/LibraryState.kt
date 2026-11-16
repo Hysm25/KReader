@@ -17,10 +17,13 @@ data class LibraryUiState(
     val books: List<Book> = emptyList(),
     val filteredBooks: List<Book> = emptyList(),
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val searchQuery: String = "",
     val selectedFilter: BookFilter = BookFilter.ALL,
     val selectedSortOrder: BookSortOrder = BookSortOrder.RECENTLY_READ,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val vaultPath: String? = null,
+    val vaultName: String? = null
 ) {
     val displayBooks: List<Book>
         get() = filteredBooks

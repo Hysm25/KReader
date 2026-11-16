@@ -65,11 +65,12 @@ fun App() {
                 LibraryScreen(
                     state = libraryUiState,
                     onBookClick = { book -> selectedBook = book },
-                    onImportBook = { source -> libraryViewModel.importBook(source) },
+                    onSelectVaultFolder = { uriOrPath -> libraryViewModel.setVault(uriOrPath) },
+                    onRefreshVault = { libraryViewModel.refreshVault() },
+                    onChangeVaultFolder = { /* handled inside LibraryScreen via folderPickerLauncher */ },
                     onDeleteBook = { book -> libraryViewModel.deleteBook(book) },
                     onDeleteBooks = { books -> libraryViewModel.deleteBooks(books) },
                     onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
-                    onFilterChanged = { filter -> libraryViewModel.onFilterChanged(filter) },
                     onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) }
                 )
             } else {

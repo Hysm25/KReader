@@ -1,9 +1,9 @@
 package io.github.kreader.feature.library
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,32 +15,31 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -61,9 +60,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
-import io.github.kreader.core.model.BookSource
-import io.github.kreader.feature.library.filepicker.rememberFilePickerLauncher
+import io.github.kreader.feature.library.filepicker.rememberFolderPickerLauncher
 import io.github.kreader.feature.library.util.rememberBookShareLauncher
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,16 +70,17 @@ import io.github.kreader.feature.library.util.rememberBookShareLauncher
 fun LibraryScreen(
     state: LibraryUiState,
     onBookClick: (Book) -> Unit,
-    onImportBook: (BookSource) -> Unit,
+    onSelectVaultFolder: (String) -> Unit = {},
+    onRefreshVault: () -> Unit = {},
+    onChangeVaultFolder: () -> Unit = {},
     onDeleteBook: (Book) -> Unit,
     onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
     onSearchQueryChanged: (String) -> Unit,
-    onFilterChanged: (BookFilter) -> Unit = {},
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val filePickerLauncher = rememberFilePickerLauncher { source ->
-        onImportBook(source)
+    val folderPickerLauncher = rememberFolderPickerLauncher { uriOrPath ->
+        onSelectVaultFolder(uriOrPath)
     }
     val bookShareLauncher = rememberBookShareLauncher()
 
@@ -102,6 +102,15 @@ fun LibraryScreen(
         state.errorMessage?.let { error ->
             snackbarHostState.showSnackbar(error)
         }
+    }
+
+    // Onboarding Screen when no vault is configured
+    if (state.vaultPath == null) {
+        VaultOnboardingView(
+            onSelectFolder = folderPickerLauncher,
+            modifier = modifier
+        )
+        return
     }
 
     Scaffold(
@@ -184,7 +193,7 @@ fun LibraryScreen(
                     ) {
                         Surface(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .weight(1f)
                                 .height(48.dp),
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -213,7 +222,7 @@ fun LibraryScreen(
                                     decorationBox = { innerTextField ->
                                         if (state.searchQuery.isEmpty()) {
                                             Text(
-                                                text = if (state.books.isNotEmpty()) "Search ${state.books.size} books..." else "Search library...",
+                                                text = if (state.books.isNotEmpty()) "Search in ${state.vaultName ?: "Books"}..." else "Search library...",
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -236,23 +245,41 @@ fun LibraryScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(onClick = onRefreshVault) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = "Refresh Vault",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(onClick = { folderPickerLauncher() }) {
+                            Icon(
+                                imageVector = Icons.Rounded.FolderOpen,
+                                contentDescription = "Change Folder",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
         },
         floatingActionButton = {
-            if (!isSelectionMode) {
+            if (!isSelectionMode && state.books.isNotEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = filePickerLauncher,
+                    onClick = onRefreshVault,
                     icon = {
                         Icon(
-                            imageVector = Icons.Rounded.Add,
+                            imageVector = Icons.Rounded.Refresh,
                             contentDescription = null
                         )
                     },
                     text = {
                         Text(
-                            text = "Import EPUB",
+                            text = "Refresh",
                             fontWeight = FontWeight.SemiBold
                         )
                     },
@@ -268,28 +295,15 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Sort bar (redundant All / EPUB chips removed per requirement 5)
             if (state.books.isNotEmpty()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
-                        selected = state.selectedFilter == BookFilter.ALL,
-                        onClick = { onFilterChanged(BookFilter.ALL) },
-                        label = { Text("All") }
-                    )
-                    FilterChip(
-                        selected = state.selectedFilter == BookFilter.EPUB,
-                        onClick = { onFilterChanged(BookFilter.EPUB) },
-                        label = { Text("EPUB") }
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
                     val sortLabel = when (state.selectedSortOrder) {
                         BookSortOrder.RECENTLY_READ -> "Recent"
                         BookSortOrder.RECENTLY_ADDED -> "Added"
@@ -335,17 +349,24 @@ fun LibraryScreen(
                             )
                         }
                     }
+
+                    Text(
+                        text = "${state.books.size} ${if (state.books.size == 1) "book" else "books"}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    state.isLoading && state.books.isEmpty() -> {
+                    state.isLoading || state.isRefreshing -> {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
                     state.books.isEmpty() -> {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
                             modifier = Modifier
                                 .align(Alignment.Center)
                                 .padding(24.dp)
@@ -353,47 +374,62 @@ fun LibraryScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.MenuBook,
                                 contentDescription = null,
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .padding(bottom = 16.dp),
-                                tint = MaterialTheme.colorScheme.primary
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Your library is empty",
+                                text = "No EPUBs in \"${state.vaultName ?: "this folder"}\"",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Import EPUB e-books from your device to begin reading completely offline.",
+                                text = "Add .epub files into this folder on your device and tap Refresh.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(20.dp))
-                            Button(onClick = filePickerLauncher) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Import Book")
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Button(
+                                    onClick = onRefreshVault,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Refresh, null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Refresh Vault")
+                                }
+                                TextButton(onClick = { folderPickerLauncher() }) {
+                                    Text("Change Folder")
+                                }
                             }
                         }
                     }
-                    state.displayBooks.isEmpty() -> {
+                    state.displayBooks.isEmpty() && state.searchQuery.isNotEmpty() -> {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .align(Alignment.Center)
                                 .padding(24.dp)
                         ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = if (state.searchQuery.isNotBlank()) "No books match '${state.searchQuery}'" else "No books in this filter",
-                                style = MaterialTheme.typography.bodyLarge,
+                                text = "No results for \"${state.searchQuery}\"",
+                                style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = { onSearchQueryChanged("") }) {
+                                Text("Clear Search")
+                            }
                         }
                     }
                     else -> {
@@ -413,46 +449,46 @@ fun LibraryScreen(
                                 }
                             },
                             onBookLongClick = { book ->
-                                selectedBookIds = if (selectedBookIds.contains(book.id)) {
-                                    selectedBookIds - book.id
-                                } else {
-                                    selectedBookIds + book.id
+                                if (!isSelectionMode) {
+                                    selectedBookIds = setOf(book.id)
                                 }
                             },
-                            onDeleteBook = onDeleteBook
+                            onDeleteBook = onDeleteBook,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
-                }
-
-                if (state.isLoading && state.books.isNotEmpty()) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 8.dp)
-                    )
                 }
             }
         }
     }
 
     if (showMultiDeleteDialog) {
-        val count = selectedBookIds.size
         AlertDialog(
             onDismissRequest = { showMultiDeleteDialog = false },
-            title = { Text("Delete Books") },
+            icon = {
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Delete ${selectedBookIds.size} Books from Vault?") },
             text = {
-                Text("Are you sure you want to remove $count selected ${if (count == 1) "book" else "books"} and all cached data from your library?")
+                Text(
+                    "This will permanently delete the selected ${selectedBookIds.size} EPUB file(s) from your books folder, along with their reading progress and annotations."
+                )
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         showMultiDeleteDialog = false
                         val booksToDelete = state.books.filter { selectedBookIds.contains(it.id) }
                         onDeleteBooks(booksToDelete)
                         selectedBookIds = emptySet()
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text("Delete ${selectedBookIds.size} Files", color = MaterialTheme.colorScheme.onError)
                 }
             },
             dismissButton = {
@@ -461,5 +497,81 @@ fun LibraryScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+fun VaultOnboardingView(
+    onSelectFolder: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .padding(32.dp)
+                .fillMaxWidth()
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                modifier = Modifier.size(96.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.FolderOpen,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Welcome to KReader",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "KReader works directly with your books folder like Obsidian. Choose a folder containing your EPUBs — your settings, progress, and notes will be preserved inside a .kreader/ folder right beside your books.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(
+                onClick = onSelectFolder,
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.FolderOpen,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Choose Books Folder",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
     }
 }

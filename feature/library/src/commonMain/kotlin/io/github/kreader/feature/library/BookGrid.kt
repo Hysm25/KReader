@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -26,6 +28,8 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -45,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,7 +69,7 @@ fun BookGrid(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier.fillMaxSize()
@@ -111,7 +116,7 @@ fun BookItemCard(
             .clip(RoundedCornerShape(16.dp))
             .border(
                 width = if (isSelected) 2.dp else 0.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
                 shape = RoundedCornerShape(16.dp)
             )
             .combinedClickable(
@@ -181,7 +186,7 @@ fun BookItemCard(
                             .padding(8.dp)
                             .size(28.dp)
                             .background(
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.5f),
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
@@ -197,24 +202,36 @@ fun BookItemCard(
                             Icon(
                                 imageVector = Icons.Rounded.RadioButtonUnchecked,
                                 contentDescription = "Not selected",
-                                tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
+                                tint = Color.White.copy(alpha = 0.8f),
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     }
                 }
 
-                // Overflow menu button on top-right of cover (hidden during selection mode)
+                // Overflow menu button on top-right of cover with contrasting backdrop
                 if (!isSelectionMode) {
-                    Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                        IconButton(
-                            onClick = { showMenu = true },
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(32.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.MoreVert,
-                                contentDescription = "Options"
-                            )
+                            IconButton(
+                                onClick = { showMenu = true },
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.MoreVert,
+                                    contentDescription = "Options",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
 
                         DropdownMenu(
@@ -287,16 +304,26 @@ fun BookItemCard(
     if (showDeleteConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("Delete Publication") },
-            text = { Text("Are you sure you want to remove '${book.title}' and its cached data from your library?") },
+            icon = {
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Delete from Vault?") },
+            text = {
+                Text("Are you sure you want to delete '${book.title}'? This will permanently remove the EPUB file from your folder along with its reading progress, annotations, and cached cover.")
+            },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         showDeleteConfirmDialog = false
                         onDelete()
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text("Delete File", color = MaterialTheme.colorScheme.onError)
                 }
             },
             dismissButton = {

@@ -5,6 +5,7 @@ import io.github.kreader.core.model.BookSource
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
+import javax.swing.JFileChooser
 
 @Composable
 actual fun rememberFilePickerLauncher(onFilePicked: (BookSource) -> Unit): () -> Unit {
@@ -21,6 +22,20 @@ actual fun rememberFilePickerLauncher(onFilePicked: (BookSource) -> Unit): () ->
             if (chosenFile.exists()) {
                 onFilePicked(BookSource.FilePath(path = chosenFile.absolutePath, displayName = chosenFile.name))
             }
+        }
+    }
+}
+
+@Composable
+actual fun rememberFolderPickerLauncher(onFolderPicked: (String) -> Unit): () -> Unit {
+    return {
+        val chooser = JFileChooser().apply {
+            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+            dialogTitle = "Choose Books Folder"
+        }
+        val result = chooser.showOpenDialog(null)
+        if (result == JFileChooser.APPROVE_OPTION && chooser.selectedFile != null) {
+            onFolderPicked(chooser.selectedFile.absolutePath)
         }
     }
 }

@@ -19,47 +19,14 @@ import java.util.zip.ZipFile
 class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataExtractor {
 
     private val coversDir: File by lazy {
-        File(context.filesDir, "covers").apply { mkdirs() }
-    }
-
-    private val booksDir: File by lazy {
-        File(context.filesDir, "books").apply { mkdirs() }
+        File(context.cacheDir, "covers").apply { mkdirs() }
     }
 
     override suspend fun extract(source: BookSource, bookId: String): ExtractedBookMetadata = withContext(Dispatchers.IO) {
-        val targetBookFile = File(booksDir, "${bookId}.epub")
-        val copiedSuccessfully = copySourceToInternalFile(source, targetBookFile)
-        val effectiveSource = if (copiedSuccessfully && targetBookFile.exists() && targetBookFile.length() > 0L) {
-            BookSource.FilePath(path = targetBookFile.absolutePath, displayName = source.displayName)
-        } else {
-            source
-        }
-
-        val fileSizeBytes = if (targetBookFile.exists() && targetBookFile.length() > 0L) {
-            targetBookFile.length()
-        } else {
-            queryFileSize(source)
-        }
-
-        val metadata = extractEpub(effectiveSource, targetBookFile, bookId, fileSizeBytes)
-        metadata.copy(localSource = effectiveSource)
+        val fileSizeBytes = queryFileSize(source)
+        val metadata = extractEpub(source, bookId, fileSizeBytes)
+        metadata.copy(localSource = source)
     }
-
-    private fun copySourceToInternalFile(source: BookSource, targetFile: File): Boolean {
-        return runCatching {
-            if (source is BookSource.FilePath && File(source.path).absolutePath == targetFile.absolutePath) {
-                return true
-            }
-            openInputStream(source)?.use { input ->
-                targetFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
-            targetFile.exists() && targetFile.length() > 0L
-        }.getOrDefault(false)
-    }
-
-    private fun detectFormat(source: BookSource): BookFormat = BookFormat.EPUB
 
     private fun queryFileSize(source: BookSource): Long {
         return runCatching {
@@ -87,24 +54,31 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
 
     private fun extractEpub(
         source: BookSource,
-        bookFile: File,
         bookId: String,
         fileSizeBytes: Long
     ): ExtractedBookMetadata {
-        val workingFile = if (bookFile.exists() && bookFile.length() > 0L) {
-            bookFile
-        } else {
-            val temp = File(context.cacheDir, "temp_${bookId}.epub")
-            val input = openInputStream(source) ?: return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
-            input.use { inStream ->
-                temp.outputStream().use { outStream ->
-                    inStream.copyTo(outStream)
+        var tempFile: File? = null
+        val workingFile = when (source) {
+            is BookSource.FilePath -> File(source.path)
+            is BookSource.ContentUri -> {
+                val input = openInputStream(source) ?: return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
+                val temp = File(context.cacheDir, "tmp_meta_${System.currentTimeMillis()}_${bookId.hashCode()}.epub")
+                tempFile = temp
+                input.use { inStream ->
+                    temp.outputStream().use { outStream ->
+                        inStream.copyTo(outStream)
+                    }
                 }
+                temp
             }
-            temp
+            else -> return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
         }
 
         try {
+            if (!workingFile.exists() || workingFile.length() == 0L) {
+                return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
+            }
+
             ZipFile(workingFile).use { zip ->
                 val containerEntry = zip.getEntry("META-INF/container.xml")
                     ?: zip.entries().asSequence().firstOrNull { it.name.equals("META-INF/container.xml", ignoreCase = true) }
@@ -140,7 +114,8 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
                     isRtlText(author) ||
                     isRtlText(description)
 
-                val coverPath = extractEpubCover(zip, opfXml, opfPath, bookId)
+                val safeId = bookId.replace('/', '_').replace('\\', '_')
+                val coverPath = extractEpubCover(zip, opfXml, opfPath, safeId)
 
                 return ExtractedBookMetadata(
                     title = title,
@@ -155,13 +130,11 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
         } catch (e: Exception) {
             return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)
         } finally {
-            if (workingFile != bookFile) {
-                workingFile.delete()
-            }
+            tempFile?.delete()
         }
     }
 
-    private fun extractEpubCover(zip: ZipFile, opfXml: String, opfPath: String, bookId: String): String? {
+    private fun extractEpubCover(zip: ZipFile, opfXml: String, opfPath: String, safeBookId: String): String? {
         val epub3Match = Regex("""<item[^>]*properties=["'][^"']*cover-image[^"']*["'][^>]*href=["']([^"']+)["']""").find(opfXml)
             ?: Regex("""<item[^>]*href=["']([^"']+)["'][^>]*properties=["'][^"']*cover-image[^"']*["']""").find(opfXml)
 
@@ -189,7 +162,7 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
             ?: return null
 
         val ext = File(coverEntry.name).extension.ifBlank { "jpg" }
-        val targetCoverFile = File(coversDir, "${bookId}.$ext")
+        val targetCoverFile = File(coversDir, "${safeBookId}.$ext")
         zip.getInputStream(coverEntry).use { inStream ->
             targetCoverFile.outputStream().use { outStream ->
                 inStream.copyTo(outStream)

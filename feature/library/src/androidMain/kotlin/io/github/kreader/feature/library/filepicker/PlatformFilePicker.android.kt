@@ -32,6 +32,25 @@ actual fun rememberFilePickerLauncher(onFilePicked: (BookSource) -> Unit): () ->
     }
 }
 
+@Composable
+actual fun rememberFolderPickerLauncher(onFolderPicked: (String) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri: Uri? ->
+        if (treeUri != null) {
+            runCatching {
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+            }
+            onFolderPicked(treeUri.toString())
+        }
+    }
+    return {
+        launcher.launch(null)
+    }
+}
+
 private fun queryDisplayName(context: Context, uri: Uri): String? {
     return runCatching {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->

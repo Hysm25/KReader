@@ -7,3 +7,8 @@ import io.github.kreader.core.model.BookSource
 actual fun rememberFilePickerLauncher(onFilePicked: (BookSource) -> Unit): () -> Unit {
     return {}
 }
+
+@Composable
+actual fun rememberFolderPickerLauncher(onFolderPicked: (String) -> Unit): () -> Unit {
+    return {}
+}

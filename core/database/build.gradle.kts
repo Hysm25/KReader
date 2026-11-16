@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
-    alias(libs.plugins.sqldelight)
     alias(libs.plugins.kotlinxSerialization)
 }
 
@@ -27,23 +26,20 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":core:model"))
-            implementation(libs.sqldelight.coroutines.extensions)
-            implementation(libs.sqldelight.primitive.adapters)
             implementation(libs.kotlinx.coroutines.core)
             api(libs.kotlinx.serialization.json)
         }
         androidMain.dependencies {
-            implementation(libs.sqldelight.android.driver)
+            implementation(libs.androidx.documentfile)
         }
         val desktopMain by getting {
             dependencies {
-                implementation(libs.sqldelight.sqlite.driver)
+                implementation(libs.kotlinx.coroutines.swing)
             }
         }
         val nativeMain by creating {
             dependsOn(commonMain.get())
             dependencies {
-                implementation(libs.sqldelight.native.driver)
             }
         }
         listOf(iosX64Main, iosArm64Main, iosSimulatorArm64Main).forEach {
@@ -61,13 +57,5 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-}
-
-sqldelight {
-    databases {
-        create("KReaderDatabase") {
-            packageName.set("io.github.kreader.core.database")
-        }
     }
 }

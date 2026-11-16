@@ -1,8 +1,5 @@
 package io.github.kreader.core.database
 
-import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
-import app.cash.sqldelight.coroutines.mapToOneOrNull
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
@@ -12,21 +9,35 @@ import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderPreferences
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 interface BookRepository {
+    val activeVaultUriOrPath: StateFlow<String?>
+    val activeVaultName: StateFlow<String?>
+
+    fun getVaultName(): String?
+    fun setVault(uriOrPath: String)
+    fun clearVault()
+    suspend fun refreshVault()
+
     fun observeAllBooks(): Flow<List<Book>>
     fun observeBook(id: String): Flow<Book?>
     suspend fun getBook(id: String): Book?
     suspend fun upsertBook(book: Book)
     suspend fun updateProgress(bookId: String, progression: Float, locator: Locator, timestamp: Long)
     suspend fun deleteBook(id: String)
-    
+
     fun observeBookmarks(bookId: String): Flow<List<Bookmark>>
     suspend fun saveBookmark(bookmark: Bookmark)
     suspend fun deleteBookmark(id: String)
@@ -42,47 +53,151 @@ interface BookRepository {
     suspend fun deleteCustomFont(fontName: String)
 }
 
-class SqlDelightBookRepository(
-    private val database: KReaderDatabase,
+class JsonVaultBookRepository(
+    val vaultStorage: VaultStorage,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    private val json: Json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 ) : BookRepository {
 
-    private val queries = database.kReaderDatabaseQueries
-
-    override fun observeAllBooks(): Flow<List<Book>> {
-        return queries.selectAllBooks()
-            .asFlow()
-            .mapToList(ioDispatcher)
-            .map { list -> list.map { it.toDomain(json) } }
+    private val json = Json {
+        prettyPrint = true
+        prettyPrintIndent = "  "
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        isLenient = true
     }
 
-    override fun observeBook(id: String): Flow<Book?> {
-        return queries.selectBookById(id)
-            .asFlow()
-            .mapToOneOrNull(ioDispatcher)
-            .map { it?.toDomain(json) }
+    override val activeVaultUriOrPath: StateFlow<String?> = vaultStorage.activeVaultUriOrPath
+
+    private val _activeVaultName = MutableStateFlow(vaultStorage.getVaultName())
+    override val activeVaultName: StateFlow<String?> = _activeVaultName.asStateFlow()
+
+    private val _books = MutableStateFlow<List<Book>>(emptyList())
+    private val _preferences = MutableStateFlow(ReaderPreferences())
+    private val _workspace = MutableStateFlow(VaultWorkspace())
+    private val _annotations = MutableStateFlow(VaultAnnotations())
+
+    init {
+        scope.launch {
+            if (vaultStorage.getActiveVault() != null) {
+                loadVaultState()
+            }
+        }
     }
+
+    override fun getVaultName(): String? = vaultStorage.getVaultName()
+
+    override fun setVault(uriOrPath: String) {
+        vaultStorage.setActiveVault(uriOrPath)
+        _activeVaultName.value = vaultStorage.getVaultName()
+        scope.launch {
+            loadVaultState()
+        }
+    }
+
+    override fun clearVault() {
+        vaultStorage.setActiveVault(null)
+        _activeVaultName.value = null
+        _books.value = emptyList()
+        _workspace.value = VaultWorkspace()
+        _annotations.value = VaultAnnotations()
+    }
+
+    private suspend fun loadVaultState() = withContext(ioDispatcher) {
+        _activeVaultName.value = vaultStorage.getVaultName()
+
+        // 1. Load appearance.json
+        val appearanceJson = vaultStorage.readConfig(APPEARANCE_FILE)
+        val loadedPrefs = if (!appearanceJson.isNullOrBlank()) {
+            runCatching { json.decodeFromString<ReaderPreferences>(appearanceJson) }.getOrDefault(ReaderPreferences())
+        } else {
+            val def = ReaderPreferences()
+            vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(def))
+            def
+        }
+        _preferences.value = loadedPrefs
+
+        // 2. Load workspace.json
+        val workspaceJson = vaultStorage.readConfig(WORKSPACE_FILE)
+        val loadedWorkspace = if (!workspaceJson.isNullOrBlank()) {
+            runCatching { json.decodeFromString<VaultWorkspace>(workspaceJson) }.getOrDefault(VaultWorkspace())
+        } else {
+            VaultWorkspace()
+        }
+        _workspace.value = loadedWorkspace
+
+        // 3. Load annotations.json
+        val annotationsJson = vaultStorage.readConfig(ANNOTATIONS_FILE)
+        val loadedAnnotations = if (!annotationsJson.isNullOrBlank()) {
+            runCatching { json.decodeFromString<VaultAnnotations>(annotationsJson) }.getOrDefault(VaultAnnotations())
+        } else {
+            VaultAnnotations()
+        }
+        _annotations.value = loadedAnnotations
+
+        // 4. Scan EPUBs in vault
+        refreshVaultInternal()
+    }
+
+    override suspend fun refreshVault(): Unit = withContext(ioDispatcher) {
+        if (vaultStorage.getActiveVault() == null) return@withContext
+        loadVaultState()
+    }
+
+    private suspend fun refreshVaultInternal() = withContext(ioDispatcher) {
+        val epubFiles = vaultStorage.listEpubs()
+        val currentWorkspace = _workspace.value.books
+        val existingBooksMap = _books.value.associateBy { it.id }
+
+        val newBooks = epubFiles.map { epub ->
+            val relativePath = epub.relativePath
+            val existing = existingBooksMap[relativePath]
+            val progressRecord = currentWorkspace[relativePath]
+
+            val coverFileName = "${relativePath.replace('/', '_').replace('\\', '_')}.jpg"
+            val cachedCover = existing?.coverPath ?: vaultStorage.getCoverPath(coverFileName)
+
+            val cleanTitle = existing?.title ?: epub.displayName
+                .removeSuffix(".epub")
+                .removeSuffix(".EPUB")
+                .replace('_', ' ')
+
+            Book(
+                id = relativePath,
+                title = cleanTitle,
+                author = existing?.author,
+                description = existing?.description,
+                coverPath = cachedCover,
+                format = BookFormat.EPUB,
+                source = epub.source,
+                fileSizeBytes = epub.fileSizeBytes,
+                lastReadTimestamp = progressRecord?.lastReadTimestamp ?: existing?.lastReadTimestamp,
+                addedTimestamp = epub.lastModified.takeIf { it > 0L } ?: existing?.addedTimestamp ?: 0L,
+                totalProgression = progressRecord?.totalProgression ?: existing?.totalProgression ?: 0f,
+                lastLocator = progressRecord?.lastLocator ?: existing?.lastLocator
+            )
+        }
+
+        _books.value = newBooks
+    }
+
+    override fun observeAllBooks(): Flow<List<Book>> = _books.asStateFlow()
+
+    override fun observeBook(id: String): Flow<Book?> = _books.map { list -> list.find { it.id == id } }
 
     override suspend fun getBook(id: String): Book? = withContext(ioDispatcher) {
-        queries.selectBookById(id).executeAsOneOrNull()?.toDomain(json)
+        _books.value.find { it.id == id }
     }
 
     override suspend fun upsertBook(book: Book): Unit = withContext(ioDispatcher) {
-        queries.insertOrReplaceBook(
-            id = book.id,
-            title = book.title,
-            author = book.author,
-            description = book.description,
-            coverPath = book.coverPath,
-            format = book.format.name,
-            sourceData = json.encodeToString(book.source),
-            fileSizeBytes = book.fileSizeBytes,
-            lastReadTimestamp = book.lastReadTimestamp,
-            addedTimestamp = book.addedTimestamp,
-            totalProgression = book.totalProgression.toDouble(),
-            lastLocatorJson = book.lastLocator?.let { json.encodeToString(it) }
-        )
+        val current = _books.value.toMutableList()
+        val index = current.indexOfFirst { it.id == book.id }
+        if (index >= 0) {
+            current[index] = book
+        } else {
+            current.add(book)
+        }
+        _books.value = current
     }
 
     override suspend fun updateProgress(
@@ -91,143 +206,151 @@ class SqlDelightBookRepository(
         locator: Locator,
         timestamp: Long
     ): Unit = withContext(ioDispatcher) {
-        queries.updateBookProgress(
-            totalProgression = progression.toDouble(),
-            lastLocatorJson = json.encodeToString(locator),
+        // 1. Update in-memory books
+        _books.value = _books.value.map { book ->
+            if (book.id == bookId) {
+                book.copy(
+                    totalProgression = progression,
+                    lastLocator = locator,
+                    lastReadTimestamp = timestamp
+                )
+            } else {
+                book
+            }
+        }
+
+        // 2. Update workspace.json
+        val currentWorkspace = _workspace.value
+        val updatedBooks = currentWorkspace.books.toMutableMap()
+        updatedBooks[bookId] = BookProgressRecord(
+            relativePath = bookId,
+            totalProgression = progression,
             lastReadTimestamp = timestamp,
-            id = bookId
+            lastLocator = locator
         )
+        val newWorkspace = currentWorkspace.copy(books = updatedBooks)
+        _workspace.value = newWorkspace
+
+        vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
     }
 
     override suspend fun deleteBook(id: String): Unit = withContext(ioDispatcher) {
-        queries.deleteBook(id)
+        // 1. Delete physical file from vault
+        vaultStorage.deleteEpub(id)
+
+        // 2. Delete cover thumbnail
+        val coverFileName = "${id.replace('/', '_').replace('\\', '_')}.jpg"
+        vaultStorage.deleteCover(coverFileName)
+
+        // 3. Remove from workspace.json
+        val updatedWorkspace = _workspace.value.copy(
+            books = _workspace.value.books.filterKeys { it != id }
+        )
+        _workspace.value = updatedWorkspace
+        vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(updatedWorkspace))
+
+        // 4. Remove from annotations.json
+        val updatedAnnotations = _annotations.value.copy(
+            bookmarks = _annotations.value.bookmarks.filterKeys { it != id },
+            highlights = _annotations.value.highlights.filterKeys { it != id }
+        )
+        _annotations.value = updatedAnnotations
+        vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updatedAnnotations))
+
+        // 5. Remove from in-memory books
+        _books.value = _books.value.filterNot { it.id == id }
     }
 
-    override fun observeBookmarks(bookId: String): Flow<List<Bookmark>> {
-        return queries.selectBookmarksForBook(bookId)
-            .asFlow()
-            .mapToList(ioDispatcher)
-            .map { list ->
-                list.map { entity ->
-                    Bookmark(
-                        id = entity.id,
-                        bookId = entity.bookId,
-                        locator = json.decodeFromString(entity.locatorJson),
-                        title = entity.title,
-                        createdTimestamp = entity.createdTimestamp
-                    )
-                }
-            }
+    override fun observeBookmarks(bookId: String): Flow<List<Bookmark>> = _annotations.map { annotations ->
+        annotations.bookmarks[bookId] ?: emptyList()
     }
 
     override suspend fun saveBookmark(bookmark: Bookmark): Unit = withContext(ioDispatcher) {
-        queries.insertBookmark(
-            id = bookmark.id,
-            bookId = bookmark.bookId,
-            locatorJson = json.encodeToString(bookmark.locator),
-            title = bookmark.title,
-            createdTimestamp = bookmark.createdTimestamp
-        )
+        val current = _annotations.value
+        val bookMap = current.bookmarks.toMutableMap()
+        val list = (bookMap[bookmark.bookId] ?: emptyList()).filterNot { it.id == bookmark.id } + bookmark
+        bookMap[bookmark.bookId] = list
+        val updated = current.copy(bookmarks = bookMap)
+        _annotations.value = updated
+        vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
     override suspend fun deleteBookmark(id: String): Unit = withContext(ioDispatcher) {
-        queries.deleteBookmark(id)
+        val current = _annotations.value
+        val bookMap = current.bookmarks.toMutableMap()
+        for ((key, list) in bookMap) {
+            if (list.any { it.id == id }) {
+                bookMap[key] = list.filterNot { it.id == id }
+                break
+            }
+        }
+        val updated = current.copy(bookmarks = bookMap)
+        _annotations.value = updated
+        vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
-    override fun observeHighlights(bookId: String): Flow<List<Highlight>> {
-        return queries.selectHighlightsForBook(bookId)
-            .asFlow()
-            .mapToList(ioDispatcher)
-            .map { list ->
-                list.map { entity ->
-                    Highlight(
-                        id = entity.id,
-                        bookId = entity.bookId,
-                        locator = json.decodeFromString(entity.locatorJson),
-                        colorHex = entity.colorHex,
-                        annotation = entity.annotation_,
-                        createdTimestamp = entity.createdTimestamp,
-                        modifiedTimestamp = entity.modifiedTimestamp
-                    )
-                }
-            }
+    override fun observeHighlights(bookId: String): Flow<List<Highlight>> = _annotations.map { annotations ->
+        annotations.highlights[bookId] ?: emptyList()
     }
 
     override suspend fun saveHighlight(highlight: Highlight): Unit = withContext(ioDispatcher) {
-        queries.insertHighlight(
-            id = highlight.id,
-            bookId = highlight.bookId,
-            locatorJson = json.encodeToString(highlight.locator),
-            colorHex = highlight.colorHex,
-            annotation = highlight.annotation,
-            createdTimestamp = highlight.createdTimestamp,
-            modifiedTimestamp = highlight.modifiedTimestamp
-        )
+        val current = _annotations.value
+        val bookMap = current.highlights.toMutableMap()
+        val list = (bookMap[highlight.bookId] ?: emptyList()).filterNot { it.id == highlight.id } + highlight
+        bookMap[highlight.bookId] = list
+        val updated = current.copy(highlights = bookMap)
+        _annotations.value = updated
+        vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
     override suspend fun deleteHighlight(id: String): Unit = withContext(ioDispatcher) {
-        queries.deleteHighlight(id)
+        val current = _annotations.value
+        val bookMap = current.highlights.toMutableMap()
+        for ((key, list) in bookMap) {
+            if (list.any { it.id == id }) {
+                bookMap[key] = list.filterNot { it.id == id }
+                break
+            }
+        }
+        val updated = current.copy(highlights = bookMap)
+        _annotations.value = updated
+        vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
-    override fun observeReaderPreferences(): Flow<ReaderPreferences> {
-        return queries.selectPreferences(PREFERENCES_KEY)
-            .asFlow()
-            .mapToOneOrNull(ioDispatcher)
-            .map { entity ->
-                entity?.let {
-                    runCatching { json.decodeFromString<ReaderPreferences>(it) }.getOrNull()
-                } ?: ReaderPreferences()
-            }
-    }
+    override fun observeReaderPreferences(): Flow<ReaderPreferences> = _preferences.asStateFlow()
 
     override suspend fun getReaderPreferences(): ReaderPreferences = withContext(ioDispatcher) {
-        queries.selectPreferences(PREFERENCES_KEY).executeAsOneOrNull()?.let {
-            runCatching { json.decodeFromString<ReaderPreferences>(it) }.getOrNull()
-        } ?: ReaderPreferences()
+        _preferences.value
     }
 
     override suspend fun saveReaderPreferences(preferences: ReaderPreferences): Unit = withContext(ioDispatcher) {
-        queries.upsertPreferences(
-            id = PREFERENCES_KEY,
-            preferencesJson = json.encodeToString(preferences)
-        )
+        _preferences.value = preferences
+        vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(preferences))
     }
 
     override suspend fun addCustomFont(font: CustomFont): Unit = withContext(ioDispatcher) {
         val current = getReaderPreferences()
-        val updated = current.customFonts.filterNot { it.name.equals(font.name, ignoreCase = true) } + font
-        saveReaderPreferences(current.copy(customFonts = updated))
+        val updatedList = current.customFonts.filterNot { it.name.equals(font.name, ignoreCase = true) } + font
+        val updated = current.copy(customFonts = updatedList)
+        saveReaderPreferences(updated)
     }
 
     override suspend fun deleteCustomFont(fontName: String): Unit = withContext(ioDispatcher) {
+        vaultStorage.deleteFont(fontName)
         val current = getReaderPreferences()
-        val updated = current.customFonts.filterNot { it.name.equals(fontName, ignoreCase = true) }
+        val updatedList = current.customFonts.filterNot { it.name.equals(fontName, ignoreCase = true) }
         val newTypography = if (current.typography.fontFamily.equals(fontName, ignoreCase = true)) {
             current.typography.copy(fontFamily = "Default")
         } else {
             current.typography
         }
-        saveReaderPreferences(current.copy(customFonts = updated, typography = newTypography))
+        val updated = current.copy(customFonts = updatedList, typography = newTypography)
+        saveReaderPreferences(updated)
     }
 
     companion object {
-        private const val PREFERENCES_KEY = "global_reader_preferences"
-    }
-
-    private fun BookEntity.toDomain(json: Json): Book {
-        return Book(
-            id = id,
-            title = title,
-            author = author,
-            description = description,
-            coverPath = coverPath,
-            format = BookFormat.valueOf(format),
-            source = json.decodeFromString(sourceData),
-            fileSizeBytes = fileSizeBytes,
-            lastReadTimestamp = lastReadTimestamp,
-            addedTimestamp = addedTimestamp,
-            totalProgression = totalProgression.toFloat(),
-            lastLocator = lastLocatorJson?.let { json.decodeFromString<Locator>(it) }
-        )
+        const val APPEARANCE_FILE = "appearance.json"
+        const val WORKSPACE_FILE = "workspace.json"
+        const val ANNOTATIONS_FILE = "annotations.json"
     }
 }

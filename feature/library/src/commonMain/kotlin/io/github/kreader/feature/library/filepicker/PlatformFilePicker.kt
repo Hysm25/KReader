@@ -5,3 +5,6 @@ import io.github.kreader.core.model.BookSource
 
 @Composable
 expect fun rememberFilePickerLauncher(onFilePicked: (BookSource) -> Unit): () -> Unit
+
+@Composable
+expect fun rememberFolderPickerLauncher(onFolderPicked: (String) -> Unit): () -> Unit

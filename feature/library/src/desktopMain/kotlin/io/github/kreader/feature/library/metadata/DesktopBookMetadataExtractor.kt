@@ -111,8 +111,9 @@ class DesktopBookMetadataExtractor(
             ?: zip.getEntry(relativeHref)
             ?: return null
 
+        val safeBookId = bookId.replace('/', '_').replace('\\', '_')
         val ext = File(coverEntry.name).extension.ifBlank { "jpg" }
-        val targetCoverFile = File(coversDir, "${bookId}.$ext")
+        val targetCoverFile = File(coversDir, "${safeBookId}.$ext")
         zip.getInputStream(coverEntry).use { inStream ->
             targetCoverFile.outputStream().use { outStream ->
                 inStream.copyTo(outStream)

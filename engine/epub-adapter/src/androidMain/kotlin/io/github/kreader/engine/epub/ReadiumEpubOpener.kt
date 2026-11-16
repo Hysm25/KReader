@@ -7,9 +7,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.http.DefaultHttpClient
+import org.readium.r2.shared.util.toAbsoluteUrl
+import org.readium.r2.shared.util.toUrl
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.epub.EpubParser
 import java.io.File
@@ -25,28 +29,19 @@ class ReadiumEpubOpener(private val context: Context) {
 
     suspend fun open(source: BookSource, bookId: String): Result<Publication> = withContext(Dispatchers.IO) {
         runCatching {
-            val file = when (source) {
-                is BookSource.FilePath -> File(source.path)
+            val url: AbsoluteUrl = when (source) {
+                is BookSource.FilePath -> File(source.path).toUrl()
                 is BookSource.ContentUri -> {
-                    val booksDir = File(context.filesDir, "books").apply { mkdirs() }
-                    val localFile = File(booksDir, "${bookId}.epub")
-                    if (!localFile.exists() || localFile.length() == 0L) {
-                        context.contentResolver.openInputStream(Uri.parse(source.uriString))?.use { input ->
-                            localFile.outputStream().use { output ->
-                                input.copyTo(output)
-                            }
-                        } ?: throw IllegalStateException("Cannot open ContentUri: ${source.uriString}")
-                    }
-                    localFile
+                    val uri = Uri.parse(source.uriString)
+                    uri.toAbsoluteUrl()
+                        ?: AbsoluteUrl(source.uriString)
+                        ?: (Url(source.uriString) as? AbsoluteUrl)
+                        ?: throw IllegalStateException("Cannot resolve Readium URL for ${source.uriString}")
                 }
                 else -> throw IllegalArgumentException("Unsupported BookSource type: $source")
             }
 
-            if (!file.exists() || file.length() == 0L) {
-                throw IllegalStateException("EPUB file does not exist or is empty at ${file.absolutePath}")
-            }
-
-            val asset = assetRetriever.retrieve(file).getOrElse { error ->
+            val asset = assetRetriever.retrieve(url).getOrElse { error ->
                 throw IllegalStateException("Failed to retrieve EPUB asset: ${error.message}")
             }
 
