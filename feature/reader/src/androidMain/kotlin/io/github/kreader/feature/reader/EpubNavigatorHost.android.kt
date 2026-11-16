@@ -58,7 +58,6 @@ import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
-import org.readium.r2.shared.publication.services.positions.positions
 import org.readium.r2.shared.util.Try
 import java.io.File
 import java.util.Collections
@@ -180,16 +179,8 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // 5. Cache positions and wire controller navigation commands & search
-    var cachedPositions by remember(book.id) { mutableStateOf<List<org.readium.r2.shared.publication.Locator>>(emptyList()) }
-    LaunchedEffect(publication) {
-        val pub = publication ?: return@LaunchedEffect
-        runCatching {
-            cachedPositions = pub.positions()
-        }
-    }
-
-    DisposableEffect(currentFragment, publication, isNavigatorReady, cachedPositions) {
+    // 5. Wire controller navigation commands & search
+    DisposableEffect(currentFragment, publication, isNavigatorReady) {
         controller.goTo = { locator ->
             val frag = currentFragment
             if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
@@ -212,28 +203,24 @@ actual fun EpubNavigatorHost(
             val frag = currentFragment
             val pub = publication
             if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null && pub != null) {
-                val positions = cachedPositions
-                val targetLocator: org.readium.r2.shared.publication.Locator? = if (positions.isNotEmpty()) {
-                    positions.minByOrNull { loc ->
-                        val locProg = loc.locations.totalProgression?.toFloat()
-                            ?: loc.locations.position?.let { it.toFloat() / positions.size }
-                            ?: 0f
-                        kotlin.math.abs(locProg - targetProg)
-                    }
-                } else if (pub.readingOrder.isNotEmpty()) {
+                if (pub.readingOrder.isNotEmpty()) {
                     val order = pub.readingOrder
                     val index = (targetProg * (order.size - 1)).toInt().coerceIn(0, order.size - 1)
                     val link = order[index]
                     val chapterProg = ((targetProg * order.size) - index).coerceIn(0f, 1f).toDouble()
-                    pub.locatorFromLink(link)?.copy(
+                    val targetLocator = pub.locatorFromLink(link)?.copy(
+                        locations = org.readium.r2.shared.publication.Locator.Locations(
+                            progression = chapterProg,
+                            totalProgression = targetProg.toDouble()
+                        )
+                    ) ?: org.readium.r2.shared.publication.Locator(
+                        href = link.href,
+                        mediaType = link.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY,
                         locations = org.readium.r2.shared.publication.Locator.Locations(
                             progression = chapterProg,
                             totalProgression = targetProg.toDouble()
                         )
                     )
-                } else null
-
-                if (targetLocator != null) {
                     frag.go(targetLocator, animated = false)
                 }
             }

@@ -238,23 +238,6 @@ fun BookItemCard(
                     }
                 }
             }
-                        DropdownMenuItem(
-                            text = { Text("Delete Book", color = MaterialTheme.colorScheme.error) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Delete,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            },
-                            onClick = {
-                                showMenu = false
-                                showDeleteConfirmDialog = true
-                            }
-                        )
-                    }
-                }
-            }
 
             Column(modifier = Modifier.padding(10.dp)) {
                 Text(
