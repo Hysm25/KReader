@@ -60,6 +60,7 @@ import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.locateProgression
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.Try
@@ -179,14 +180,13 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // One-shot realignment once navigator is ready to resolve initial padding overlap glitch & inject full-width styles
+    // One-shot realignment once navigator is ready to resolve initial padding overlap glitch
     LaunchedEffect(isNavigatorReady) {
         if (isNavigatorReady) {
             val frag = currentFragment ?: return@LaunchedEffect
             kotlinx.coroutines.delay(80)
             runCatching {
                 if (frag.isAdded && frag.context != null) {
-                    injectFullWidthStyle(frag)
                     val loc = frag.currentLocator.value
                     frag.go(loc, animated = false)
                     frag.view?.requestLayout()
@@ -201,7 +201,6 @@ actual fun EpubNavigatorHost(
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
             kotlinx.coroutines.delay(60)
             runCatching {
-                injectFullWidthStyle(frag)
                 val loc = frag.currentLocator.value
                 frag.go(loc, animated = false)
             }
@@ -264,23 +263,22 @@ actual fun EpubNavigatorHost(
             val frag = currentFragment
             val pub = publication
             if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null && pub != null) {
-                if (pub.readingOrder.isNotEmpty()) {
-                    val order = pub.readingOrder
-                    val index = (targetProg * (order.size - 1)).toInt().coerceIn(0, order.size - 1)
-                    val link = order[index]
-                    val chapterProg = ((targetProg * order.size) - index).coerceIn(0f, 1f).toDouble()
-                    val baseLocator = pub.locatorFromLink(link)
-                        ?: Locator(
-                            href = link.href.toString(),
-                            type = link.mediaType?.toString() ?: "application/xhtml+xml"
-                        ).toReadium()
-                    val targetLocator = baseLocator.copy(
-                        locations = org.readium.r2.shared.publication.Locator.Locations(
-                            progression = chapterProg,
-                            totalProgression = targetProg.toDouble()
-                        )
-                    )
-                    frag.go(targetLocator, animated = false)
+                scope.launch {
+                    val targetDouble = targetProg.toDouble().coerceIn(0.0, 1.0)
+                    val readiumLocator = runCatching {
+                        pub.locateProgression(targetDouble)
+                    }.getOrNull()
+
+                    if (readiumLocator != null) {
+                        frag.go(readiumLocator, animated = false)
+                    } else if (pub.readingOrder.isNotEmpty()) {
+                        val order = pub.readingOrder
+                        val index = (targetDouble * (order.size - 1)).toInt().coerceIn(0, order.size - 1)
+                        val link = order[index]
+                        val baseLocator = pub.locatorFromLink(link)
+                            ?: link.toLocator()
+                        frag.go(baseLocator, animated = false)
+                    }
                 }
             }
         }
@@ -567,7 +565,6 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
-                            injectFullWidthStyle(frag)
                             val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
                             if (selectedFont != null) {
                                 injectFontFace(frag, selectedFont)
@@ -589,28 +586,6 @@ actual fun EpubNavigatorHost(
 }
 
 private val fontBase64Cache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
-
-private suspend fun injectFullWidthStyle(frag: EpubNavigatorFragment) {
-    runCatching {
-        val js = """
-            (function() {
-                var el = document.getElementById('kreader-full-width');
-                if (!el) {
-                    el = document.createElement('style');
-                    el.id = 'kreader-full-width';
-                    (document.head || document.documentElement).appendChild(el);
-                }
-                el.textContent = 'html, body, :root { --USER__maxLineLength: none !important; --RS__maxLineLength: none !important; max-width: 100% !important; }';
-            })();
-        """.trimIndent()
-        frag.evaluateJavascript(js)
-        frag.view?.let { root ->
-            findWebViews(root).forEach { wv ->
-                wv.evaluateJavascript(js, null)
-            }
-        }
-    }
-}
 
 private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont) {
     runCatching {

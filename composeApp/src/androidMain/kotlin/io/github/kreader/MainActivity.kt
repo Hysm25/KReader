@@ -5,6 +5,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.Surface
+import android.view.SurfaceControl
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,6 +21,12 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureHighRefreshRateAndHardwareAcceleration()
+        window.decorView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                applyHighRefreshRateSurfaceTransaction()
+            }
+            override fun onViewDetachedFromWindow(v: View) {}
+        })
         enableEdgeToEdge()
         handleIncomingIntent(intent)
         setContent {
@@ -28,6 +37,7 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         configureHighRefreshRateAndHardwareAcceleration()
+        applyHighRefreshRateSurfaceTransaction()
     }
 
     private fun configureHighRefreshRateAndHardwareAcceleration() {
@@ -63,24 +73,59 @@ class MainActivity : FragmentActivity() {
                 }
                 window.attributes = params
 
-                // Android 12+ (API 31+): Lock frame rate via reflection on rootSurfaceControl if supported
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val targetRate = bestMode?.refreshRate ?: 120f
-                    window.decorView.post {
+                // Android 14+ (API 34+): Boost frame rate on touch interactions
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    runCatching {
+                        window.setFrameRateBoostOnTouchEnabled(true)
+                    }
+                }
+
+                // Apply surface transaction
+                applyHighRefreshRateSurfaceTransaction(bestMode?.refreshRate ?: 120f)
+            }
+        }
+    }
+
+    private fun applyHighRefreshRateSurfaceTransaction(targetRate: Float = 120f) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            window.decorView.post {
+                runCatching {
+                    val decor = window.decorView
+                    val viewRoot = try {
+                        val method = decor.javaClass.getMethod("getViewRootImpl")
+                        method.invoke(decor)
+                    } catch (_: Throwable) { null }
+
+                    val sc = if (viewRoot != null) {
                         try {
-                            val rsc = window.decorView.rootSurfaceControl
-                            if (rsc != null) {
-                                val method = rsc.javaClass.getMethod(
-                                    "setFrameRate",
-                                    Float::class.javaPrimitiveType,
-                                    Int::class.javaPrimitiveType,
-                                    Int::class.javaPrimitiveType
-                                )
-                                method.invoke(rsc, targetRate, 0, 1)
-                            }
-                        } catch (_: Throwable) {
-                            // Ignore if OEM does not expose setFrameRate on rootSurfaceControl
-                        }
+                            val method = viewRoot.javaClass.getMethod("getSurfaceControl")
+                            method.invoke(viewRoot) as? SurfaceControl
+                        } catch (_: Throwable) { null }
+                    } else null
+
+                    if (sc != null && sc.isValid) {
+                        SurfaceControl.Transaction()
+                            .setFrameRate(
+                                sc,
+                                targetRate,
+                                Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                                Surface.CHANGE_FRAME_RATE_ALWAYS
+                            )
+                            .apply()
+                    }
+
+                    // Also try setFrameRate on rootSurfaceControl if exposed by OEM
+                    val rsc = decor.rootSurfaceControl
+                    if (rsc != null) {
+                        try {
+                            val method = rsc.javaClass.getMethod(
+                                "setFrameRate",
+                                Float::class.javaPrimitiveType,
+                                Int::class.javaPrimitiveType,
+                                Int::class.javaPrimitiveType
+                            )
+                            method.invoke(rsc, targetRate, 0, 1)
+                        } catch (_: Throwable) {}
                     }
                 }
             }

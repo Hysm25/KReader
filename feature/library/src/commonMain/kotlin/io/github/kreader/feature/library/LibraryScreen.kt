@@ -75,6 +75,7 @@ fun LibraryScreen(
     onChangeVaultFolder: () -> Unit = {},
     onDeleteBook: (Book) -> Unit,
     onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
+    onResetBookProgress: (Book) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit,
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
     modifier: Modifier = Modifier
@@ -438,6 +439,7 @@ fun LibraryScreen(
                                 }
                             },
                             onDeleteBook = onDeleteBook,
+                            onResetProgress = onResetBookProgress,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

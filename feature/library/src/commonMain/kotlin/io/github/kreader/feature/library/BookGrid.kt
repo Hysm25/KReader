@@ -26,8 +26,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,6 +69,7 @@ fun BookGrid(
     onBookClick: (Book) -> Unit,
     onBookLongClick: (Book) -> Unit = {},
     onDeleteBook: (Book) -> Unit,
+    onResetProgress: (Book) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyVerticalGrid(
@@ -92,7 +95,8 @@ fun BookGrid(
                 onLongClick = {
                     onBookLongClick(book)
                 },
-                onDelete = { onDeleteBook(book) }
+                onDelete = { onDeleteBook(book) },
+                onResetProgress = { onResetProgress(book) }
             )
         }
     }
@@ -107,9 +111,11 @@ fun BookItemCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onDelete: () -> Unit,
+    onResetProgress: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showInfoDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     Card(
@@ -274,24 +280,53 @@ fun BookItemCard(
                             }
                         }
 
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Delete Book", color = MaterialTheme.colorScheme.error) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Delete,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    showDeleteConfirmDialog = true
-                                }
-                            )
+                        MaterialTheme(shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp))) {
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false },
+                                modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Book Info") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Info,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showInfoDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Reset Progress") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Refresh,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        onResetProgress()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete Book", color = MaterialTheme.colorScheme.error) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Delete,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showDeleteConfirmDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -339,6 +374,93 @@ fun BookItemCard(
                 }
             }
         }
+    }
+
+    if (showInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.MenuBook,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text("Book Details", style = MaterialTheme.typography.titleLarge) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "Title",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = book.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    if (!book.author.isNullOrBlank()) {
+                        Column {
+                            Text(
+                                text = "Author",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = book.author.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                    Column {
+                        Text(
+                            text = "Format",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = book.format.name,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "File / Vault ID",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = book.id,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Reading Progress",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${(book.totalProgression * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 
     if (showDeleteConfirmDialog) {

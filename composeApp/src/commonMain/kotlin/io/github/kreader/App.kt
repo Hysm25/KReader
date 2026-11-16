@@ -71,6 +71,7 @@ fun App() {
                     onChangeVaultFolder = { /* handled inside LibraryScreen via folderPickerLauncher */ },
                     onDeleteBook = { book -> libraryViewModel.deleteBook(book) },
                     onDeleteBooks = { books -> libraryViewModel.deleteBooks(books) },
+                    onResetBookProgress = { book -> libraryViewModel.resetBookProgress(book) },
                     onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
                     onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) }
                 )
@@ -121,6 +122,17 @@ fun App() {
                     onNextPage = {},
                     onSeek = { targetProgression ->
                         readerState = readerState.copy(totalProgression = targetProgression)
+                        scope.launch {
+                            val now = Clock.System.now().toEpochMilliseconds()
+                            val loc = readerState.currentLocator ?: bookToRead.lastLocator ?: Locator(href = "", type = "application/epub+zip")
+                            val updatedLoc = loc.copy(
+                                locations = loc.locations.copy(
+                                    totalProgression = targetProgression,
+                                    progression = targetProgression
+                                )
+                            )
+                            bookRepository.updateProgress(bookToRead.id, targetProgression, updatedLoc, now)
+                        }
                     },
                     onTocClick = {
                         readerState = readerState.copy(isNavigationDrawerOpen = true, isControlsVisible = false)

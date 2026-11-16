@@ -183,6 +183,15 @@ class LibraryViewModel(
         }
     }
 
+    fun resetBookProgress(book: Book) {
+        scope.launch {
+            runCatching {
+                val initialLoc = io.github.kreader.core.model.Locator.initial("content.xhtml", "application/epub+zip")
+                bookRepository.updateProgress(book.id, 0f, initialLoc, Clock.System.now().toEpochMilliseconds())
+            }
+        }
+    }
+
     private fun filterAndSortBooks(
         books: List<Book>,
         query: String,

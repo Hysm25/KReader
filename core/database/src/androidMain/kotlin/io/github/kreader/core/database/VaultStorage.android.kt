@@ -66,19 +66,23 @@ actual class VaultStorage(private val context: Context) {
         }.getOrNull()
     }
 
+    private val subDirMutex = Mutex()
+
     private fun getOrCreateKReaderDir(): DocumentFile? {
         val root = getRootDoc() ?: return null
         return root.findFile(".kreader") ?: root.createDirectory(".kreader")
     }
 
-    private fun getOrCreateSubDir(dirName: String): DocumentFile? {
-        val kreaderDir = getOrCreateKReaderDir() ?: return null
-        return kreaderDir.findFile(dirName) ?: kreaderDir.createDirectory(dirName)
+    private suspend fun getOrCreateSubDir(dirName: String): DocumentFile? = subDirMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val kreaderDir = getOrCreateKReaderDir() ?: return@withContext null
+            kreaderDir.findFile(dirName) ?: kreaderDir.createDirectory(dirName)
+        }
     }
 
     private fun cleanupStrayDuplicates(kreaderDir: DocumentFile) {
         runCatching {
-            val strayPattern = Regex(""".* \(\d+\)\.json$""")
+            val strayPattern = Regex("""^.* \(\d+\)(\.json)?$""")
             for (file in kreaderDir.listFiles()) {
                 val name = file.name.orEmpty()
                 if (strayPattern.matches(name)) {
