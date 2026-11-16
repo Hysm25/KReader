@@ -208,14 +208,12 @@ actual fun EpubNavigatorHost(
                     val index = (targetProg * (order.size - 1)).toInt().coerceIn(0, order.size - 1)
                     val link = order[index]
                     val chapterProg = ((targetProg * order.size) - index).coerceIn(0f, 1f).toDouble()
-                    val targetLocator = pub.locatorFromLink(link)?.copy(
-                        locations = org.readium.r2.shared.publication.Locator.Locations(
-                            progression = chapterProg,
-                            totalProgression = targetProg.toDouble()
-                        )
-                    ) ?: org.readium.r2.shared.publication.Locator(
-                        href = link.href,
-                        mediaType = link.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY,
+                    val baseLocator = pub.locatorFromLink(link)
+                        ?: Locator(
+                            href = link.href.toString(),
+                            type = link.mediaType?.toString() ?: "application/xhtml+xml"
+                        ).toReadium()
+                    val targetLocator = baseLocator.copy(
                         locations = org.readium.r2.shared.publication.Locator.Locations(
                             progression = chapterProg,
                             totalProgression = targetProg.toDouble()
