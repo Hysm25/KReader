@@ -57,6 +57,7 @@ fun App() {
                     onBookClick = { book -> selectedBook = book },
                     onImportBook = { source -> libraryViewModel.importBook(source) },
                     onDeleteBook = { book -> libraryViewModel.deleteBook(book) },
+                    onDeleteBooks = { books -> libraryViewModel.deleteBooks(books) },
                     onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
                     onFilterChanged = { filter -> libraryViewModel.onFilterChanged(filter) },
                     onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) }
@@ -65,7 +66,7 @@ fun App() {
                 val bookmarks by bookRepository.observeBookmarks(bookToRead.id).collectAsState(emptyList())
                 val highlights by bookRepository.observeHighlights(bookToRead.id).collectAsState(emptyList())
 
-                var readerState by remember(bookToRead.id, persistedPreferences) {
+                var readerState by remember(bookToRead.id) {
                     val initialIsRtl = isRtlText(bookToRead.title) ||
                         isRtlText(bookToRead.author.orEmpty()) ||
                         isRtlText(bookToRead.description.orEmpty())

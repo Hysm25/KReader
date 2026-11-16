@@ -18,7 +18,11 @@ import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -34,7 +38,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.feature.library.filepicker.rememberFilePickerLauncher
+import io.github.kreader.feature.library.util.rememberBookShareLauncher
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +64,7 @@ fun LibraryScreen(
     onBookClick: (Book) -> Unit,
     onImportBook: (BookSource) -> Unit,
     onDeleteBook: (Book) -> Unit,
+    onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
     onSearchQueryChanged: (String) -> Unit,
     onFilterChanged: (BookFilter) -> Unit = {},
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
@@ -65,9 +73,18 @@ fun LibraryScreen(
     val filePickerLauncher = rememberFilePickerLauncher { source ->
         onImportBook(source)
     }
+    val bookShareLauncher = rememberBookShareLauncher()
+
+    var selectedBookIds by remember { mutableStateOf(emptySet<String>()) }
+    var showMultiDeleteDialog by remember { mutableStateOf(false) }
+    val isSelectionMode = selectedBookIds.isNotEmpty()
 
     var isSearchActive by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    BackHandler(enabled = isSelectionMode) {
+        selectedBookIds = emptySet()
+    }
 
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { error ->
@@ -79,72 +96,137 @@ fun LibraryScreen(
         modifier = modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    if (isSearchActive) {
-                        OutlinedTextField(
-                            value = state.searchQuery,
-                            onValueChange = onSearchQueryChanged,
-                            placeholder = { Text("Search title or author...") },
-                            singleLine = true,
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Search,
-                                    contentDescription = null
-                                )
-                            },
-                            trailingIcon = {
-                                if (state.searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { onSearchQueryChanged("") }) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Close,
-                                            contentDescription = "Clear search"
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(end = 8.dp)
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "${selectedBookIds.size} selected",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
-                    } else {
-                        Column {
-                            Text("KReader", fontWeight = FontWeight.Bold)
-                            if (state.books.isNotEmpty()) {
-                                Text(
-                                    text = "${state.books.size} ${if (state.books.size == 1) "book" else "books"}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedBookIds = emptySet() }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Clear selection"
+                            )
+                        }
+                    },
+                    actions = {
+                        val allSelected = state.displayBooks.isNotEmpty() && selectedBookIds.size >= state.displayBooks.size
+                        IconButton(
+                            onClick = {
+                                selectedBookIds = if (allSelected) {
+                                    emptySet()
+                                } else {
+                                    state.displayBooks.map { it.id }.toSet()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.SelectAll,
+                                contentDescription = if (allSelected) "Deselect all" else "Select all"
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                val selectedBooks = state.books.filter { selectedBookIds.contains(it.id) }
+                                bookShareLauncher(selectedBooks)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Share,
+                                contentDescription = "Share selected books"
+                            )
+                        }
+                        IconButton(
+                            onClick = { showMultiDeleteDialog = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = "Delete selected books",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        if (isSearchActive) {
+                            OutlinedTextField(
+                                value = state.searchQuery,
+                                onValueChange = onSearchQueryChanged,
+                                placeholder = { Text("Search title or author...") },
+                                singleLine = true,
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Search,
+                                        contentDescription = null
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (state.searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { onSearchQueryChanged("") }) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Close,
+                                                contentDescription = "Clear search"
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(end = 8.dp)
+                            )
+                        } else {
+                            Column {
+                                Text("KReader", fontWeight = FontWeight.Bold)
+                                if (state.books.isNotEmpty()) {
+                                    Text(
+                                        text = "${state.books.size} ${if (state.books.size == 1) "book" else "books"}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            isSearchActive = !isSearchActive
-                            if (!isSearchActive) onSearchQueryChanged("")
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                isSearchActive = !isSearchActive
+                                if (!isSearchActive) onSearchQueryChanged("")
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isSearchActive) Icons.Rounded.Close else Icons.Rounded.Search,
+                                contentDescription = if (isSearchActive) "Close search" else "Search library"
+                            )
                         }
-                    ) {
-                        Icon(
-                            imageVector = if (isSearchActive) Icons.Rounded.Close else Icons.Rounded.Search,
-                            contentDescription = if (isSearchActive) "Close search" else "Search library"
-                        )
                     }
-                }
-            )
+                )
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = filePickerLauncher,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = "Import book"
-                )
+            if (!isSelectionMode) {
+                FloatingActionButton(
+                    onClick = filePickerLauncher,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = "Import book"
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -284,7 +366,26 @@ fun LibraryScreen(
                     else -> {
                         BookGrid(
                             books = state.displayBooks,
-                            onBookClick = onBookClick,
+                            selectedBookIds = selectedBookIds,
+                            isSelectionMode = isSelectionMode,
+                            onBookClick = { book ->
+                                if (isSelectionMode) {
+                                    selectedBookIds = if (selectedBookIds.contains(book.id)) {
+                                        selectedBookIds - book.id
+                                    } else {
+                                        selectedBookIds + book.id
+                                    }
+                                } else {
+                                    onBookClick(book)
+                                }
+                            },
+                            onBookLongClick = { book ->
+                                selectedBookIds = if (selectedBookIds.contains(book.id)) {
+                                    selectedBookIds - book.id
+                                } else {
+                                    selectedBookIds + book.id
+                                }
+                            },
                             onDeleteBook = onDeleteBook
                         )
                     }
@@ -299,5 +400,33 @@ fun LibraryScreen(
                 }
             }
         }
+    }
+
+    if (showMultiDeleteDialog) {
+        val count = selectedBookIds.size
+        AlertDialog(
+            onDismissRequest = { showMultiDeleteDialog = false },
+            title = { Text("Delete Books") },
+            text = {
+                Text("Are you sure you want to remove $count selected ${if (count == 1) "book" else "books"} and all cached data from your library?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMultiDeleteDialog = false
+                        val booksToDelete = state.books.filter { selectedBookIds.contains(it.id) }
+                        onDeleteBooks(booksToDelete)
+                        selectedBookIds = emptySet()
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultiDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

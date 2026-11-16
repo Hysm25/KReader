@@ -3,6 +3,7 @@ package io.github.kreader.feature.library
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,8 +20,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,7 +54,10 @@ import io.github.kreader.feature.library.ui.rememberCoverPainter
 @Composable
 fun BookGrid(
     books: List<Book>,
+    selectedBookIds: Set<String> = emptySet(),
+    isSelectionMode: Boolean = false,
     onBookClick: (Book) -> Unit,
+    onBookLongClick: (Book) -> Unit = {},
     onDeleteBook: (Book) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,9 +69,21 @@ fun BookGrid(
         modifier = modifier.fillMaxSize()
     ) {
         items(books, key = { it.id }) { book ->
+            val isSelected = selectedBookIds.contains(book.id)
             BookItemCard(
                 book = book,
-                onClick = { onBookClick(book) },
+                isSelected = isSelected,
+                isSelectionMode = isSelectionMode,
+                onClick = {
+                    if (isSelectionMode) {
+                        onBookClick(book)
+                    } else {
+                        onBookClick(book)
+                    }
+                },
+                onLongClick = {
+                    onBookLongClick(book)
+                },
                 onDelete = { onDeleteBook(book) }
             )
         }
@@ -76,7 +94,10 @@ fun BookGrid(
 @Composable
 fun BookItemCard(
     book: Book,
+    isSelected: Boolean = false,
+    isSelectionMode: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -87,12 +108,24 @@ fun BookItemCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
+            .border(
+                width = if (isSelected) 2.dp else 0.dp,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                shape = RoundedCornerShape(8.dp)
+            )
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = { showMenu = true }
+                onLongClick = onLongClick
             ),
         shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 6.dp else 2.dp)
     ) {
         Column {
             Box(
@@ -139,22 +172,72 @@ fun BookItemCard(
                     }
                 }
 
-                // Overflow menu button on top-right of cover
-                Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.size(32.dp)
+                // Selection checkmark indicator on top-left of cover
+                if (isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(28.dp)
+                            .background(
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(14.dp)
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = "Options"
-                        )
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = "Selected",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.RadioButtonUnchecked,
+                                contentDescription = "Not selected",
+                                tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
+                }
 
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
+                // Overflow menu button on top-right of cover (hidden during selection mode)
+                if (!isSelectionMode) {
+                    Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = "Options"
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Delete Book", color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteConfirmDialog = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
                         DropdownMenuItem(
                             text = { Text("Delete Book", color = MaterialTheme.colorScheme.error) },
                             leadingIcon = {

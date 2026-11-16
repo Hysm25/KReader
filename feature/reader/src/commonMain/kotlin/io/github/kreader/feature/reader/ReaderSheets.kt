@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -74,25 +76,28 @@ import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
 
 object ReaderThemePresets {
+    val System = ReaderTheme(
+        mode = ThemeMode.SYSTEM
+    )
     val Light = ReaderTheme(
         mode = ThemeMode.LIGHT,
         backgroundColorHex = "#FFFFFF",
-        textColorHex = "#121212"
+        textColorHex = "#1A1A1A"
     )
     val Sepia = ReaderTheme(
         mode = ThemeMode.SEPIA,
         backgroundColorHex = "#FBF0D9",
-        textColorHex = "#5F4B32"
+        textColorHex = "#3B2F2F"
     )
     val Dark = ReaderTheme(
         mode = ThemeMode.DARK,
-        backgroundColorHex = "#1E1E1E",
-        textColorHex = "#E8E8E8"
+        backgroundColorHex = "#121212",
+        textColorHex = "#E6E6E6"
     )
     val Amoled = ReaderTheme(
         mode = ThemeMode.DARK,
         backgroundColorHex = "#000000",
-        textColorHex = "#FFFFFF"
+        textColorHex = "#DCDCDC"
     )
 }
 
@@ -811,6 +816,7 @@ fun ReaderSettingsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
+                    .verticalScroll(rememberScrollState())
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -834,7 +840,7 @@ fun ReaderSettingsSheet(
 
                 HorizontalDivider()
 
-                // Theme Presets: Light, Sepia, Dark, AMOLED
+                // Theme Presets: System, Light, Sepia, Dark, AMOLED
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "Theme",
@@ -846,30 +852,37 @@ fun ReaderSettingsSheet(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         ThemeOption(
+                            label = "System",
+                            bgColor = MaterialTheme.colorScheme.surfaceVariant,
+                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            isSelected = theme.mode == ThemeMode.SYSTEM,
+                            onClick = { onThemeChange(ReaderThemePresets.System) }
+                        )
+                        ThemeOption(
                             label = "Light",
                             bgColor = Color(0xFFFFFFFF),
-                            textColor = Color(0xFF111111),
+                            textColor = Color(0xFF1A1A1A),
                             isSelected = theme.mode == ThemeMode.LIGHT,
                             onClick = { onThemeChange(ReaderThemePresets.Light) }
                         )
                         ThemeOption(
                             label = "Sepia",
                             bgColor = Color(0xFFFBF0D9),
-                            textColor = Color(0xFF5F4B32),
+                            textColor = Color(0xFF3B2F2F),
                             isSelected = theme.mode == ThemeMode.SEPIA,
                             onClick = { onThemeChange(ReaderThemePresets.Sepia) }
                         )
                         ThemeOption(
                             label = "Dark",
-                            bgColor = Color(0xFF1E1E1E),
-                            textColor = Color(0xFFE8E8E8),
-                            isSelected = theme.mode == ThemeMode.DARK && theme.backgroundColorHex != "#000000",
+                            bgColor = Color(0xFF121212),
+                            textColor = Color(0xFFE6E6E6),
+                            isSelected = theme.mode == ThemeMode.DARK && !theme.backgroundColorHex.equals("#000000", ignoreCase = true),
                             onClick = { onThemeChange(ReaderThemePresets.Dark) }
                         )
                         ThemeOption(
                             label = "AMOLED",
                             bgColor = Color(0xFF000000),
-                            textColor = Color(0xFFFFFFFF),
+                            textColor = Color(0xFFDCDCDC),
                             isSelected = theme.mode == ThemeMode.DARK && theme.backgroundColorHex.equals("#000000", ignoreCase = true),
                             onClick = { onThemeChange(ReaderThemePresets.Amoled) }
                         )
@@ -1036,6 +1049,58 @@ fun ReaderSettingsSheet(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                }
+
+                // Horizontal Page Margin / Padding Slider
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Horizontal Margin (الهوامش الجانبية)",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${typography.paddingHorizontal} dp",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                    Slider(
+                        value = typography.paddingHorizontal.toFloat(),
+                        onValueChange = { onTypographyChange(typography.copy(paddingHorizontal = it.toInt())) },
+                        valueRange = 0f..48f,
+                        steps = 11,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // Vertical Page Margin / Padding Slider
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Vertical Margin (الهوامش العلوية والسفلية)",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${typography.paddingVertical} dp",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                    Slider(
+                        value = typography.paddingVertical.toFloat(),
+                        onValueChange = { onTypographyChange(typography.copy(paddingVertical = it.toInt())) },
+                        valueRange = 0f..32f,
+                        steps = 7,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }

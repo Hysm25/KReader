@@ -114,6 +114,12 @@ fun ReaderBottomBar(
     isRtl: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    var sliderValue by remember(progression) { mutableStateOf(progression) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    val currentDisplayProg = if (isDragging) sliderValue else progression
+    val displayPageInfo = "${(currentDisplayProg * 100).toInt()}%"
+
     val layoutDir = if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
         Column(
@@ -124,8 +130,15 @@ fun ReaderBottomBar(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Slider(
-                value = progression.coerceIn(0f, 1f),
-                onValueChange = onSeek,
+                value = currentDisplayProg.coerceIn(0f, 1f),
+                onValueChange = {
+                    isDragging = true
+                    sliderValue = it
+                },
+                onValueChangeFinished = {
+                    isDragging = false
+                    onSeek(sliderValue)
+                },
                 valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -157,7 +170,7 @@ fun ReaderBottomBar(
                 }
 
                 Text(
-                    text = pageInfo,
+                    text = displayPageInfo,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

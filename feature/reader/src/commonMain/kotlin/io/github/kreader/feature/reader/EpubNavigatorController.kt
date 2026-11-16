@@ -8,6 +8,7 @@ class EpubNavigatorController {
     var goTo: ((Locator) -> Unit)? = null
     var goNext: (() -> Unit)? = null
     var goPrevious: (() -> Unit)? = null
+    var seekToProgression: ((Float) -> Unit)? = null
     var search: (suspend (String) -> List<Locator>)? = null
     var clearSelection: (() -> Unit)? = null
 }

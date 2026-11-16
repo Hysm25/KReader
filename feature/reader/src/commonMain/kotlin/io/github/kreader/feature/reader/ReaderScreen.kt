@@ -89,9 +89,22 @@ fun ReaderScreen(
         ThemeMode.DARK -> if (state.theme.backgroundColorHex.equals("#000000", ignoreCase = true)) {
             Color(0xFF000000)
         } else {
-            Color(0xFF1E1E1E)
+            Color(0xFF121212)
         }
         ThemeMode.SYSTEM -> MaterialTheme.colorScheme.background
+    }
+
+    // Android system back button management: close dialogs/sheets/drawers/controls first, then back to library
+    BackHandler(enabled = true) {
+        when {
+            state.selectedHighlightForDetail != null -> onDismissHighlightDetail()
+            state.pendingNoteLocator != null -> onDismissAddNoteDialog()
+            state.isSettingsOpen -> onDismissSettings()
+            state.isSearchOpen -> onDismissSearch()
+            state.isNavigationDrawerOpen -> onDismissNavigationDrawer()
+            state.isControlsVisible -> onToggleControls()
+            else -> onBackClick()
+        }
     }
 
     val executeSearch: () -> Unit = {
@@ -136,12 +149,15 @@ fun ReaderScreen(
         ) {
             val book = state.book
             if (book != null) {
-                // Background Layer: Fixed viewport size with safe drawing insets & clean page margins
+                // Background Layer: Fixed viewport size with safe drawing insets & dynamic page margins
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(
+                            horizontal = state.typography.paddingHorizontal.dp,
+                            vertical = state.typography.paddingVertical.dp
+                        )
                 ) {
                     // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
                     EpubNavigatorHost(
@@ -259,6 +275,7 @@ fun ReaderScreen(
                     pageInfo = pageInfo,
                     isRtl = state.isRtl,
                     onSeek = { targetProg ->
+                        epubController.seekToProgression?.invoke(targetProg)
                         onSeek(targetProg)
                     },
                     onPreviousPage = {

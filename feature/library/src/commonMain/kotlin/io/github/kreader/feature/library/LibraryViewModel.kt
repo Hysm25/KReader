@@ -120,6 +120,24 @@ class LibraryViewModel(
         }
     }
 
+    fun deleteBooks(books: List<Book>) {
+        scope.launch {
+            for (book in books) {
+                runCatching {
+                    val cover = book.coverPath
+                    if (!cover.isNullOrBlank()) {
+                        deleteLocalFile(cover)
+                    }
+                    val src = book.source
+                    if (src is BookSource.FilePath) {
+                        deleteLocalFile(src.path)
+                    }
+                    bookRepository.deleteBook(book.id)
+                }
+            }
+        }
+    }
+
     private fun filterAndSortBooks(
         books: List<Book>,
         query: String,
