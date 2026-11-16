@@ -159,8 +159,15 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
                     .find(opfXml)?.groupValues?.get(1)?.cleanXml()?.trim()
                     ?.ifBlank { null }
 
+                val lang = Regex("""<dc:language[^>]*>(.*?)</dc:language>""", RegexOption.DOT_MATCHES_ALL)
+                    .find(opfXml)?.groupValues?.get(1)?.cleanXml()?.trim().orEmpty()
+                val isArabic = lang.startsWith("ar", ignoreCase = true) ||
+                    lang.startsWith("fa", ignoreCase = true) ||
+                    lang.startsWith("ur", ignoreCase = true) ||
+                    lang.startsWith("he", ignoreCase = true)
+
                 val isRtl = Regex("""page-progression-direction=["']([^"']+)["']""")
-                    .find(opfXml)?.groupValues?.get(1)?.equals("rtl", ignoreCase = true) == true
+                    .find(opfXml)?.groupValues?.get(1)?.equals("rtl", ignoreCase = true) == true || isArabic
 
                 val coverPath = extractEpubCover(zip, opfXml, opfPath, bookId)
 

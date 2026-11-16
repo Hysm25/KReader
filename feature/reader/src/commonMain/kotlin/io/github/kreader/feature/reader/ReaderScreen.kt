@@ -24,6 +24,7 @@ import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.BookFormat
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
@@ -69,6 +70,10 @@ fun ReaderScreen(
     onProgressChanged: (progression: Float, locator: Locator) -> Unit = { _, _ -> },
     onPdfPageChanged: (pageIndex: Int, totalPages: Int, locator: Locator) -> Unit = { _, _, _ -> },
     onTableOfContentsLoaded: (List<TocItem>) -> Unit = {},
+    customFonts: List<CustomFont> = emptyList(),
+    onImportCustomFont: (CustomFont) -> Unit = {},
+    onDeleteCustomFont: (String) -> Unit = {},
+    onDirectionDetected: (isRtl: Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -147,6 +152,7 @@ fun ReaderScreen(
                     typography = state.typography,
                     isScrollMode = state.isScrollMode,
                     controller = epubController,
+                    customFonts = customFonts,
                     highlights = state.highlights,
                     onHighlightClicked = { highlightId ->
                         val h = state.highlights.find { it.id == highlightId }
@@ -171,6 +177,7 @@ fun ReaderScreen(
                     },
                     onProgressChanged = onProgressChanged,
                     onTableOfContentsLoaded = onTableOfContentsLoaded,
+                    onDirectionDetected = onDirectionDetected,
                     onTap = onToggleControls,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -272,6 +279,7 @@ fun ReaderScreen(
                 ReaderBottomBar(
                     progression = prog,
                     pageInfo = pageInfo,
+                    isRtl = state.typography.isRtl,
                     onSeek = { targetProg ->
                         onSeek(targetProg)
                         if (book?.format == BookFormat.PDF) {
@@ -364,9 +372,12 @@ fun ReaderScreen(
                 theme = state.theme,
                 typography = state.typography,
                 isScrollMode = state.isScrollMode,
+                customFonts = customFonts,
                 onThemeChange = onThemeChange,
                 onTypographyChange = onTypographyChange,
                 onScrollModeChange = onScrollModeChange,
+                onImportCustomFont = onImportCustomFont,
+                onDeleteCustomFont = onDeleteCustomFont,
                 onDismiss = onDismissSettings
             )
         }

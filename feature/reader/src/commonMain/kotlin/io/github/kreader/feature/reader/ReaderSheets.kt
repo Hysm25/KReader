@@ -3,6 +3,7 @@ package io.github.kreader.feature.reader
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,14 +19,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -49,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
@@ -100,34 +114,33 @@ fun ReaderNavigationDrawer(
     onDeleteBookmark: (String) -> Unit,
     onDeleteHighlight: (String) -> Unit,
     onHighlightClicked: (Highlight) -> Unit,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    onDismiss: () -> Unit
 ) {
     if (!isOpen) return
 
+    val interactionSource = remember { MutableInteractionSource() }
+
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.5f))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onDismiss
             )
     ) {
         Surface(
             modifier = Modifier
-                .align(Alignment.CenterStart)
                 .fillMaxHeight()
-                .fillMaxWidth(0.88f)
+                .fillMaxWidth(0.85f)
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = interactionSource,
                     indication = null,
                     onClick = {}
                 ),
-            shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            tonalElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier
@@ -145,7 +158,10 @@ fun ReaderNavigationDrawer(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     IconButton(onClick = onDismiss) {
-                        Text("✕", style = MaterialTheme.typography.titleMedium)
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Close navigation"
+                        )
                     }
                 }
 
@@ -159,16 +175,19 @@ fun ReaderNavigationDrawer(
                     Tab(
                         selected = currentTab == NavigationDrawerTab.CONTENTS,
                         onClick = { onTabSelected(NavigationDrawerTab.CONTENTS) },
+                        icon = { Icon(Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null) },
                         text = { Text("Contents (${tocItems.size})", maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                     Tab(
                         selected = currentTab == NavigationDrawerTab.BOOKMARKS,
                         onClick = { onTabSelected(NavigationDrawerTab.BOOKMARKS) },
+                        icon = { Icon(Icons.Rounded.Bookmark, contentDescription = null) },
                         text = { Text("Bookmarks (${bookmarks.size})", maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                     Tab(
                         selected = currentTab == NavigationDrawerTab.HIGHLIGHTS,
                         onClick = { onTabSelected(NavigationDrawerTab.HIGHLIGHTS) },
+                        icon = { Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null) },
                         text = { Text("Notes (${highlights.size})", maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                 }
@@ -250,17 +269,12 @@ private fun ContentsTabContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = flatItem.item.title.ifBlank { "Untitled Chapter" },
-                        style = if (flatItem.depth == 0) {
-                            MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-                            )
+                        text = flatItem.item.title,
+                        style = if (isActive) {
+                            MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         } else {
-                            MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
-                            )
+                            MaterialTheme.typography.bodyMedium
                         },
-                        color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -279,7 +293,7 @@ private fun BookmarksTabContent(
     if (bookmarks.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                text = "No bookmarks yet.\nTap the 🏷️ icon in the top bar to bookmark this page.",
+                text = "No bookmarks yet.\nTap the bookmark icon in the top bar to save a page.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 22.sp
@@ -316,7 +330,11 @@ private fun BookmarksTabContent(
                         )
                     }
                     IconButton(onClick = { onDeleteBookmark(bookmark.id) }) {
-                        Text("🗑️", style = MaterialTheme.typography.bodyMedium)
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = "Delete bookmark",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
@@ -384,10 +402,17 @@ private fun HighlightsTabContent(
                     }
                     Row {
                         IconButton(onClick = { onHighlightDetail(highlight) }) {
-                            Text("✏️", style = MaterialTheme.typography.bodyMedium)
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit annotation"
+                            )
                         }
                         IconButton(onClick = { onDeleteHighlight(highlight.id) }) {
-                            Text("🗑️", style = MaterialTheme.typography.bodyMedium)
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = "Delete highlight",
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
@@ -421,32 +446,33 @@ fun ReaderSearchSheet(
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onResultClick: (Locator) -> Unit,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    onDismiss: () -> Unit
 ) {
     if (!isOpen) return
 
+    val interactionSource = remember { MutableInteractionSource() }
+
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.5f))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onDismiss
             )
     ) {
         Surface(
             modifier = Modifier
-                .align(Alignment.TopCenter)
+                .fillMaxHeight(0.75f)
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .align(Alignment.BottomCenter)
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = interactionSource,
                     indication = null,
                     onClick = {}
                 ),
-            shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 8.dp
         ) {
@@ -466,10 +492,19 @@ fun ReaderSearchSheet(
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Search book content...") },
                         singleLine = true,
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Search,
+                                contentDescription = null
+                            )
+                        },
                         trailingIcon = {
                             if (query.isNotEmpty()) {
                                 IconButton(onClick = { onQueryChange("") }) {
-                                    Text("✕", style = MaterialTheme.typography.bodyMedium)
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = "Clear search"
+                                    )
                                 }
                             }
                         }
@@ -479,10 +514,19 @@ fun ReaderSearchSheet(
                         onClick = onSearch,
                         enabled = query.isNotBlank() && !isSearching
                     ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text("Search")
                     }
                     IconButton(onClick = onDismiss) {
-                        Text("✕", style = MaterialTheme.typography.titleMedium)
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Close search"
+                        )
                     }
                 }
 
@@ -521,25 +565,23 @@ fun ReaderSearchSheet(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                    .clickable {
-                                        onResultClick(result)
-                                        onDismiss()
-                                    }
+                                    .clickable { onResultClick(result) }
                                     .padding(12.dp)
                             ) {
-                                val before = result.text?.before ?: ""
-                                val highlight = result.text?.highlight ?: ""
-                                val after = result.text?.after ?: ""
+                                val before = result.text?.before.orEmpty()
+                                val highlight = result.text?.highlight.orEmpty()
+                                val after = result.text?.after.orEmpty()
+
                                 Text(
-                                    text = "$before[$highlight]$after",
+                                    text = if (highlight.isNotEmpty()) "...$before[$highlight]$after..." else (result.title ?: result.href),
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                val prog = ((result.locations.totalProgression ?: result.locations.progression ?: 0f) * 100).toInt()
                                 Spacer(modifier = Modifier.height(4.dp))
+                                val prog = ((result.locations.totalProgression ?: result.locations.progression ?: 0f) * 100).toInt()
                                 Text(
-                                    text = "Location: $prog%",
+                                    text = "Progression: $prog%",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -718,34 +760,42 @@ fun ReaderSettingsSheet(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
+    customFonts: List<CustomFont> = emptyList(),
     onThemeChange: (ReaderTheme) -> Unit,
     onTypographyChange: (ReaderTypography) -> Unit,
     onScrollModeChange: (Boolean) -> Unit,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    onImportCustomFont: (CustomFont) -> Unit = {},
+    onDeleteCustomFont: (String) -> Unit = {},
+    onDismiss: () -> Unit
 ) {
     if (!isOpen) return
 
+    val fontPickerLauncher = rememberFontPickerLauncher { importedFont ->
+        onImportCustomFont(importedFont)
+    }
+
+    val interactionSource = remember { MutableInteractionSource() }
+
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.5f))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onDismiss
             )
     ) {
         Surface(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .align(Alignment.BottomCenter)
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = interactionSource,
                     indication = null,
                     onClick = {}
                 ),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 8.dp
         ) {
@@ -766,7 +816,10 @@ fun ReaderSettingsSheet(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     IconButton(onClick = onDismiss) {
-                        Text("✕", style = MaterialTheme.typography.titleMedium)
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Close settings"
+                        )
                     }
                 }
 
@@ -864,35 +917,58 @@ fun ReaderSettingsSheet(
                     }
                 }
 
-                // Font Family: Default, Amiri (Arabic Serif), Cairo (Arabic Sans)
+                // Font Family: Default + User-imported Fonts (.ttf / .otf) + Import Button
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Font Family",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Font Family",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(
+                            onClick = { fontPickerLauncher() }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Import Font", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FilterChip(
-                            selected = typography.fontFamily.equals("Default", ignoreCase = true),
+                            selected = typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true),
                             onClick = { onTypographyChange(typography.copy(fontFamily = "Default")) },
-                            label = { Text("Default") },
-                            modifier = Modifier.weight(1f)
+                            label = { Text("Default") }
                         )
-                        FilterChip(
-                            selected = typography.fontFamily.equals("Amiri", ignoreCase = true),
-                            onClick = { onTypographyChange(typography.copy(fontFamily = "Amiri")) },
-                            label = { Text("Amiri (أميري)") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = typography.fontFamily.equals("Cairo", ignoreCase = true),
-                            onClick = { onTypographyChange(typography.copy(fontFamily = "Cairo")) },
-                            label = { Text("Cairo (كايرو)") },
-                            modifier = Modifier.weight(1f)
-                        )
+                        for (font in customFonts) {
+                            FilterChip(
+                                selected = typography.fontFamily.equals(font.name, ignoreCase = true),
+                                onClick = { onTypographyChange(typography.copy(fontFamily = font.name)) },
+                                label = { Text(font.name) },
+                                trailingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = "Delete ${font.name}",
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clickable { onDeleteCustomFont(font.name) }
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -917,7 +993,10 @@ fun ReaderSettingsSheet(
                                 onTypographyChange(typography.copy(fontSizeSp = newSize))
                             }
                         ) {
-                            Text("A-", style = MaterialTheme.typography.titleMedium)
+                            Icon(
+                                imageVector = Icons.Rounded.Remove,
+                                contentDescription = "Decrease font size"
+                            )
                         }
                         Text(
                             text = "${typography.fontSizeSp.toInt()} sp",
@@ -929,7 +1008,10 @@ fun ReaderSettingsSheet(
                                 onTypographyChange(typography.copy(fontSizeSp = newSize))
                             }
                         ) {
-                            Text("A+", style = MaterialTheme.typography.titleMedium)
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = "Increase font size"
+                            )
                         }
                     }
                 }

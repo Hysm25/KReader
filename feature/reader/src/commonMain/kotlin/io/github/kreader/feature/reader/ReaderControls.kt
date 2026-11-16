@@ -5,9 +5,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.NavigateBefore
+import androidx.compose.material.icons.automirrored.rounded.NavigateNext
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.FormatSize
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -15,9 +27,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,24 +58,37 @@ fun ReaderTopBar(
         },
         navigationIcon = {
             IconButton(onClick = onBackClick) {
-                Text("←", style = MaterialTheme.typography.titleLarge)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back"
+                )
             }
         },
         actions = {
             IconButton(onClick = onSearchClick) {
-                Text("🔍", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = "Search"
+                )
             }
             IconButton(onClick = onBookmarkToggle) {
-                Text(
-                    text = if (isBookmarked) "🔖" else "🏷️",
-                    style = MaterialTheme.typography.titleMedium
+                Icon(
+                    imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                    contentDescription = if (isBookmarked) "Remove bookmark" else "Bookmark current location",
+                    tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                 )
             }
             IconButton(onClick = onTocClick) {
-                Text("☰", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.Rounded.Menu,
+                    contentDescription = "Table of contents"
+                )
             }
             IconButton(onClick = onSettingsClick) {
-                Text("Aa", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.Rounded.FormatSize,
+                    contentDescription = "Reader settings"
+                )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -77,6 +105,7 @@ fun ReaderBottomBar(
     onSeek: (Float) -> Unit,
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit,
+    isRtl: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -85,36 +114,62 @@ fun ReaderBottomBar(
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Slider(
-            value = progression,
-            onValueChange = onSeek,
-            valueRange = 0f..1f,
-            modifier = Modifier.fillMaxWidth()
-        )
+        CompositionLocalProvider(
+            LocalLayoutDirection provides if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+        ) {
+            Slider(
+                value = progression.coerceIn(0f, 1f),
+                onValueChange = onSeek,
+                valueRange = 0f..1f,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "⟨ Prev",
-                style = MaterialTheme.typography.bodyMedium,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clickable(onClick = onPreviousPage)
                     .padding(8.dp)
-            )
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.NavigateBefore,
+                    contentDescription = "Previous",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Prev",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
             Text(
                 text = pageInfo,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
-                text = "Next ⟩",
-                style = MaterialTheme.typography.bodyMedium,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clickable(onClick = onNextPage)
                     .padding(8.dp)
-            )
+            ) {
+                Text(
+                    text = "Next",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.NavigateNext,
+                    contentDescription = "Next",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }

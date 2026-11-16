@@ -2,6 +2,7 @@ package io.github.kreader.feature.reader
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.util.Base64
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
@@ -25,10 +26,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
+import androidx.fragment.app.FragmentManager
+import androidx.lifecycle.Lifecycle
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
@@ -52,6 +57,7 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.Try
+import java.io.File
 
 @OptIn(ExperimentalReadiumApi::class)
 @Composable
@@ -62,12 +68,14 @@ actual fun EpubNavigatorHost(
     typography: ReaderTypography,
     isScrollMode: Boolean,
     controller: EpubNavigatorController,
+    customFonts: List<CustomFont>,
     highlights: List<Highlight>,
     onHighlightClicked: (String) -> Unit,
     onAddHighlight: (Locator, String) -> Unit,
     onAddNoteRequested: (Locator, String) -> Unit,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
+    onDirectionDetected: (isRtl: Boolean) -> Unit,
     onTap: () -> Unit,
     modifier: Modifier
 ) {
@@ -81,21 +89,37 @@ actual fun EpubNavigatorHost(
     val currentOnAddHighlight by rememberUpdatedState(onAddHighlight)
     val currentOnAddNoteRequested by rememberUpdatedState(onAddNoteRequested)
     val currentOnTableOfContentsLoaded by rememberUpdatedState(onTableOfContentsLoaded)
+    val currentOnDirectionDetected by rememberUpdatedState(onDirectionDetected)
 
     var publication by remember { mutableStateOf<Publication?>(null) }
     var currentFragment by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
+    var isNavigatorReady by remember { mutableStateOf(false) }
+    var detectedRtl by remember { mutableStateOf<Boolean?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val opener = remember(context) { ReadiumEpubOpener(context.applicationContext) }
 
-    // 1. Open publication
+    // 1. Open publication and auto-detect reading direction
     LaunchedEffect(book.id) {
         isLoading = true
         errorMessage = null
+        isNavigatorReady = false
+        currentFragment = null
         opener.open(book.source, book.id).fold(
             onSuccess = { pub ->
                 publication = pub
+                val isPubRtl = (pub.metadata.effectiveReadingProgression == org.readium.r2.shared.publication.ReadingProgression.RTL) ||
+                    (pub.metadata.readingProgression == org.readium.r2.shared.publication.ReadingProgression.RTL) ||
+                    pub.metadata.languages.any { lang ->
+                        lang.startsWith("ar", ignoreCase = true) ||
+                            lang.startsWith("fa", ignoreCase = true) ||
+                            lang.startsWith("ur", ignoreCase = true) ||
+                            lang.startsWith("he", ignoreCase = true)
+                    }
+                detectedRtl = isPubRtl
+                currentOnDirectionDetected(isPubRtl)
+
                 val toc = pub.tableOfContents.map { it.toTocItem(pub) }
                 currentOnTableOfContentsLoaded(toc)
                 isLoading = false
@@ -107,31 +131,58 @@ actual fun EpubNavigatorHost(
         )
     }
 
-    // 2. Build preferences
-    val preferences = remember(theme, typography, isScrollMode, book.id) {
-        buildReadiumPreferences(theme, typography, isScrollMode, isRtl = typography.isRtl)
+    // 2. Build preferences (automatic RTL direction + custom font support)
+    val effectiveRtl = typography.isRtl || (detectedRtl == true)
+    val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl) {
+        buildReadiumPreferences(theme, typography, isScrollMode, isRtl = effectiveRtl)
     }
 
-    // 3. Submit preferences on change
-    LaunchedEffect(currentFragment, preferences) {
-        currentFragment?.let { frag ->
+    // 3. Submit preferences on change (deferred until fragment is attached and ready)
+    LaunchedEffect(currentFragment, preferences, isNavigatorReady) {
+        val frag = currentFragment ?: return@LaunchedEffect
+        if (isNavigatorReady && frag.isAdded && frag.context != null) {
             runCatching { frag.submitPreferences(preferences) }
         }
     }
 
-    // 4. Wire controller navigation commands & search
-    DisposableEffect(currentFragment, publication) {
+    // 4. Inject custom @font-face CSS if user selected an imported font
+    LaunchedEffect(currentFragment, typography.fontFamily, customFonts, isNavigatorReady) {
+        val frag = currentFragment ?: return@LaunchedEffect
+        if (isNavigatorReady && frag.isAdded && frag.context != null) {
+            val selectedCustomFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
+            if (selectedCustomFont != null) {
+                injectFontFace(frag, selectedCustomFont)
+            } else {
+                clearFontFace(frag)
+            }
+        }
+    }
+
+    // 5. Wire controller navigation commands & search
+    DisposableEffect(currentFragment, publication, isNavigatorReady) {
         controller.goTo = { locator ->
-            currentFragment?.go(locator.toReadium(), animated = true)
+            val frag = currentFragment
+            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                frag.go(locator.toReadium(), animated = true)
+            }
         }
         controller.goNext = {
-            currentFragment?.goForward(animated = true)
+            val frag = currentFragment
+            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                frag.goForward(animated = true)
+            }
         }
         controller.goPrevious = {
-            currentFragment?.goBackward(animated = true)
+            val frag = currentFragment
+            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                frag.goBackward(animated = true)
+            }
         }
         controller.clearSelection = {
-            currentFragment?.clearSelection()
+            val frag = currentFragment
+            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                frag.clearSelection()
+            }
         }
         controller.search = { query ->
             val pub = publication
@@ -165,7 +216,7 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // 5. Host in FragmentContainerView
+    // 6. Host in FragmentContainerView
     when {
         isLoading -> {
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -194,9 +245,47 @@ actual fun EpubNavigatorHost(
                 )
             }
 
-            DisposableEffect(book.id) {
+            // Register FragmentLifecycleCallbacks to defer ViewModel access until fragment is STARTED
+            DisposableEffect(fragmentActivity, fragmentTag) {
+                val fm = fragmentActivity.supportFragmentManager
+                val lifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
+                    override fun onFragmentStarted(fm: FragmentManager, f: Fragment) {
+                        if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
+                            isNavigatorReady = true
+                            if (currentFragment !== f) {
+                                currentFragment = f
+                            }
+                        }
+                    }
+
+                    override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
+                        if (f.tag == fragmentTag) {
+                            isNavigatorReady = false
+                        }
+                    }
+
+                    override fun onFragmentDestroyed(fm: FragmentManager, f: Fragment) {
+                        if (f.tag == fragmentTag) {
+                            isNavigatorReady = false
+                            if (currentFragment === f) {
+                                currentFragment = null
+                            }
+                        }
+                    }
+                }
+
+                fm.registerFragmentLifecycleCallbacks(lifecycleCallbacks, false)
+
+                val existing = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(containerId)) as? EpubNavigatorFragment
+                if (existing != null && existing.isAdded && existing.context != null &&
+                    existing.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                ) {
+                    isNavigatorReady = true
+                    currentFragment = existing
+                }
+
                 onDispose {
-                    val fm = fragmentActivity.supportFragmentManager
+                    fm.unregisterFragmentLifecycleCallbacks(lifecycleCallbacks)
                     if (!fragmentActivity.isFinishing && !fragmentActivity.isDestroyed) {
                         val frag = fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(containerId)
                         if (frag != null) {
@@ -205,6 +294,7 @@ actual fun EpubNavigatorHost(
                             }
                         }
                     }
+                    isNavigatorReady = false
                     currentFragment = null
                 }
             }
@@ -222,7 +312,16 @@ actual fun EpubNavigatorHost(
                 update = { view ->
                     runCatching {
                         val fm = fragmentActivity.supportFragmentManager
+                        if (fm.isDestroyed) return@runCatching
+
                         var fragment = (fm.findFragmentById(view.id) ?: fm.findFragmentByTag(fragmentTag)) as? EpubNavigatorFragment
+
+                        // Ensure EpubNavigatorFragment is strictly attached to supportFragmentManager
+                        if (fragment != null && (!fragment.isAdded || fragment.isDetached || fragment.id != view.id)) {
+                            fm.beginTransaction().remove(fragment).commitNowAllowingStateLoss()
+                            fragment = null
+                        }
+
                         if (fragment == null) {
                             val factory = EpubNavigatorFactory(pub)
                             val fragmentFactory = factory.createFragmentFactory(
@@ -265,8 +364,14 @@ actual fun EpubNavigatorHost(
                                 .replace(view.id, fragment, fragmentTag)
                                 .commitNowAllowingStateLoss()
                         }
-                        if (currentFragment !== fragment) {
-                            currentFragment = fragment
+
+                        if (fragment.isAdded && fragment.context != null &&
+                            fragment.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                        ) {
+                            isNavigatorReady = true
+                            if (currentFragment !== fragment) {
+                                currentFragment = fragment
+                            }
                         }
                     }.onFailure { e ->
                         errorMessage = "Failed to initialize reader: ${e.message}"
@@ -275,40 +380,86 @@ actual fun EpubNavigatorHost(
                 modifier = modifier.fillMaxSize()
             )
 
-            // Render Highlights as Decorations
-            LaunchedEffect(currentFragment, highlights) {
+            // Render Highlights as Decorations (guarded by isNavigatorReady & isAdded)
+            LaunchedEffect(currentFragment, highlights, isNavigatorReady) {
                 val frag = currentFragment ?: return@LaunchedEffect
-                runCatching {
-                    val decorations = highlights.map { h ->
-                        val tintColor = try {
-                            android.graphics.Color.parseColor(h.colorHex)
-                        } catch (_: Exception) {
-                            android.graphics.Color.YELLOW
+                if (isNavigatorReady && frag.isAdded && frag.context != null) {
+                    runCatching {
+                        val decorations = highlights.map { h ->
+                            val tintColor = try {
+                                android.graphics.Color.parseColor(h.colorHex)
+                            } catch (_: Exception) {
+                                android.graphics.Color.YELLOW
+                            }
+                            Decoration(
+                                id = h.id,
+                                locator = h.locator.toReadium(),
+                                style = Decoration.Style.Highlight(tint = tintColor, isActive = true)
+                            )
                         }
-                        Decoration(
-                            id = h.id,
-                            locator = h.locator.toReadium(),
-                            style = Decoration.Style.Highlight(tint = tintColor, isActive = true)
-                        )
+                        frag.applyDecorations(decorations, group = "highlights")
                     }
-                    frag.applyDecorations(decorations, group = "highlights")
                 }
             }
 
-            // Observe currentLocator for progress persistence
-            LaunchedEffect(currentFragment) {
+            // Observe currentLocator for progress persistence (deferred until fragment is STARTED)
+            LaunchedEffect(currentFragment, isNavigatorReady) {
                 val frag = currentFragment ?: return@LaunchedEffect
+                if (!isNavigatorReady || !frag.isAdded || frag.context == null) return@LaunchedEffect
+                if (!frag.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@LaunchedEffect
+
                 frag.currentLocator.collect { readiumLocator ->
-                    runCatching {
-                        val domainLocator = readiumLocator.toDomain()
-                        val prog = domainLocator.locations.totalProgression
-                            ?: domainLocator.locations.progression
-                            ?: 0f
-                        currentOnProgressChanged(prog, domainLocator)
+                    if (frag.isAdded && frag.context != null) {
+                        val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
+                        if (selectedFont != null) {
+                            injectFontFace(frag, selectedFont)
+                        }
+
+                        runCatching {
+                            val domainLocator = readiumLocator.toDomain()
+                            val prog = domainLocator.locations.totalProgression
+                                ?: domainLocator.locations.progression
+                                ?: 0f
+                            currentOnProgressChanged(prog, domainLocator)
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont) {
+    runCatching {
+        val file = File(font.path)
+        if (!file.exists()) return
+        val fontBytes = file.readBytes()
+        val base64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
+        val format = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+        val js = """
+            (function() {
+                var el = document.getElementById('kreader-custom-font');
+                if (!el) {
+                    el = document.createElement('style');
+                    el.id = 'kreader-custom-font';
+                    document.head.appendChild(el);
+                }
+                el.textContent = '@font-face { font-family: "${font.name}"; src: url("data:font/$format;charset=utf-8;base64,$base64"); } * { font-family: "${font.name}", sans-serif !important; }';
+            })();
+        """.trimIndent()
+        frag.evaluateJavascript(js)
+    }
+}
+
+private suspend fun clearFontFace(frag: EpubNavigatorFragment) {
+    runCatching {
+        val js = """
+            (function() {
+                var el = document.getElementById('kreader-custom-font');
+                if (el) { el.remove(); }
+            })();
+        """.trimIndent()
+        frag.evaluateJavascript(js)
     }
 }
 
@@ -340,6 +491,8 @@ private class SelectionActionModeCallback(
 
     override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
         val fragment = fragmentProvider() ?: return false
+        if (!fragment.isAdded || fragment.context == null) return false
+
         val colorHex = when (item?.itemId) {
             MENU_YELLOW -> "#FEF08A"
             MENU_GREEN -> "#BBF7D0"

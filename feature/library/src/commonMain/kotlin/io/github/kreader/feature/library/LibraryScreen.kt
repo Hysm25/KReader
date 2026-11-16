@@ -10,8 +10,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -80,6 +87,22 @@ fun LibraryScreen(
                             onValueChange = onSearchQueryChanged,
                             placeholder = { Text("Search title or author...") },
                             singleLine = true,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Search,
+                                    contentDescription = null
+                                )
+                            },
+                            trailingIcon = {
+                                if (state.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { onSearchQueryChanged("") }) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Close,
+                                            contentDescription = "Clear search"
+                                        )
+                                    }
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(end = 8.dp)
@@ -104,7 +127,10 @@ fun LibraryScreen(
                             if (!isSearchActive) onSearchQueryChanged("")
                         }
                     ) {
-                        Text(if (isSearchActive) "✕" else "🔍", style = MaterialTheme.typography.titleMedium)
+                        Icon(
+                            imageVector = if (isSearchActive) Icons.Rounded.Close else Icons.Rounded.Search,
+                            contentDescription = if (isSearchActive) "Close search" else "Search library"
+                        )
                     }
                 }
             )
@@ -115,7 +141,10 @@ fun LibraryScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                Text("+", style = MaterialTheme.typography.headlineSmall)
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = "Import book"
+                )
             }
         }
     ) { innerPadding ->
@@ -152,9 +181,9 @@ fun LibraryScreen(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     val sortLabel = when (state.selectedSortOrder) {
-                        BookSortOrder.RECENTLY_READ -> "⏳ Recent"
-                        BookSortOrder.RECENTLY_ADDED -> "✨ Added"
-                        BookSortOrder.TITLE -> "🔤 Title"
+                        BookSortOrder.RECENTLY_READ -> "Recent"
+                        BookSortOrder.RECENTLY_ADDED -> "Added"
+                        BookSortOrder.TITLE -> "Title"
                     }
                     var sortMenuExpanded by remember { mutableStateOf(false) }
                     Box {
@@ -162,7 +191,12 @@ fun LibraryScreen(
                             selected = true,
                             onClick = { sortMenuExpanded = true },
                             label = { Text(sortLabel) },
-                            trailingIcon = { Text(" ▾") }
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.ArrowDropDown,
+                                    contentDescription = null
+                                )
+                            }
                         )
                         DropdownMenu(
                             expanded = sortMenuExpanded,
@@ -206,10 +240,13 @@ fun LibraryScreen(
                                 .align(Alignment.Center)
                                 .padding(24.dp)
                         ) {
-                            Text(
-                                text = "📖",
-                                style = MaterialTheme.typography.displayMedium,
-                                modifier = Modifier.padding(bottom = 16.dp)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.MenuBook,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .padding(bottom = 16.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
                             Text(
                                 text = "Your library is empty",
@@ -225,6 +262,12 @@ fun LibraryScreen(
                             )
                             Spacer(modifier = Modifier.height(20.dp))
                             Button(onClick = filePickerLauncher) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text("Import Book")
                             }
                         }

@@ -18,6 +18,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -156,7 +159,10 @@ fun BookItemCard(
                         onClick = { showMenu = true },
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Text("⋮", style = MaterialTheme.typography.titleMedium)
+                        Icon(
+                            imageVector = Icons.Rounded.MoreVert,
+                            contentDescription = "Options"
+                        )
                     }
 
                     DropdownMenu(
@@ -165,6 +171,13 @@ fun BookItemCard(
                     ) {
                         DropdownMenuItem(
                             text = { Text("Delete Book", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            },
                             onClick = {
                                 showMenu = false
                                 showDeleteConfirmDialog = true

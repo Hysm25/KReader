@@ -40,11 +40,10 @@ fun buildReadiumPreferences(
         ReadingProgression.LTR
     }
 
-    val fontFamily = when (typography.fontFamily.lowercase()) {
-        "amiri", "arabic serif", "serif" -> FontFamily.SERIF
-        "cairo", "arabic sans", "sans-serif" -> FontFamily.SANS_SERIF
-        "monospace", "fixed" -> FontFamily.MONOSPACE
-        else -> null
+    val fontFamily = if (typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true)) {
+        null
+    } else {
+        FontFamily(typography.fontFamily)
     }
 
     return EpubPreferences(

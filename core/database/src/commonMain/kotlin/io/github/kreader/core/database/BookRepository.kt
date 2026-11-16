@@ -7,6 +7,7 @@ import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderPreferences
@@ -37,6 +38,8 @@ interface BookRepository {
     fun observeReaderPreferences(): Flow<ReaderPreferences>
     suspend fun getReaderPreferences(): ReaderPreferences
     suspend fun saveReaderPreferences(preferences: ReaderPreferences)
+    suspend fun addCustomFont(font: CustomFont)
+    suspend fun deleteCustomFont(fontName: String)
 }
 
 class SqlDelightBookRepository(
@@ -188,6 +191,23 @@ class SqlDelightBookRepository(
             id = PREFERENCES_KEY,
             preferencesJson = json.encodeToString(preferences)
         )
+    }
+
+    override suspend fun addCustomFont(font: CustomFont): Unit = withContext(ioDispatcher) {
+        val current = getReaderPreferences()
+        val updated = current.customFonts.filterNot { it.name.equals(font.name, ignoreCase = true) } + font
+        saveReaderPreferences(current.copy(customFonts = updated))
+    }
+
+    override suspend fun deleteCustomFont(fontName: String): Unit = withContext(ioDispatcher) {
+        val current = getReaderPreferences()
+        val updated = current.customFonts.filterNot { it.name.equals(fontName, ignoreCase = true) }
+        val newTypography = if (current.typography.fontFamily.equals(fontName, ignoreCase = true)) {
+            current.typography.copy(fontFamily = "Default")
+        } else {
+            current.typography
+        }
+        saveReaderPreferences(current.copy(customFonts = updated, typography = newTypography))
     }
 
     companion object {

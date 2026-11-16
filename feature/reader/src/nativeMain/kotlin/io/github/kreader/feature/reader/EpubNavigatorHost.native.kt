@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
@@ -27,12 +28,14 @@ actual fun EpubNavigatorHost(
     typography: ReaderTypography,
     isScrollMode: Boolean,
     controller: EpubNavigatorController,
+    customFonts: List<CustomFont>,
     highlights: List<Highlight>,
     onHighlightClicked: (String) -> Unit,
     onAddHighlight: (Locator, String) -> Unit,
     onAddNoteRequested: (Locator, String) -> Unit,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
+    onDirectionDetected: (isRtl: Boolean) -> Unit,
     onTap: () -> Unit,
     modifier: Modifier
 ) {

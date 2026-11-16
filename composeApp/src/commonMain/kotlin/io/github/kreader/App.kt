@@ -289,6 +289,32 @@ fun App() {
                     },
                     onTableOfContentsLoaded = { toc ->
                         readerState = readerState.copy(tocItems = toc)
+                    },
+                    customFonts = persistedPreferences.customFonts,
+                    onImportCustomFont = { font ->
+                        scope.launch {
+                            bookRepository.addCustomFont(font)
+                            val updatedTypography = readerState.typography.copy(fontFamily = font.name)
+                            readerState = readerState.copy(typography = updatedTypography)
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = updatedTypography))
+                        }
+                    },
+                    onDeleteCustomFont = { fontName ->
+                        scope.launch {
+                            bookRepository.deleteCustomFont(fontName)
+                            if (readerState.typography.fontFamily.equals(fontName, ignoreCase = true)) {
+                                val updatedTypography = readerState.typography.copy(fontFamily = "Default")
+                                readerState = readerState.copy(typography = updatedTypography)
+                                bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = updatedTypography))
+                            }
+                        }
+                    },
+                    onDirectionDetected = { isRtl ->
+                        if (isRtl != readerState.typography.isRtl) {
+                            readerState = readerState.copy(
+                                typography = readerState.typography.copy(isRtl = isRtl)
+                            )
+                        }
                     }
                 )
             }
