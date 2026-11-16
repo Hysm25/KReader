@@ -276,7 +276,10 @@ actual fun EpubNavigatorHost(
                         val index = (targetDouble * (order.size - 1)).toInt().coerceIn(0, order.size - 1)
                         val link = order[index]
                         val baseLocator = pub.locatorFromLink(link)
-                            ?: link.toLocator()
+                            ?: Locator(
+                                href = link.href.toString(),
+                                type = link.mediaType?.toString() ?: "application/xhtml+xml"
+                            ).toReadium()
                         frag.go(baseLocator, animated = false)
                     }
                 }
