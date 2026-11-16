@@ -38,6 +38,8 @@ import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
+import io.github.kreader.core.model.isRtlLanguage
+import io.github.kreader.core.model.isRtlText
 import io.github.kreader.engine.epub.ReadiumEpubOpener
 import io.github.kreader.engine.epub.toDomain
 import io.github.kreader.engine.epub.toReadium
@@ -116,13 +118,15 @@ actual fun EpubNavigatorHost(
             onSuccess = { pub ->
                 publication = pub
                 val readingProg = pub.metadata.readingProgression
-                val isPubRtl = (readingProg == org.readium.r2.shared.publication.ReadingProgression.RTL) ||
-                    pub.metadata.languages.any { lang ->
-                        lang.startsWith("ar", ignoreCase = true) ||
-                            lang.startsWith("fa", ignoreCase = true) ||
-                            lang.startsWith("ur", ignoreCase = true) ||
-                            lang.startsWith("he", ignoreCase = true)
-                    }
+                val hasRtlProgression = readingProg == org.readium.r2.shared.publication.ReadingProgression.RTL
+                val hasRtlLanguage = pub.metadata.languages.any { isRtlLanguage(it) }
+                val hasRtlText = isRtlText(pub.metadata.title) ||
+                    isRtlText(book.title) ||
+                    isRtlText(book.author.orEmpty()) ||
+                    isRtlText(book.description.orEmpty()) ||
+                    pub.tableOfContents.any { isRtlText(it.title.orEmpty()) }
+
+                val isPubRtl = hasRtlProgression || hasRtlLanguage || hasRtlText
                 detectedRtl = isPubRtl
                 currentOnDirectionDetected(isPubRtl)
 
@@ -143,23 +147,34 @@ actual fun EpubNavigatorHost(
         buildReadiumPreferences(theme, typography, isScrollMode, isRtl = effectiveRtl)
     }
 
-    // 3. Submit preferences on change (deferred until fragment is attached and ready)
+    // 3. Submit preferences on change (deferred until fragment is attached and ready, without redundant submissions)
+    var lastSubmittedPreferences by remember(book.id) { mutableStateOf<org.readium.r2.navigator.epub.EpubPreferences?>(null) }
     LaunchedEffect(currentFragment, preferences, isNavigatorReady) {
         val frag = currentFragment ?: return@LaunchedEffect
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            runCatching { frag.submitPreferences(preferences) }
+            if (lastSubmittedPreferences != preferences) {
+                runCatching {
+                    frag.submitPreferences(preferences)
+                    lastSubmittedPreferences = preferences
+                }
+            }
         }
     }
 
-    // 4. Inject custom @font-face CSS if user selected an imported font
+    // 4. Inject custom @font-face CSS if user selected an imported font (cached & debounced)
+    var lastInjectedFontName by remember(book.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(currentFragment, typography.fontFamily, customFonts, isNavigatorReady) {
         val frag = currentFragment ?: return@LaunchedEffect
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            val selectedCustomFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
-            if (selectedCustomFont != null) {
-                injectFontFace(frag, selectedCustomFont)
-            } else {
-                clearFontFace(frag)
+            val fontName = typography.fontFamily
+            if (fontName != lastInjectedFontName) {
+                val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                if (selectedCustomFont != null) {
+                    injectFontFace(frag, selectedCustomFont)
+                } else {
+                    clearFontFace(frag)
+                }
+                lastInjectedFontName = fontName
             }
         }
     }
@@ -424,11 +439,17 @@ actual fun EpubNavigatorHost(
                 if (!isNavigatorReady || !frag.isAdded || frag.context == null) return@LaunchedEffect
                 if (!frag.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@LaunchedEffect
 
+                var lastSpineHref: String? = null
                 frag.currentLocator.collect { readiumLocator ->
                     if (frag.isAdded && frag.context != null) {
-                        val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
-                        if (selectedFont != null) {
-                            injectFontFace(frag, selectedFont)
+                        // Avoid redundant font re-injection on every page turn within the same chapter
+                        val currHref = readiumLocator.href.substringBefore('#')
+                        if (currHref != lastSpineHref) {
+                            lastSpineHref = currHref
+                            val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
+                            if (selectedFont != null) {
+                                injectFontFace(frag, selectedFont)
+                            }
                         }
 
                         runCatching {
@@ -445,13 +466,18 @@ actual fun EpubNavigatorHost(
     }
 }
 
+private val fontBase64Cache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
 private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont) {
     runCatching {
         val file = File(font.path)
         if (!file.exists()) return
-        val fontBytes = file.readBytes()
-        val base64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
-        val format = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+        val (format, base64) = fontBase64Cache.getOrPut(font.path) {
+            val fontBytes = file.readBytes()
+            val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
+            val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+            fmt to b64
+        }
         val js = """
             (function() {
                 var el = document.getElementById('kreader-custom-font');

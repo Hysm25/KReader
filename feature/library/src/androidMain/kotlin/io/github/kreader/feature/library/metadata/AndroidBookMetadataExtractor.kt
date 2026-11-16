@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
+import io.github.kreader.core.model.isRtlLanguage
+import io.github.kreader.core.model.isRtlText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -130,13 +132,13 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
 
                 val lang = Regex("""<dc:language[^>]*>(.*?)</dc:language>""", RegexOption.DOT_MATCHES_ALL)
                     .find(opfXml)?.groupValues?.get(1)?.cleanXml()?.trim().orEmpty()
-                val isArabic = lang.startsWith("ar", ignoreCase = true) ||
-                    lang.startsWith("fa", ignoreCase = true) ||
-                    lang.startsWith("ur", ignoreCase = true) ||
-                    lang.startsWith("he", ignoreCase = true)
 
                 val isRtl = Regex("""page-progression-direction=["']([^"']+)["']""")
-                    .find(opfXml)?.groupValues?.get(1)?.equals("rtl", ignoreCase = true) == true || isArabic
+                    .find(opfXml)?.groupValues?.get(1)?.equals("rtl", ignoreCase = true) == true ||
+                    isRtlLanguage(lang) ||
+                    isRtlText(title) ||
+                    isRtlText(author) ||
+                    isRtlText(description)
 
                 val coverPath = extractEpubCover(zip, opfXml, opfPath, bookId)
 

@@ -17,6 +17,7 @@ import io.github.kreader.core.model.ExternalBookOpener
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderPreferences
+import io.github.kreader.core.model.isRtlText
 import io.github.kreader.feature.library.LibraryScreen
 import io.github.kreader.feature.library.metadata.rememberBookMetadataExtractor
 import io.github.kreader.feature.library.rememberLibraryViewModel
@@ -65,6 +66,9 @@ fun App() {
                 val highlights by bookRepository.observeHighlights(bookToRead.id).collectAsState(emptyList())
 
                 var readerState by remember(bookToRead.id, persistedPreferences) {
+                    val initialIsRtl = isRtlText(bookToRead.title) ||
+                        isRtlText(bookToRead.author.orEmpty()) ||
+                        isRtlText(bookToRead.description.orEmpty())
                     mutableStateOf(
                         ReaderUiState(
                             book = bookToRead,
@@ -72,7 +76,8 @@ fun App() {
                             totalProgression = bookToRead.totalProgression,
                             theme = persistedPreferences.theme,
                             typography = persistedPreferences.typography,
-                            isScrollMode = persistedPreferences.isScrollMode
+                            isScrollMode = persistedPreferences.isScrollMode,
+                            isRtl = initialIsRtl
                         )
                     )
                 }

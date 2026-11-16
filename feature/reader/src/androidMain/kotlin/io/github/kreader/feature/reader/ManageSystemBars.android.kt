@@ -7,28 +7,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
+import io.github.kreader.core.model.ReaderTheme
+import io.github.kreader.core.model.ThemeMode
 
 @Composable
-actual fun ManageSystemBars(isControlsVisible: Boolean) {
+actual fun ManageSystemBars(isControlsVisible: Boolean, theme: ReaderTheme) {
     val context = LocalContext.current
     val activity = context.findActivity() ?: return
 
-    DisposableEffect(isControlsVisible, activity) {
+    val isDarkTheme = when (theme.mode) {
+        ThemeMode.LIGHT, ThemeMode.SEPIA -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> false
+    }
+
+    DisposableEffect(isDarkTheme, activity) {
         val window = activity.window
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-        insetsController.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
-        if (isControlsVisible) {
-            insetsController.show(WindowInsetsCompat.Type.systemBars())
-        } else {
-            insetsController.hide(WindowInsetsCompat.Type.systemBars())
-        }
+        // Ensure icon contrast matches active ReaderTheme:
+        // isAppearanceLightStatusBars = true gives dark icons (for Light & Sepia backgrounds)
+        // isAppearanceLightStatusBars = false gives light icons (for Dark & AMOLED backgrounds)
+        insetsController.isAppearanceLightStatusBars = !isDarkTheme
+        insetsController.isAppearanceLightNavigationBars = !isDarkTheme
 
         onDispose {
-            insetsController.show(WindowInsetsCompat.Type.systemBars())
+            insetsController.isAppearanceLightStatusBars = true
+            insetsController.isAppearanceLightNavigationBars = true
         }
     }
 }

@@ -19,6 +19,7 @@ import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
+import io.github.kreader.core.model.isRtlText
 
 @Composable
 actual fun EpubNavigatorHost(
@@ -65,6 +66,8 @@ actual fun EpubNavigatorHost(
     }
 
     LaunchedEffect(book.id) {
+        val isRtl = isRtlText(book.title) || isRtlText(book.author.orEmpty()) || isRtlText(book.description.orEmpty())
+        onDirectionDetected(isRtl)
         onTableOfContentsLoaded(
             listOf(
                 TocItem(title = "Chapter 1", locator = Locator.initial("chapter1.xhtml", "application/epub+zip")),

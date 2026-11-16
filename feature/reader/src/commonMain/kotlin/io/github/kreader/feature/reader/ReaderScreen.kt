@@ -1,17 +1,21 @@
 package io.github.kreader.feature.reader
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -105,16 +109,16 @@ fun ReaderScreen(
         }
     }
 
-    ManageSystemBars(isControlsVisible = state.isControlsVisible)
+    ManageSystemBars(isControlsVisible = state.isControlsVisible, theme = state.theme)
 
-    // Hardware volume button navigation respecting automatic RTL direction
+    // Hardware volume button navigation
     DisposableEffect(state.book?.id, state.isRtl) {
         ReaderKeyEventDispatcher.onVolumeUp = {
-            if (state.isRtl) epubController.goNext?.invoke() else epubController.goPrevious?.invoke()
+            epubController.goPrevious?.invoke()
             true
         }
         ReaderKeyEventDispatcher.onVolumeDown = {
-            if (state.isRtl) epubController.goPrevious?.invoke() else epubController.goNext?.invoke()
+            epubController.goNext?.invoke()
             true
         }
         onDispose {
@@ -123,19 +127,23 @@ fun ReaderScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize()
-    ) { innerPadding ->
+    MaterialTheme(colorScheme = getReaderColorScheme(state.theme)) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .background(screenBgColor)
         ) {
             val book = state.book
             if (book != null) {
-                // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
-                EpubNavigatorHost(
+                // Background Layer: Fixed viewport size with safe drawing insets & clean page margins
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
+                    EpubNavigatorHost(
                     book = book,
                     initialLocator = book.lastLocator,
                     theme = state.theme,
@@ -171,7 +179,8 @@ fun ReaderScreen(
                     onTap = onToggleControls,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else {
+            }
+        } else {
                 // Fallback Idle/Error/Loading
                 Box(
                     modifier = Modifier
@@ -214,11 +223,11 @@ fun ReaderScreen(
                 }
             }
 
-            // Top Bar Overlay
+            // Top Bar Overlay (floating)
             AnimatedVisibility(
                 visible = state.isControlsVisible,
-                enter = slideInVertically(initialOffsetY = { -it }),
-                exit = slideOutVertically(targetOffsetY = { -it }),
+                enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { -it }),
                 modifier = Modifier.align(Alignment.TopCenter)
             ) {
                 ReaderTopBar(
@@ -232,11 +241,11 @@ fun ReaderScreen(
                 )
             }
 
-            // Bottom Bar Overlay with RTL-Aware Progress Slider
+            // Bottom Bar Overlay with RTL-Aware Progress Slider (floating)
             AnimatedVisibility(
                 visible = state.isControlsVisible,
-                enter = slideInVertically(initialOffsetY = { it }),
-                exit = slideOutVertically(targetOffsetY = { it }),
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 val readyState = state.engineState as? ReaderEngineState.Ready
