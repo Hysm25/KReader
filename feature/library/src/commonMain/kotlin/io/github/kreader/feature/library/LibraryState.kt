@@ -1,5 +1,6 @@
 package io.github.kreader.feature.library
 
+import androidx.compose.runtime.Immutable
 import io.github.kreader.core.model.Book
 
 enum class BookFilter {
@@ -13,6 +14,7 @@ enum class BookSortOrder {
     TITLE
 }
 
+@Immutable
 data class LibraryUiState(
     val books: List<Book> = emptyList(),
     val filteredBooks: List<Book> = emptyList(),

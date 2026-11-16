@@ -16,5 +16,6 @@ actual fun getReaderColorScheme(theme: ReaderTheme): ColorScheme {
         ThemeMode.SEPIA -> SepiaColorScheme
         ThemeMode.DARK -> if (isAmoled) AmoledColorScheme else SoftDarkColorScheme
         ThemeMode.SYSTEM -> if (isSystemDark) SoftDarkColorScheme else PureLightColorScheme
+        ThemeMode.CUSTOM -> createCustomColorScheme(theme)
     }
 }

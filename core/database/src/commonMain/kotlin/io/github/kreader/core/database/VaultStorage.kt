@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 expect class VaultStorage {
     val activeVaultUriOrPath: StateFlow<String?>
+    var onVaultContentChanged: (() -> Unit)?
     fun getActiveVault(): String?
     fun setActiveVault(uriOrPath: String?)
     fun getVaultName(): String?
@@ -20,4 +21,5 @@ expect class VaultStorage {
     suspend fun persistFont(font: CustomFont): CustomFont
     suspend fun listFonts(): List<CustomFont>
     suspend fun deleteFont(fontFileName: String): Boolean
+    suspend fun exportMarkdown(fileName: String, markdownContent: String): String?
 }

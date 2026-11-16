@@ -132,5 +132,58 @@ val AmoledColorScheme: ColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF222222)
 )
 
+fun createCustomColorScheme(theme: ReaderTheme): ColorScheme {
+    val bg = parseHexToComposeColor(theme.backgroundColorHex, Color.White)
+    val text = parseHexToComposeColor(theme.textColorHex, Color.Black)
+    val luminance = 0.299f * bg.red + 0.587f * bg.green + 0.114f * bg.blue
+    val isDark = luminance < 0.5f
+
+    return if (isDark) {
+        darkColorScheme(
+            primary = text,
+            onPrimary = bg,
+            primaryContainer = bg.copy(alpha = 0.85f),
+            onPrimaryContainer = text,
+            surface = bg,
+            onSurface = text,
+            surfaceVariant = bg.copy(alpha = 0.9f),
+            onSurfaceVariant = text.copy(alpha = 0.7f),
+            surfaceContainer = bg.copy(alpha = 0.8f),
+            surfaceContainerLow = bg.copy(alpha = 0.9f),
+            surfaceContainerHigh = bg.copy(alpha = 0.7f),
+            background = bg,
+            onBackground = text
+        )
+    } else {
+        lightColorScheme(
+            primary = text,
+            onPrimary = bg,
+            primaryContainer = bg.copy(alpha = 0.85f),
+            onPrimaryContainer = text,
+            surface = bg,
+            onSurface = text,
+            surfaceVariant = bg.copy(alpha = 0.9f),
+            onSurfaceVariant = text.copy(alpha = 0.7f),
+            surfaceContainer = bg.copy(alpha = 0.8f),
+            surfaceContainerLow = bg.copy(alpha = 0.9f),
+            surfaceContainerHigh = bg.copy(alpha = 0.7f),
+            background = bg,
+            onBackground = text
+        )
+    }
+}
+
+fun parseHexToComposeColor(hex: String, fallback: Color = Color.White): Color {
+    return runCatching {
+        val clean = hex.removePrefix("#").trim()
+        val parsed = clean.toLong(16)
+        if (clean.length <= 6) {
+            Color(0xFF000000 or parsed)
+        } else {
+            Color(parsed)
+        }
+    }.getOrDefault(fallback)
+}
+
 @Composable
 expect fun getReaderColorScheme(theme: ReaderTheme): ColorScheme

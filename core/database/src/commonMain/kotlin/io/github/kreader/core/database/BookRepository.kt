@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.datetime.Clock
 
 interface BookRepository {
     val activeVaultUriOrPath: StateFlow<String?>
@@ -56,6 +57,7 @@ interface BookRepository {
     suspend fun resetPreferences(bookId: String)
     suspend fun addCustomFont(font: CustomFont)
     suspend fun deleteCustomFont(fontName: String)
+    suspend fun exportBookToMarkdown(bookId: String): String?
 }
 
 class JsonVaultBookRepository(
@@ -86,6 +88,11 @@ class JsonVaultBookRepository(
         scope.launch {
             if (vaultStorage.getActiveVault() != null) {
                 loadVaultState()
+            }
+        }
+        vaultStorage.onVaultContentChanged = {
+            scope.launch {
+                refreshVault()
             }
         }
     }
@@ -420,6 +427,75 @@ class JsonVaultBookRepository(
         }
         val updated = current.copy(customFonts = updatedList, typography = newTypography)
         saveReaderPreferences(updated)
+    }
+
+    override suspend fun exportBookToMarkdown(bookId: String): String? = withContext(ioDispatcher) {
+        val book = _books.value.find { it.id == bookId } ?: return@withContext null
+        val bookmarks = _annotations.value.bookmarks[bookId].orEmpty()
+        val highlights = _annotations.value.highlights[bookId].orEmpty()
+        val progPct = "${((book.totalProgression ?: 0f) * 100).toInt()}%"
+        val nowIso = Clock.System.now().toString()
+
+        val sb = StringBuilder()
+        sb.appendLine("---")
+        sb.appendLine("title: \"${book.title.replace("\"", "\\\"")}\"")
+        sb.appendLine("author: \"${(book.author ?: "Unknown Author").replace("\"", "\\\"")}\"")
+        sb.appendLine("progress: \"$progPct\"")
+        sb.appendLine("total_bookmarks: ${bookmarks.size}")
+        sb.appendLine("total_highlights: ${highlights.size}")
+        sb.appendLine("exported_at: \"$nowIso\"")
+        sb.appendLine("---")
+        sb.appendLine()
+        sb.appendLine("# ${book.title}")
+        sb.appendLine("*By ${book.author ?: "Unknown Author"}*  ")
+        sb.appendLine("**Reading Progress:** $progPct")
+        sb.appendLine()
+
+        if (bookmarks.isNotEmpty()) {
+            sb.appendLine("## 🔖 Bookmarks")
+            sb.appendLine()
+            for (b in bookmarks) {
+                val chapter = b.locator.title?.takeIf { it.isNotBlank() }
+                    ?: b.locator.href.substringBefore('#').substringAfterLast('/').removeSuffix(".xhtml").removeSuffix(".html").replace('_', ' ')
+                val prog = ((b.locator.locations.totalProgression ?: b.locator.locations.progression ?: 0f) * 100).toInt()
+                sb.appendLine("- **$chapter** (Progression: $prog%)")
+                if (b.locator.locations.position != null) {
+                    sb.appendLine("  - Position: ${b.locator.locations.position}")
+                }
+            }
+            sb.appendLine()
+        }
+
+        if (highlights.isNotEmpty()) {
+            sb.appendLine("## 💡 Highlights & Notes")
+            sb.appendLine()
+            for (h in highlights) {
+                val chapter = h.locator.title?.takeIf { it.isNotBlank() }
+                    ?: h.locator.href.substringBefore('#').substringAfterLast('/').removeSuffix(".xhtml").removeSuffix(".html").replace('_', ' ')
+                val quote = h.locator.text?.highlight ?: ""
+                val prog = ((h.locator.locations.totalProgression ?: h.locator.locations.progression ?: 0f) * 100).toInt()
+
+                sb.appendLine("### $chapter")
+                if (quote.isNotBlank()) {
+                    quote.lines().forEach { line ->
+                        sb.appendLine("> $line")
+                    }
+                    sb.appendLine()
+                }
+                if (!h.annotation.isNullOrBlank()) {
+                    sb.appendLine("- **Note:** ${h.annotation}")
+                }
+                sb.appendLine("- **Progression:** $prog% | **Color:** `${h.colorHex}`")
+                sb.appendLine()
+            }
+        }
+
+        val cleanTitle = book.title
+            .replace("[^a-zA-Z0-9_ \\u0600-\\u06FF-]".toRegex(), "")
+            .trim()
+            .ifEmpty { "Book_Notes" }
+
+        vaultStorage.exportMarkdown("$cleanTitle.md", sb.toString())
     }
 
     companion object {

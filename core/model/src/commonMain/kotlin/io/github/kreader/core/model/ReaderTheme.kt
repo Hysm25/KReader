@@ -7,7 +7,8 @@ enum class ThemeMode {
     LIGHT,
     DARK,
     SEPIA,
-    SYSTEM
+    SYSTEM,
+    CUSTOM
 }
 
 @Serializable

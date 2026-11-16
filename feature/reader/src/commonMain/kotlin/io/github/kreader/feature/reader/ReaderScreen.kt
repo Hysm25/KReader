@@ -10,12 +10,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -79,11 +84,13 @@ fun ReaderScreen(
     onImportCustomFont: (CustomFont) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
+    onExportMarkdown: (suspend () -> String?)? = null,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val epubController = rememberEpubNavigatorController()
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val screenBgColor = when (state.theme.mode) {
@@ -95,6 +102,7 @@ fun ReaderScreen(
             Color(0xFF121212)
         }
         ThemeMode.SYSTEM -> if (isSystemDark) Color(0xFF121212) else Color(0xFFFAFAFA)
+        ThemeMode.CUSTOM -> parseHexToComposeColor(state.theme.backgroundColorHex, Color.White)
     }
 
     // Android system back button management: close dialogs/sheets/drawers/controls first, then back to library
@@ -152,11 +160,11 @@ fun ReaderScreen(
         ) {
             val book = state.book
             if (book != null) {
-                // Background Layer: Fixed viewport size with safe drawing insets & dynamic page margins
+                // Background Layer: Fixed viewport size with system bar & cutout insets (excludes IME so keyboard doesn't resize reader)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
                         .padding(
                             horizontal = state.typography.paddingHorizontal.dp,
                             vertical = state.typography.paddingVertical.dp
@@ -306,6 +314,18 @@ fun ReaderScreen(
                 onDeleteBookmark = onDeleteBookmark,
                 onDeleteHighlight = onDeleteHighlight,
                 onHighlightClicked = onHighlightClicked,
+                onExportMarkdown = {
+                    if (onExportMarkdown != null) {
+                        scope.launch {
+                            val path = onExportMarkdown()
+                            if (path != null) {
+                                snackbarHostState.showSnackbar("Exported to $path")
+                            } else {
+                                snackbarHostState.showSnackbar("Failed to export notes")
+                            }
+                        }
+                    }
+                },
                 onDismiss = onDismissNavigationDrawer
             )
 
@@ -356,6 +376,14 @@ fun ReaderScreen(
                 onImportCustomFont = onImportCustomFont,
                 onDeleteCustomFont = onDeleteCustomFont,
                 onDismiss = onDismissSettings
+            )
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(bottom = 16.dp)
             )
         }
     }

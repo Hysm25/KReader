@@ -1,11 +1,13 @@
 package io.github.kreader.feature.reader
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -136,6 +139,7 @@ fun ReaderNavigationDrawer(
     onDeleteBookmark: (String) -> Unit,
     onDeleteHighlight: (String) -> Unit,
     onHighlightClicked: (Highlight) -> Unit,
+    onExportMarkdown: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     if (!isOpen) return
@@ -182,11 +186,20 @@ fun ReaderNavigationDrawer(
                         text = "Navigation & Study",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close navigation"
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onExportMarkdown) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Notes,
+                                contentDescription = "Export to Markdown",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Close navigation"
+                            )
+                        }
                     }
                 }
 
@@ -388,64 +401,140 @@ private fun HighlightsTabContent(
                 text = "No highlights or notes yet.\nSelect text inside the book to highlight or add notes.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 22.sp
+                lineHeight = 22.sp,
+                textAlign = TextAlign.Center
             )
         }
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(highlights) { highlight ->
                 val highlightColor = parseHexToColor(highlight.colorHex)
-                Row(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .clickable { onHighlightClick(highlight) }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.Top
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onHighlightClick(highlight) },
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 2.dp
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .size(14.dp)
-                            .clip(CircleShape)
-                            .background(highlightColor)
-                            .padding(top = 4.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = highlight.locator.text?.highlight ?: "Highlighted text",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        // Colored start accent bar
+                        Box(
+                            modifier = Modifier
+                                .width(5.dp)
+                                .fillMaxHeight()
+                                .background(highlightColor)
                         )
-                        if (!highlight.annotation.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Header: Chapter pill & progression
+                            val chapterTitle = highlight.locator.title
+                                ?.takeIf { it.isNotBlank() }
+                                ?: highlight.locator.href.substringBefore('#').substringAfterLast('/')
+                                    .removeSuffix(".xhtml")
+                                    .removeSuffix(".html")
+                                    .replace('_', ' ')
+                            val prog = ((highlight.locator.locations.totalProgression ?: highlight.locator.locations.progression ?: 0f) * 100).toInt()
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = highlightColor.copy(alpha = 0.25f)
+                                ) {
+                                    Text(
+                                        text = chapterTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "$prog%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            // Highlighted Quote Text
                             Text(
-                                text = "📝 ${highlight.annotation}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 2,
+                                text = "“${highlight.locator.text?.highlight ?: "Highlighted text"}”",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal),
+                                maxLines = 4,
                                 overflow = TextOverflow.Ellipsis
                             )
+
+                            // Annotation / Note if present
+                            if (!highlight.annotation.isNullOrBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "📝 ${highlight.annotation}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    }
-                    Row {
-                        IconButton(onClick = { onHighlightDetail(highlight) }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Edit,
-                                contentDescription = "Edit annotation"
-                            )
-                        }
-                        IconButton(onClick = { onDeleteHighlight(highlight.id) }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Delete,
-                                contentDescription = "Delete highlight",
-                                tint = MaterialTheme.colorScheme.error
-                            )
+
+                        // Action buttons
+                        Column(
+                            modifier = Modifier
+                                .padding(end = 4.dp, top = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            IconButton(
+                                onClick = { onHighlightDetail(highlight) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Edit,
+                                    contentDescription = "Edit annotation",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { onDeleteHighlight(highlight.id) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Delete,
+                                    contentDescription = "Delete highlight",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -514,6 +603,7 @@ fun ReaderSearchSheet(
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .windowInsetsPadding(WindowInsets.navigationBars)
+                    .imePadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 // Drag handle
@@ -529,77 +619,62 @@ fun ReaderSearchSheet(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // M3 Pill Search Bar with embedded trailing clear button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
-                    Surface(
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(50.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Search,
-                                contentDescription = "Search",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            BasicTextField(
-                                value = query,
-                                onValueChange = onQueryChange,
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                keyboardActions = KeyboardActions(onSearch = {
-                                    if (query.isNotBlank() && !isSearching) onSearch()
-                                }),
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                    color = MaterialTheme.colorScheme.onSurface
-                                ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.weight(1f),
-                                decorationBox = { innerTextField ->
-                                    if (query.isEmpty()) {
-                                        Text(
-                                            text = "Search in book...",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    innerTextField()
-                                }
-                            )
-                            if (query.isNotEmpty()) {
-                                IconButton(
-                                    onClick = { onQueryChange("") },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = "Clear search",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        BasicTextField(
+                            value = query,
+                            onValueChange = onQueryChange,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = {
+                                if (query.isNotBlank() && !isSearching) onSearch()
+                            }),
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (query.isEmpty()) {
+                                    Text(
+                                        text = "Search in book...",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                                innerTextField()
+                            }
+                        )
+                        if (query.isNotEmpty()) {
+                            IconButton(
+                                onClick = { onQueryChange("") },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Clear search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close search",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
                     }
                 }
 
@@ -1038,7 +1113,7 @@ fun ReaderSettingsSheet(
                     }
                 }
 
-                // Theme Presets: System, Light, Sepia, Dark, AMOLED
+                // Theme Presets: System, Light, Sepia, Dark, AMOLED, Custom
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "Theme",
@@ -1046,8 +1121,10 @@ fun ReaderSettingsSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         ThemeOption(
                             label = "System",
@@ -1083,6 +1160,31 @@ fun ReaderSettingsSheet(
                             textColor = Color(0xFFDCDCDC),
                             isSelected = theme.mode == ThemeMode.DARK && theme.backgroundColorHex.equals("#000000", ignoreCase = true),
                             onClick = { onThemeChange(ReaderThemePresets.Amoled) }
+                        )
+                        ThemeOption(
+                            label = "Custom",
+                            bgColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.backgroundColorHex) else Color(0xFF2E3440),
+                            textColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.textColorHex) else Color(0xFFECEFF4),
+                            isSelected = theme.mode == ThemeMode.CUSTOM,
+                            onClick = {
+                                val currentBg = if (theme.mode == ThemeMode.CUSTOM) theme.backgroundColorHex else "#2E3440"
+                                val currentText = if (theme.mode == ThemeMode.CUSTOM) theme.textColorHex else "#ECEFF4"
+                                onThemeChange(
+                                    ReaderTheme(
+                                        mode = ThemeMode.CUSTOM,
+                                        backgroundColorHex = currentBg,
+                                        textColorHex = currentText
+                                    )
+                                )
+                            }
+                        )
+                    }
+
+                    if (theme.mode == ThemeMode.CUSTOM) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        CustomThemeEditor(
+                            theme = theme,
+                            onThemeChange = onThemeChange
                         )
                     }
                 }
@@ -1340,6 +1442,148 @@ fun ReaderSettingsSheet(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Reset to Defaults")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomThemeEditor(
+    theme: ReaderTheme,
+    onThemeChange: (ReaderTheme) -> Unit
+) {
+    var bgHex by remember(theme.backgroundColorHex) { mutableStateOf(theme.backgroundColorHex) }
+    var textHex by remember(theme.textColorHex) { mutableStateOf(theme.textColorHex) }
+
+    val bgPresets = listOf(
+        "#2E3440" to "#ECEFF4", // Nord
+        "#002B36" to "#839496", // Solarized Dark
+        "#FDF6E3" to "#657B83", // Solarized Light
+        "#282828" to "#EBDBB2", // Gruvbox Dark
+        "#FBF1C7" to "#3C3836", // Gruvbox Light
+        "#191724" to "#E0DEF4", // Rose Pine
+        "#1A2E26" to "#E2E8F0", // Forest Pine
+        "#1E1E2E" to "#CDD6F4"  // Catppuccin
+    )
+
+    val currentBgColor = parseHexToColor(bgHex)
+    val currentTextColor = parseHexToColor(textHex)
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Custom Theme Colors",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            // Live Preview Card
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = currentBgColor,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Chapter Preview",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = currentTextColor
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Live preview of your custom background and text color combination. Colors apply across the book and UI.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = currentTextColor
+                    )
+                }
+            }
+
+            // Quick Color Palettes
+            Text(
+                text = "Preset Palettes",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                bgPresets.forEach { (bg, txt) ->
+                    val presetBg = parseHexToColor(bg)
+                    val presetTxt = parseHexToColor(txt)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(presetBg)
+                            .border(
+                                width = if (bgHex.equals(bg, ignoreCase = true)) 2.5.dp else 1.dp,
+                                color = if (bgHex.equals(bg, ignoreCase = true)) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
+                                shape = CircleShape
+                            )
+                            .clickable {
+                                bgHex = bg
+                                textHex = txt
+                                onThemeChange(
+                                    theme.copy(
+                                        mode = ThemeMode.CUSTOM,
+                                        backgroundColorHex = bg,
+                                        textColorHex = txt
+                                    )
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "A",
+                            color = presetTxt,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Hex Inputs for Background and Text
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = bgHex,
+                    onValueChange = { newBg ->
+                        bgHex = newBg
+                        if (newBg.startsWith("#") && (newBg.length == 7 || newBg.length == 9)) {
+                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = newBg, textColorHex = textHex))
+                        }
+                    },
+                    label = { Text("Background Hex") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+
+                OutlinedTextField(
+                    value = textHex,
+                    onValueChange = { newTxt ->
+                        textHex = newTxt
+                        if (newTxt.startsWith("#") && (newTxt.length == 7 || newTxt.length == 9)) {
+                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = newTxt))
+                        }
+                    },
+                    label = { Text("Text Hex") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }

@@ -31,5 +31,6 @@ actual fun getReaderColorScheme(theme: ReaderTheme): ColorScheme {
                 if (isSystemDark) SoftDarkColorScheme else PureLightColorScheme
             }
         }
+        ThemeMode.CUSTOM -> createCustomColorScheme(theme)
     }
 }

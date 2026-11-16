@@ -1,5 +1,6 @@
 package io.github.kreader.feature.reader
 
+import androidx.compose.runtime.Immutable
 import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
@@ -17,6 +18,7 @@ enum class NavigationDrawerTab {
     HIGHLIGHTS
 }
 
+@Immutable
 data class ReaderUiState(
     val book: Book? = null,
     val engineState: ReaderEngineState = ReaderEngineState.Idle,

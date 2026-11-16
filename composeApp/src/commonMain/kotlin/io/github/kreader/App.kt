@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,6 +53,17 @@ fun App() {
         ExternalBookOpener.clear()
     }
 
+    DisposableEffect(bookRepository) {
+        VaultSyncBridge.onResumeCallback = {
+            scope.launch {
+                bookRepository.refreshVault()
+            }
+        }
+        onDispose {
+            VaultSyncBridge.onResumeCallback = null
+        }
+    }
+
     val activeTheme = persistedPreferences.theme
     ManageSystemBars(isControlsVisible = true, theme = activeTheme)
 
@@ -72,7 +84,8 @@ fun App() {
                     onDeleteBooks = { books -> libraryViewModel.deleteBooks(books) },
                     onResetBookProgress = { book -> libraryViewModel.resetBookProgress(book) },
                     onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
-                    onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) }
+                    onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) },
+                    onExportBookToMarkdown = { book -> bookRepository.exportBookToMarkdown(book.id) }
                 )
             } else {
                 val effectivePreferences by bookRepository.observeEffectivePreferences(bookToRead.id).collectAsState(persistedPreferences)
@@ -321,7 +334,8 @@ fun App() {
                         if (isRtl != readerState.isRtl) {
                             readerState = readerState.copy(isRtl = isRtl)
                         }
-                    }
+                    },
+                    onExportMarkdown = { bookRepository.exportBookToMarkdown(bookToRead.id) }
                 )
             }
         }

@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
@@ -70,6 +71,7 @@ fun BookGrid(
     onBookLongClick: (Book) -> Unit = {},
     onDeleteBook: (Book) -> Unit,
     onResetProgress: (Book) -> Unit = {},
+    onExportMarkdown: (Book) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyVerticalGrid(
@@ -79,7 +81,11 @@ fun BookGrid(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier.fillMaxSize()
     ) {
-        items(books, key = { it.id }) { book ->
+        items(
+            items = books,
+            key = { it.id },
+            contentType = { "book" }
+        ) { book ->
             val isSelected = selectedBookIds.contains(book.id)
             BookItemCard(
                 book = book,
@@ -96,7 +102,8 @@ fun BookGrid(
                     onBookLongClick(book)
                 },
                 onDelete = { onDeleteBook(book) },
-                onResetProgress = { onResetProgress(book) }
+                onResetProgress = { onResetProgress(book) },
+                onExportMarkdown = { onExportMarkdown(book) }
             )
         }
     }
@@ -112,6 +119,7 @@ fun BookItemCard(
     onLongClick: () -> Unit,
     onDelete: () -> Unit,
     onResetProgress: () -> Unit = {},
+    onExportMarkdown: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -310,6 +318,19 @@ fun BookItemCard(
                                     onClick = {
                                         showMenu = false
                                         onResetProgress()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Export to Markdown") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.Notes,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        onExportMarkdown()
                                     }
                                 )
                                 DropdownMenuItem(

@@ -485,16 +485,25 @@ actual fun EpubNavigatorHost(
                     }
                 },
                 update = { view ->
+                    var lastW = -1
+                    var lastH = -1
                     view.doOnLayout {
-                        runCatching {
-                            val fm = fragmentActivity.supportFragmentManager
-                            val frag = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
-                            if (frag != null && frag.isAdded && frag.context != null) {
-                                frag.view?.post {
-                                    runCatching {
-                                        val loc = frag.currentLocator.value
-                                        frag.go(loc, animated = false)
-                                        frag.view?.requestLayout()
+                        if (view.width > 0 && view.height > 0 && (view.width != lastW || view.height != lastH)) {
+                            val isFirstLayout = lastW == -1
+                            lastW = view.width
+                            lastH = view.height
+                            if (isFirstLayout) {
+                                runCatching {
+                                    val fm = fragmentActivity.supportFragmentManager
+                                    val frag = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
+                                    if (frag != null && frag.isAdded && frag.context != null) {
+                                        frag.view?.post {
+                                            runCatching {
+                                                val loc = frag.currentLocator.value
+                                                frag.go(loc, animated = false)
+                                                frag.view?.requestLayout()
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -533,17 +542,24 @@ actual fun EpubNavigatorHost(
                 modifier = modifier.fillMaxSize()
             )
 
-            // Render Highlights as Decorations (guarded by isNavigatorReady & isAdded)
+            // Render Highlights as Decorations (guarded by isNavigatorReady & isAdded with subtle ~0.28f pastel alpha)
             LaunchedEffect(currentFragment, highlights, isNavigatorReady) {
                 val frag = currentFragment ?: return@LaunchedEffect
                 if (isNavigatorReady && frag.isAdded && frag.context != null) {
                     runCatching {
                         val decorations = highlights.map { h ->
-                            val tintColor = try {
+                            val baseColor = try {
                                 android.graphics.Color.parseColor(h.colorHex)
                             } catch (_: Exception) {
                                 android.graphics.Color.YELLOW
                             }
+                            // Apply soft pastel transparency (~0.28f / 71 alpha int)
+                            val tintColor = android.graphics.Color.argb(
+                                71,
+                                android.graphics.Color.red(baseColor),
+                                android.graphics.Color.green(baseColor),
+                                android.graphics.Color.blue(baseColor)
+                            )
                             Decoration(
                                 id = h.id,
                                 locator = h.locator.toReadium(),
@@ -601,7 +617,7 @@ private suspend fun injectBaseStyles(frag: EpubNavigatorFragment) {
                     el.id = 'kreader-base-styles';
                     (document.head || document.documentElement).appendChild(el);
                 }
-                el.textContent = ':root { --USER__maxLineLength: 100% !important; --RS__maxLineLength: 100% !important; } body { box-sizing: border-box !important; }';
+                el.textContent = ':root { --USER__maxLineLength: 100% !important; --RS__maxLineLength: 100% !important; overflow-x: hidden !important; } body { box-sizing: border-box !important; overflow-x: hidden !important; }';
             })();
         """.trimIndent()
         frag.evaluateJavascript(js)
@@ -703,10 +719,10 @@ private class SelectionActionModeCallback(
         if (!fragment.isAdded || fragment.context == null) return false
 
         val colorHex = when (item?.itemId) {
-            MENU_YELLOW -> "#FEF08A"
-            MENU_GREEN -> "#BBF7D0"
-            MENU_BLUE -> "#BAE6FD"
-            MENU_PINK -> "#FBCFE8"
+            MENU_YELLOW -> "#FFF59D"
+            MENU_GREEN -> "#C8E6C9"
+            MENU_BLUE -> "#BBDEFB"
+            MENU_PINK -> "#F8BBD0"
             else -> null
         }
         val isNote = item?.itemId == MENU_NOTE

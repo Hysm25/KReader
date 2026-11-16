@@ -1,7 +1,10 @@
 package io.github.kreader.core.database
 
 import android.content.Context
+import android.database.ContentObserver
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.documentfile.provider.DocumentFile
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.CustomFont
@@ -20,6 +23,42 @@ actual class VaultStorage(private val context: Context) {
     private val prefs = context.getSharedPreferences("kreader_vault_prefs", Context.MODE_PRIVATE)
     private val _activeVaultUriOrPath = MutableStateFlow<String?>(loadInitialVault())
     actual val activeVaultUriOrPath: StateFlow<String?> = _activeVaultUriOrPath.asStateFlow()
+    actual var onVaultContentChanged: (() -> Unit)? = null
+
+    private var treeContentObserver: ContentObserver? = null
+
+    init {
+        registerVaultContentObserver(_activeVaultUriOrPath.value)
+    }
+
+    private fun registerVaultContentObserver(uriString: String?) {
+        unregisterVaultContentObserver()
+        if (uriString == null) return
+        runCatching {
+            val uri = Uri.parse(uriString)
+            val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                private var lastTriggerTime = 0L
+                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTriggerTime > 800L) {
+                        lastTriggerTime = now
+                        onVaultContentChanged?.invoke()
+                    }
+                }
+            }
+            context.contentResolver.registerContentObserver(uri, true, observer)
+            treeContentObserver = observer
+        }
+    }
+
+    private fun unregisterVaultContentObserver() {
+        treeContentObserver?.let {
+            runCatching {
+                context.contentResolver.unregisterContentObserver(it)
+            }
+            treeContentObserver = null
+        }
+    }
 
     private val fileMutexes = ConcurrentHashMap<String, Mutex>()
     private fun getFileMutex(fileName: String): Mutex =
@@ -50,6 +89,7 @@ actual class VaultStorage(private val context: Context) {
             apply()
         }
         _activeVaultUriOrPath.value = uriOrPath
+        registerVaultContentObserver(uriOrPath)
     }
 
     actual fun getVaultName(): String? {
@@ -351,5 +391,22 @@ actual class VaultStorage(private val context: Context) {
             }
             true
         }.getOrDefault(false)
+    }
+
+    actual suspend fun exportMarkdown(fileName: String, markdownContent: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val root = getRootDoc() ?: return@withContext null
+            val notesDir = root.findFile("KReader Notes") ?: root.createDirectory("KReader Notes") ?: root
+            val safeName = if (fileName.endsWith(".md", ignoreCase = true)) fileName else "$fileName.md"
+            val existing = notesDir.findFile(safeName)
+            if (existing != null) {
+                existing.delete()
+            }
+            val doc = notesDir.createFile("text/markdown", safeName) ?: return@withContext null
+            context.contentResolver.openOutputStream(doc.uri, "wt")?.use { out ->
+                out.write(markdownContent.toByteArray(Charsets.UTF_8))
+            }
+            "KReader Notes/$safeName"
+        }.getOrNull()
     }
 }

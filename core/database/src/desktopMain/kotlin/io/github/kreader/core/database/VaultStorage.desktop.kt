@@ -15,6 +15,7 @@ actual class VaultStorage {
     private val prefs: Preferences = Preferences.userRoot().node("io.github.kreader.vault")
     private val _activeVaultUriOrPath = MutableStateFlow<String?>(loadInitialVault())
     actual val activeVaultUriOrPath: StateFlow<String?> = _activeVaultUriOrPath.asStateFlow()
+    actual var onVaultContentChanged: (() -> Unit)? = null
 
     private fun loadInitialVault(): String? {
         val path = prefs.get("active_vault_path", null) ?: return null
@@ -173,5 +174,14 @@ actual class VaultStorage {
             }
         }
         deleted
+    }
+
+    actual suspend fun exportMarkdown(fileName: String, markdownContent: String): String? = withContext(Dispatchers.IO) {
+        val root = getKReaderDir()?.parentFile ?: return@withContext null
+        val notesDir = File(root, "KReader Notes").apply { mkdirs() }
+        val safeName = if (fileName.endsWith(".md", ignoreCase = true)) fileName else "$fileName.md"
+        val file = File(notesDir, safeName)
+        file.writeText(markdownContent, Charsets.UTF_8)
+        "KReader Notes/$safeName"
     }
 }

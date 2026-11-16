@@ -32,6 +32,10 @@ fun buildReadiumPreferences(
         } else {
             Color(0xFFFAFAFA.toInt())
         }
+        ThemeMode.CUSTOM -> {
+            val parsed = parseHexColorInt(theme.backgroundColorHex, 0xFFFFFFFF.toInt())
+            Color(parsed)
+        }
     }
 
     val textColor = when (theme.mode) {
@@ -46,6 +50,10 @@ fun buildReadiumPreferences(
             Color(0xFFE6E6E6.toInt())
         } else {
             Color(0xFF1A1A1A.toInt())
+        }
+        ThemeMode.CUSTOM -> {
+            val parsed = parseHexColorInt(theme.textColorHex, 0xFF1A1A1A.toInt())
+            Color(parsed)
         }
     }
 
@@ -69,10 +77,22 @@ fun buildReadiumPreferences(
         lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceAtLeast(1.5),
         columnCount = ColumnCount.ONE,
         spread = Spread.NEVER,
-        pageMargins = 0.5,
+        pageMargins = 0.15,
         scroll = isScrollMode,
         readingProgression = progression,
         ligatures = true,
         publisherStyles = false
     )
+}
+
+private fun parseHexColorInt(hex: String, fallback: Int): Int {
+    return runCatching {
+        val clean = hex.removePrefix("#").trim()
+        val parsed = clean.toLong(16)
+        if (clean.length <= 6) {
+            (0xFF000000 or parsed).toInt()
+        } else {
+            parsed.toInt()
+        }
+    }.getOrDefault(fallback)
 }

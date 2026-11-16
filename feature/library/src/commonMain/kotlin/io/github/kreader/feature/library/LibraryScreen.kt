@@ -53,7 +53,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -78,8 +80,10 @@ fun LibraryScreen(
     onResetBookProgress: (Book) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit,
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
+    onExportBookToMarkdown: (suspend (Book) -> String?)? = null,
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
     val folderPickerLauncher = rememberFolderPickerLauncher { uriOrPath ->
         onSelectVaultFolder(uriOrPath)
     }
@@ -440,6 +444,18 @@ fun LibraryScreen(
                             },
                             onDeleteBook = onDeleteBook,
                             onResetProgress = onResetBookProgress,
+                            onExportMarkdown = { book ->
+                                if (onExportBookToMarkdown != null) {
+                                    scope.launch {
+                                        val path = onExportBookToMarkdown(book)
+                                        if (path != null) {
+                                            snackbarHostState.showSnackbar("Exported to $path")
+                                        } else {
+                                            snackbarHostState.showSnackbar("Failed to export notes")
+                                        }
+                                    }
+                                }
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }

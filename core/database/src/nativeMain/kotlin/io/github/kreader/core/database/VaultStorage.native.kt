@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 actual class VaultStorage {
     private val _activeVaultUriOrPath = MutableStateFlow<String?>(null)
     actual val activeVaultUriOrPath: StateFlow<String?> = _activeVaultUriOrPath.asStateFlow()
+    actual var onVaultContentChanged: (() -> Unit)? = null
 
     actual fun getActiveVault(): String? = _activeVaultUriOrPath.value
     actual fun setActiveVault(uriOrPath: String?) { _activeVaultUriOrPath.value = uriOrPath }
@@ -24,4 +25,5 @@ actual class VaultStorage {
     actual suspend fun persistFont(font: CustomFont): CustomFont = font
     actual suspend fun listFonts(): List<CustomFont> = emptyList()
     actual suspend fun deleteFont(fontFileName: String): Boolean = false
+    actual suspend fun exportMarkdown(fileName: String, markdownContent: String): String? = null
 }
