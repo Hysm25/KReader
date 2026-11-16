@@ -443,7 +443,7 @@ actual fun EpubNavigatorHost(
                 frag.currentLocator.collect { readiumLocator ->
                     if (frag.isAdded && frag.context != null) {
                         // Avoid redundant font re-injection on every page turn within the same chapter
-                        val currHref = readiumLocator.href.substringBefore('#')
+                        val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
                             val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
