@@ -16,6 +16,7 @@ actual class VaultStorage {
     actual suspend fun writeConfig(fileName: String, content: String) {}
     actual suspend fun deleteEpub(relativePath: String): Boolean = false
     actual suspend fun saveCover(coverName: String, bytes: ByteArray): String? = null
+    actual suspend fun cacheExtractedCover(relativePath: String, localCoverPath: String): String? = null
     actual suspend fun getCoverPath(coverName: String): String? = null
     actual suspend fun deleteCover(coverName: String): Boolean = false
     actual suspend fun saveFont(fontFileName: String, bytes: ByteArray): String? = null

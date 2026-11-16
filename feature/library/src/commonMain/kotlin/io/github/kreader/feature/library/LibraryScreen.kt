@@ -266,28 +266,6 @@ fun LibraryScreen(
                     }
                 }
             }
-        },
-        floatingActionButton = {
-            if (!isSelectionMode && state.books.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = onRefreshVault,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = null
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = "Refresh",
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            }
         }
     ) { innerPadding ->
         Column(
@@ -350,8 +328,14 @@ fun LibraryScreen(
                         }
                     }
 
+                    val bookCountText = "${state.books.size} ${if (state.books.size == 1) "book" else "books"}"
+                    val headerText = if (!state.vaultName.isNullOrBlank()) {
+                        "${state.vaultName} • $bookCountText"
+                    } else {
+                        bookCountText
+                    }
                     Text(
-                        text = "${state.books.size} ${if (state.books.size == 1) "book" else "books"}",
+                        text = headerText,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

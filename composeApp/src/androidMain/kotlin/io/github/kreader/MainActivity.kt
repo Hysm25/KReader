@@ -2,8 +2,10 @@ package io.github.kreader
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
@@ -15,10 +17,44 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureHighRefreshRateAndHardwareAcceleration()
         enableEdgeToEdge()
         handleIncomingIntent(intent)
         setContent {
             App()
+        }
+    }
+
+    private fun configureHighRefreshRateAndHardwareAcceleration() {
+        // 1. Enable Hardware Acceleration for the Window & WebViews
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        )
+
+        // 2. Unlock High Refresh Rate (60Hz / 90Hz / 120Hz)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
+            }
+
+            if (display != null) {
+                val supportedModes = display.supportedModes
+                val currentMode = display.mode
+                val bestMode = supportedModes
+                    .filter { it.physicalWidth == currentMode.physicalWidth && it.physicalHeight == currentMode.physicalHeight }
+                    .maxByOrNull { it.refreshRate }
+                    ?: supportedModes.maxByOrNull { it.refreshRate }
+
+                if (bestMode != null && bestMode.modeId != 0) {
+                    val params = window.attributes
+                    params.preferredDisplayModeId = bestMode.modeId
+                    window.attributes = params
+                }
+            }
         }
     }
 

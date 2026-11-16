@@ -8,14 +8,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 actual class VaultStorage(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("kreader_vault_prefs", Context.MODE_PRIVATE)
     private val _activeVaultUriOrPath = MutableStateFlow<String?>(loadInitialVault())
     actual val activeVaultUriOrPath: StateFlow<String?> = _activeVaultUriOrPath.asStateFlow()
+
+    private val fileMutexes = ConcurrentHashMap<String, Mutex>()
+    private fun getFileMutex(fileName: String): Mutex =
+        fileMutexes.getOrPut(fileName) { Mutex() }
 
     private fun loadInitialVault(): String? {
         val saved = prefs.getString("active_vault_uri", null) ?: return null
@@ -69,8 +76,24 @@ actual class VaultStorage(private val context: Context) {
         return kreaderDir.findFile(dirName) ?: kreaderDir.createDirectory(dirName)
     }
 
+    private fun cleanupStrayDuplicates(kreaderDir: DocumentFile) {
+        runCatching {
+            val strayPattern = Regex(""".* \(\d+\)\.json$""")
+            for (file in kreaderDir.listFiles()) {
+                val name = file.name.orEmpty()
+                if (strayPattern.matches(name)) {
+                    file.delete()
+                }
+            }
+        }
+    }
+
     actual suspend fun listEpubs(): List<VaultEpubFile> = withContext(Dispatchers.IO) {
         val root = getRootDoc() ?: return@withContext emptyList()
+        val kreaderDir = root.findFile(".kreader")
+        if (kreaderDir != null) {
+            cleanupStrayDuplicates(kreaderDir)
+        }
         val results = mutableListOf<VaultEpubFile>()
         scanDocumentTree(root, "", results)
         results
@@ -106,20 +129,44 @@ actual class VaultStorage(private val context: Context) {
         }
     }
 
-    actual suspend fun readConfig(fileName: String): String? = withContext(Dispatchers.IO) {
-        val kreaderDir = getOrCreateKReaderDir() ?: return@withContext null
-        val file = kreaderDir.findFile(fileName) ?: return@withContext null
-        runCatching {
-            context.contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() }
-        }.getOrNull()
+    actual suspend fun readConfig(fileName: String): String? {
+        val mutex = getFileMutex(fileName)
+        return mutex.withLock {
+            withContext(Dispatchers.IO) {
+                val kreaderDir = getOrCreateKReaderDir() ?: return@withContext null
+                val file = kreaderDir.findFile(fileName) ?: return@withContext null
+                runCatching {
+                    context.contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()
+            }
+        }
     }
 
-    actual suspend fun writeConfig(fileName: String, content: String): Unit = withContext(Dispatchers.IO) {
-        val kreaderDir = getOrCreateKReaderDir() ?: return@withContext
-        val file = kreaderDir.findFile(fileName) ?: kreaderDir.createFile("application/json", fileName) ?: return@withContext
-        runCatching {
-            context.contentResolver.openOutputStream(file.uri, "wt")?.use { out ->
-                out.write(content.toByteArray(Charsets.UTF_8))
+    actual suspend fun writeConfig(fileName: String, content: String): Unit {
+        val mutex = getFileMutex(fileName)
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                val kreaderDir = getOrCreateKReaderDir() ?: return@withContext
+
+                // Delete any stray duplicate files like "fileName (1).json"
+                val nameWithoutExt = fileName.substringBeforeLast(".")
+                val ext = fileName.substringAfterLast(".", "json")
+                val strayRegex = Regex("^" + Regex.escape(nameWithoutExt) + """( \(\d+\))\.""" + Regex.escape(ext) + "$")
+                for (f in kreaderDir.listFiles()) {
+                    val fn = f.name.orEmpty()
+                    if (strayRegex.matches(fn)) {
+                        runCatching { f.delete() }
+                    }
+                }
+
+                // Overwrite existing file or create once if absent
+                val file = kreaderDir.findFile(fileName) ?: kreaderDir.createFile("application/json", fileName) ?: return@withContext
+                runCatching {
+                    context.contentResolver.openOutputStream(file.uri, "wt")?.use { out ->
+                        out.write(content.toByteArray(Charsets.UTF_8))
+                        out.flush()
+                    }
+                }
             }
         }
     }
@@ -133,6 +180,17 @@ actual class VaultStorage(private val context: Context) {
         }
         val target = current.findFile(parts.last()) ?: return@withContext false
         target.delete()
+    }
+
+    actual suspend fun cacheExtractedCover(relativePath: String, localCoverPath: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val localFile = File(localCoverPath)
+            if (!localFile.exists() || localFile.length() == 0L) return@withContext null
+            val ext = localFile.extension.ifBlank { "jpg" }
+            val coverName = "${relativePath.replace('/', '_').replace('\\', '_')}.$ext"
+            val bytes = localFile.readBytes()
+            saveCover(coverName, bytes)
+        }.getOrNull()
     }
 
     actual suspend fun saveCover(coverName: String, bytes: ByteArray): String? = withContext(Dispatchers.IO) {

@@ -5,6 +5,7 @@ import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color
+import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -65,6 +66,7 @@ fun buildReadiumPreferences(
         fontFamily = fontFamily,
         fontSize = (typography.fontSizeSp / 16.0).toDouble().coerceIn(0.6, 2.5),
         lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceAtLeast(1.5),
+        columnCount = ColumnCount.ONE,
         scroll = isScrollMode,
         readingProgression = progression,
         ligatures = true,

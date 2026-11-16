@@ -8,10 +8,12 @@
         android:allowBackup="true"
         android:label="KReader"
         android:supportsRtl="true"
+        android:hardwareAccelerated="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:hardwareAccelerated="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

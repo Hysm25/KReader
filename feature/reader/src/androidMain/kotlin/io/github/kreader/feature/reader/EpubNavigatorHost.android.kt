@@ -2,12 +2,15 @@ package io.github.kreader.feature.reader
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.os.Bundle
 import android.util.Base64
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
+import androidx.core.view.doOnLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -146,6 +149,40 @@ actual fun EpubNavigatorHost(
     val effectiveRtl = detectedRtl == true
     val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl, isSystemDark) {
         buildReadiumPreferences(theme, typography, isScrollMode, isRtl = effectiveRtl, isSystemInDarkTheme = isSystemDark)
+    }
+
+    // Pre-warm font cache immediately in IO thread for instant custom font rendering
+    LaunchedEffect(customFonts) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            for (f in customFonts) {
+                runCatching {
+                    val file = File(f.path)
+                    if (file.exists() && file.length() > 0L) {
+                        fontBase64Cache.getOrPut(f.path) {
+                            val fontBytes = file.readBytes()
+                            val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
+                            val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+                            fmt to b64
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // One-shot realignment once navigator is ready to resolve initial padding overlap glitch
+    LaunchedEffect(isNavigatorReady) {
+        if (isNavigatorReady) {
+            val frag = currentFragment ?: return@LaunchedEffect
+            kotlinx.coroutines.delay(80)
+            runCatching {
+                if (frag.isAdded && frag.context != null) {
+                    val loc = frag.currentLocator.value
+                    frag.go(loc, animated = false)
+                    frag.view?.requestLayout()
+                }
+            }
+        }
     }
 
     // Re-snap to current locator when horizontal or vertical margin changes
@@ -308,6 +345,18 @@ actual fun EpubNavigatorHost(
             DisposableEffect(fragmentActivity, fragmentTag) {
                 val fm = fragmentActivity.supportFragmentManager
                 val lifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
+                    override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
+                        if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
+                            val fontName = typography.fontFamily
+                            val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                            if (selectedCustomFont != null) {
+                                scope.launch {
+                                    injectFontFace(f, selectedCustomFont)
+                                }
+                            }
+                        }
+                    }
+
                     override fun onFragmentStarted(fm: FragmentManager, f: Fragment) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment && f.isAdded && f.context != null) {
                             if (!configuredFragments.contains(f)) {
@@ -333,6 +382,13 @@ actual fun EpubNavigatorHost(
                                         }
                                     }
                                 )
+                            }
+                            val fontName = typography.fontFamily
+                            val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                            if (selectedCustomFont != null) {
+                                scope.launch {
+                                    injectFontFace(f, selectedCustomFont)
+                                }
                             }
                             isNavigatorReady = true
                             if (currentFragment !== f) {
@@ -417,6 +473,22 @@ actual fun EpubNavigatorHost(
                     }
                 },
                 update = { view ->
+                    view.doOnLayout {
+                        runCatching {
+                            val fm = fragmentActivity.supportFragmentManager
+                            val frag = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
+                            if (frag != null && frag.isAdded && frag.context != null) {
+                                frag.view?.post {
+                                    runCatching {
+                                        val loc = frag.currentLocator.value
+                                        frag.go(loc, animated = false)
+                                        frag.view?.requestLayout()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     runCatching {
                         val fm = fragmentActivity.supportFragmentManager
                         if (fm.isDestroyed || fragmentActivity.isFinishing) return@runCatching
@@ -522,12 +594,17 @@ private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont
                 if (!el) {
                     el = document.createElement('style');
                     el.id = 'kreader-custom-font';
-                    document.head.appendChild(el);
+                    (document.head || document.documentElement).appendChild(el);
                 }
                 el.textContent = '@font-face { font-family: "${font.name}"; src: url("data:font/$format;charset=utf-8;base64,$base64"); } * { font-family: "${font.name}", sans-serif !important; }';
             })();
         """.trimIndent()
         frag.evaluateJavascript(js)
+        frag.view?.let { root ->
+            findWebViews(root).forEach { wv ->
+                wv.evaluateJavascript(js, null)
+            }
+        }
     }
 }
 
@@ -540,7 +617,24 @@ private suspend fun clearFontFace(frag: EpubNavigatorFragment) {
             })();
         """.trimIndent()
         frag.evaluateJavascript(js)
+        frag.view?.let { root ->
+            findWebViews(root).forEach { wv ->
+                wv.evaluateJavascript(js, null)
+            }
+        }
     }
+}
+
+private fun findWebViews(view: View): List<WebView> {
+    val list = mutableListOf<WebView>()
+    if (view is WebView) {
+        list.add(view)
+    } else if (view is ViewGroup) {
+        for (i in 0 until view.childCount) {
+            list.addAll(findWebViews(view.getChildAt(i)))
+        }
+    }
+    return list
 }
 
 private class SelectionActionModeCallback(

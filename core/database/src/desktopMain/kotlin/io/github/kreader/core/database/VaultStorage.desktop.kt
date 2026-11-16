@@ -93,6 +93,17 @@ actual class VaultStorage {
         file.delete()
     }
 
+    actual suspend fun cacheExtractedCover(relativePath: String, localCoverPath: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val localFile = File(localCoverPath)
+            if (!localFile.exists() || localFile.length() == 0L) return@withContext null
+            val ext = localFile.extension.ifBlank { "jpg" }
+            val coverName = "${relativePath.replace('/', '_').replace('\\', '_')}.$ext"
+            val bytes = localFile.readBytes()
+            saveCover(coverName, bytes)
+        }.getOrNull()
+    }
+
     actual suspend fun saveCover(coverName: String, bytes: ByteArray): String? = withContext(Dispatchers.IO) {
         val kreader = getKReaderDir() ?: return@withContext null
         val coversDir = File(kreader, "covers").apply { mkdirs() }

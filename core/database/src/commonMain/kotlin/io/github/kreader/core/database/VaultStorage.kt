@@ -12,6 +12,7 @@ expect class VaultStorage {
     suspend fun writeConfig(fileName: String, content: String)
     suspend fun deleteEpub(relativePath: String): Boolean
     suspend fun saveCover(coverName: String, bytes: ByteArray): String?
+    suspend fun cacheExtractedCover(relativePath: String, localCoverPath: String): String?
     suspend fun getCoverPath(coverName: String): String?
     suspend fun deleteCover(coverName: String): Boolean
     suspend fun saveFont(fontFileName: String, bytes: ByteArray): String?

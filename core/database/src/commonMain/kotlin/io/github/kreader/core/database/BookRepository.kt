@@ -198,6 +198,12 @@ class JsonVaultBookRepository(
             current.add(book)
         }
         _books.value = current
+
+        // Cache extracted cover thumbnail inside vault .kreader/covers/
+        val coverPath = book.coverPath
+        if (coverPath != null) {
+            vaultStorage.cacheExtractedCover(book.id, coverPath)
+        }
     }
 
     override suspend fun updateProgress(
