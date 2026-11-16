@@ -1068,18 +1068,6 @@ fun ReaderSettingsSheet(
                         )
                     }
                 }
-                        FilterChip(
-                            selected = !isScrollMode,
-                            onClick = { onScrollModeChange(false) },
-                            label = { Text("Paginated") }
-                        )
-                        FilterChip(
-                            selected = isScrollMode,
-                            onClick = { onScrollModeChange(true) },
-                            label = { Text("Continuous Scroll") }
-                        )
-                    }
-                }
 
                 // Font Family: Default + User-imported Fonts (.ttf / .otf) + Import Button
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

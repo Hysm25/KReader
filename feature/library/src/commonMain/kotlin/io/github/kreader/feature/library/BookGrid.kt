@@ -201,9 +201,10 @@ fun BookItemCard(
                             )
                         }
 
-                        if (!book.author.isNullOrBlank()) {
+                        val authorName = book.author
+                        if (!authorName.isNullOrBlank()) {
                             Text(
-                                text = book.author,
+                                text = authorName,
                                 style = MaterialTheme.typography.bodySmall,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
