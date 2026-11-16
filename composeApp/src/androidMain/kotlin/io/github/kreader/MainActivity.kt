@@ -4,13 +4,25 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.ExternalBookOpener
+
+class MainActivity : FragmentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+
+        handleIncomingIntent(intent)
+
+        setContent {
+            App()
+        }
+    }
 
     override fun onResume() {
         super.onResume()
