@@ -17,7 +17,7 @@ data class CustomFont(
 @Serializable
 data class ReaderPreferences(
     val theme: ReaderTheme = ReaderTheme(),
-    val typography: ReaderTypography = ReaderTypography(paddingHorizontal = 0, paddingVertical = 0, lineHeightMultiplier = 1.6f),
+    val typography: ReaderTypography = ReaderTypography(paddingHorizontal = 16, paddingVertical = 0, lineHeightMultiplier = 1.6f),
     val isScrollMode: Boolean = false,
     val pageLayout: PageLayout = PageLayout.SINGLE,
     val pageMargins: Float = 0f,

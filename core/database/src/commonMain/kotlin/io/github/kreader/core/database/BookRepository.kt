@@ -451,6 +451,15 @@ class JsonVaultBookRepository(
         sb.appendLine("**Reading Progress:** $progPct")
         sb.appendLine()
 
+        // Extract and include full book chapters in spine reading order
+        val fullBookContent = vaultStorage.extractEpubTextContent(book.source)
+        if (!fullBookContent.isNullOrBlank()) {
+            sb.appendLine(fullBookContent)
+            sb.appendLine()
+            sb.appendLine("---")
+            sb.appendLine()
+        }
+
         if (bookmarks.isNotEmpty()) {
             sb.appendLine("## 🔖 Bookmarks")
             sb.appendLine()

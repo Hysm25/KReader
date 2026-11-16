@@ -1,5 +1,6 @@
 package io.github.kreader.core.database
 
+import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.CustomFont
 import kotlinx.coroutines.flow.StateFlow
 
@@ -22,4 +23,5 @@ expect class VaultStorage {
     suspend fun listFonts(): List<CustomFont>
     suspend fun deleteFont(fontFileName: String): Boolean
     suspend fun exportMarkdown(fileName: String, markdownContent: String): String?
+    suspend fun extractEpubTextContent(source: BookSource): String?
 }

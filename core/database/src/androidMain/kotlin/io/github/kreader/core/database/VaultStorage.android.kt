@@ -409,4 +409,96 @@ actual class VaultStorage(private val context: Context) {
             "KReader Notes/$safeName"
         }.getOrNull()
     }
+
+    actual suspend fun extractEpubTextContent(source: BookSource): String? = withContext(Dispatchers.IO) {
+        var tempFile: File? = null
+        val workingFile = when (source) {
+            is BookSource.FilePath -> File(source.path)
+            is BookSource.ContentUri -> {
+                val input = runCatching {
+                    context.contentResolver.openInputStream(Uri.parse(source.uriString))
+                }.getOrNull() ?: return@withContext null
+                val temp = File.createTempFile("kreader_export_", ".epub", context.cacheDir)
+                tempFile = temp
+                input.use { inStream ->
+                    temp.outputStream().use { outStream ->
+                        inStream.copyTo(outStream)
+                    }
+                }
+                temp
+            }
+            else -> return@withContext null
+        }
+
+        try {
+            if (!workingFile.exists() || workingFile.length() == 0L) return@withContext null
+            extractEpubFromZip(workingFile)
+        } finally {
+            tempFile?.delete()
+        }
+    }
+
+    private fun extractEpubFromZip(file: File): String? {
+        return runCatching {
+            java.util.zip.ZipFile(file).use { zip ->
+                val containerEntry = zip.getEntry("META-INF/container.xml")
+                    ?: zip.entries().asSequence().firstOrNull { it.name.equals("META-INF/container.xml", ignoreCase = true) }
+                    ?: return null
+                val containerXml = zip.getInputStream(containerEntry).bufferedReader().readText()
+                val opfPath = Regex("""full-path=["']([^"']+)["']""").find(containerXml)?.groupValues?.get(1) ?: "OEBPS/content.opf"
+                val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
+
+                val opfEntry = zip.getEntry(opfPath)
+                    ?: zip.entries().asSequence().firstOrNull { it.name.equals(opfPath, ignoreCase = true) }
+                    ?: return null
+                val opfXml = zip.getInputStream(opfEntry).bufferedReader().readText()
+
+                val manifestMap = mutableMapOf<String, String>()
+                val itemRegex = Regex("""<item\s+[^>]*>""", RegexOption.IGNORE_CASE)
+                itemRegex.findAll(opfXml).forEach { match ->
+                    val tag = match.value
+                    val id = Regex("""id=["']([^"']+)["']""").find(tag)?.groupValues?.get(1)
+                    val href = Regex("""href=["']([^"']+)["']""").find(tag)?.groupValues?.get(1)
+                    if (id != null && href != null) {
+                        manifestMap[id] = href
+                    }
+                }
+
+                val spineXml = Regex("""<spine[^>]*>(.*?)</spine>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+                    .find(opfXml)?.groupValues?.get(1) ?: ""
+                val spineIds = Regex("""<itemref\s+[^>]*idref=["']([^"']+)["']""").findAll(spineXml).map { it.groupValues[1] }.toList()
+
+                val chapters = mutableListOf<String>()
+                for (idref in spineIds) {
+                    val href = manifestMap[idref] ?: continue
+                    val zipPath = resolveZipPath(opfDir, href)
+                    val entry = zip.getEntry(zipPath)
+                        ?: zip.entries().asSequence().firstOrNull { it.name.equals(zipPath, ignoreCase = true) }
+                        ?: continue
+
+                    val xhtml = zip.getInputStream(entry).bufferedReader().readText()
+                    val md = convertHtmlToMarkdown(xhtml)
+                    if (md.isNotBlank()) {
+                        chapters.add(md)
+                    }
+                }
+
+                if (chapters.isEmpty()) null else chapters.joinToString("\n\n---\n\n")
+            }
+        }.getOrNull()
+    }
+
+    private fun resolveZipPath(baseDir: String, href: String): String {
+        val cleanHref = href.substringBefore('#').substringBefore('?')
+        val combined = if (baseDir.isEmpty()) cleanHref else "$baseDir/$cleanHref"
+        val parts = mutableListOf<String>()
+        for (part in combined.split('/')) {
+            when (part) {
+                "", "." -> continue
+                ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.size - 1)
+                else -> parts.add(part)
+            }
+        }
+        return parts.joinToString("/")
+    }
 }

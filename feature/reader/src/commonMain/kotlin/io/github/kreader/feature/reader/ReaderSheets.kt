@@ -1169,11 +1169,13 @@ fun ReaderSettingsSheet(
                             onClick = {
                                 val currentBg = if (theme.mode == ThemeMode.CUSTOM) theme.backgroundColorHex else "#2E3440"
                                 val currentText = if (theme.mode == ThemeMode.CUSTOM) theme.textColorHex else "#ECEFF4"
+                                val currentAccent = if (theme.mode == ThemeMode.CUSTOM) theme.accentColorHex else "#88C0D0"
                                 onThemeChange(
                                     ReaderTheme(
                                         mode = ThemeMode.CUSTOM,
                                         backgroundColorHex = currentBg,
-                                        textColorHex = currentText
+                                        textColorHex = currentText,
+                                        accentColorHex = currentAccent
                                     )
                                 )
                             }
@@ -1359,7 +1361,7 @@ fun ReaderSettingsSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Horizontal Margin (الهوامش الجانبية)",
+                            text = "Inter-Page Gap & Margins (المسافة بين الصفحات)",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1454,20 +1456,37 @@ private fun CustomThemeEditor(
 ) {
     var bgHex by remember(theme.backgroundColorHex) { mutableStateOf(theme.backgroundColorHex) }
     var textHex by remember(theme.textColorHex) { mutableStateOf(theme.textColorHex) }
+    var accentHex by remember(theme.accentColorHex) { mutableStateOf(theme.accentColorHex) }
 
-    val bgPresets = listOf(
-        "#2E3440" to "#ECEFF4", // Nord
-        "#002B36" to "#839496", // Solarized Dark
-        "#FDF6E3" to "#657B83", // Solarized Light
-        "#282828" to "#EBDBB2", // Gruvbox Dark
-        "#FBF1C7" to "#3C3836", // Gruvbox Light
-        "#191724" to "#E0DEF4", // Rose Pine
-        "#1A2E26" to "#E2E8F0", // Forest Pine
-        "#1E1E2E" to "#CDD6F4"  // Catppuccin
+    data class ThemePreset(val name: String, val bg: String, val text: String, val accent: String)
+    val presets = listOf(
+        ThemePreset("Nord", "#2E3440", "#ECEFF4", "#88C0D0"),
+        ThemePreset("Solarized Dark", "#002B36", "#839496", "#268BD2"),
+        ThemePreset("Solarized Light", "#FDF6E3", "#657B83", "#2AA198"),
+        ThemePreset("Gruvbox Dark", "#282828", "#EBDBB2", "#FE8019"),
+        ThemePreset("Gruvbox Light", "#FBF1C7", "#3C3836", "#D65D0E"),
+        ThemePreset("Rose Pine", "#191724", "#E0DEF4", "#EBBCBA"),
+        ThemePreset("Forest Green", "#1A2E26", "#E2E8F0", "#4ADE80"),
+        ThemePreset("Catppuccin", "#1E1E2E", "#CDD6F4", "#CBA6F7")
+    )
+
+    val accentPresets = listOf(
+        "#3B82F6", // Blue
+        "#14B8A6", // Teal
+        "#10B981", // Emerald
+        "#F59E0B", // Amber
+        "#F97316", // Coral
+        "#F43F5E", // Rose
+        "#8B5CF6", // Purple
+        "#6366F1"  // Indigo
     )
 
     val currentBgColor = parseHexToColor(bgHex)
     val currentTextColor = parseHexToColor(textHex)
+    val currentAccentColor = parseHexToColor(accentHex)
+
+    val accentLuminance = 0.299f * currentAccentColor.red + 0.587f * currentAccentColor.green + 0.114f * currentAccentColor.blue
+    val onAccentColor = if (accentLuminance > 0.55f) Color(0xFF121212) else Color(0xFFFFFFFF)
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -1476,7 +1495,7 @@ private fun CustomThemeEditor(
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
                 text = "Custom Theme Colors",
@@ -1491,18 +1510,53 @@ private fun CustomThemeEditor(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
                         text = "Chapter Preview",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = currentTextColor
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Live preview of your custom background and text color combination. Colors apply across the book and UI.",
+                        text = "Live preview of your custom background, text, and primary accent color combination.",
                         style = MaterialTheme.typography.bodySmall,
                         color = currentTextColor
                     )
+
+                    // Accent Preview Controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = currentAccentColor
+                        ) {
+                            Text(
+                                text = "Primary Button",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = onAccentColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = currentAccentColor.copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = "Active Chip",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = currentAccentColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1518,27 +1572,33 @@ private fun CustomThemeEditor(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                bgPresets.forEach { (bg, txt) ->
-                    val presetBg = parseHexToColor(bg)
-                    val presetTxt = parseHexToColor(txt)
+                presets.forEach { preset ->
+                    val presetBg = parseHexToColor(preset.bg)
+                    val presetAcc = parseHexToColor(preset.accent)
+                    val isSelected = bgHex.equals(preset.bg, ignoreCase = true) &&
+                        textHex.equals(preset.text, ignoreCase = true) &&
+                        accentHex.equals(preset.accent, ignoreCase = true)
+
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
                             .background(presetBg)
                             .border(
-                                width = if (bgHex.equals(bg, ignoreCase = true)) 2.5.dp else 1.dp,
-                                color = if (bgHex.equals(bg, ignoreCase = true)) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
+                                width = if (isSelected) 2.5.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
                                 shape = CircleShape
                             )
                             .clickable {
-                                bgHex = bg
-                                textHex = txt
+                                bgHex = preset.bg
+                                textHex = preset.text
+                                accentHex = preset.accent
                                 onThemeChange(
                                     theme.copy(
                                         mode = ThemeMode.CUSTOM,
-                                        backgroundColorHex = bg,
-                                        textColorHex = txt
+                                        backgroundColorHex = preset.bg,
+                                        textColorHex = preset.text,
+                                        accentColorHex = preset.accent
                                     )
                                 )
                             },
@@ -1546,7 +1606,7 @@ private fun CustomThemeEditor(
                     ) {
                         Text(
                             text = "A",
-                            color = presetTxt,
+                            color = presetAcc,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1554,20 +1614,60 @@ private fun CustomThemeEditor(
                 }
             }
 
-            // Hex Inputs for Background and Text
+            // Primary Accent Color Swatches
+            Text(
+                text = "Primary Accent Color",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                accentPresets.forEach { hex ->
+                    val swatchColor = parseHexToColor(hex)
+                    val isSelected = accentHex.equals(hex, ignoreCase = true)
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(swatchColor)
+                            .border(
+                                width = if (isSelected) 3.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
+                                shape = CircleShape
+                            )
+                            .clickable {
+                                accentHex = hex
+                                onThemeChange(
+                                    theme.copy(
+                                        mode = ThemeMode.CUSTOM,
+                                        backgroundColorHex = bgHex,
+                                        textColorHex = textHex,
+                                        accentColorHex = hex
+                                    )
+                                )
+                            }
+                    )
+                }
+            }
+
+            // Hex Inputs for Background, Text, and Accent
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
                     value = bgHex,
                     onValueChange = { newBg ->
                         bgHex = newBg
                         if (newBg.startsWith("#") && (newBg.length == 7 || newBg.length == 9)) {
-                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = newBg, textColorHex = textHex))
+                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = newBg, textColorHex = textHex, accentColorHex = accentHex))
                         }
                     },
-                    label = { Text("Background Hex") },
+                    label = { Text("Background") },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
@@ -1577,10 +1677,23 @@ private fun CustomThemeEditor(
                     onValueChange = { newTxt ->
                         textHex = newTxt
                         if (newTxt.startsWith("#") && (newTxt.length == 7 || newTxt.length == 9)) {
-                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = newTxt))
+                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = newTxt, accentColorHex = accentHex))
                         }
                     },
-                    label = { Text("Text Hex") },
+                    label = { Text("Text") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+
+                OutlinedTextField(
+                    value = accentHex,
+                    onValueChange = { newAcc ->
+                        accentHex = newAcc
+                        if (newAcc.startsWith("#") && (newAcc.length == 7 || newAcc.length == 9)) {
+                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = textHex, accentColorHex = newAcc))
+                        }
+                    },
+                    label = { Text("Accent") },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )

@@ -166,7 +166,6 @@ fun ReaderScreen(
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
                         .padding(
-                            horizontal = state.typography.paddingHorizontal.dp,
                             vertical = state.typography.paddingVertical.dp
                         )
                 ) {

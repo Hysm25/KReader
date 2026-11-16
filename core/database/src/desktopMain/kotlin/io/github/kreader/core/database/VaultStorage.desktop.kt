@@ -184,4 +184,72 @@ actual class VaultStorage {
         file.writeText(markdownContent, Charsets.UTF_8)
         "KReader Notes/$safeName"
     }
+
+    actual suspend fun extractEpubTextContent(source: BookSource): String? = withContext(Dispatchers.IO) {
+        val path = when (source) {
+            is BookSource.FilePath -> source.path
+            is BookSource.ContentUri -> source.uriString
+            else -> return@withContext null
+        }
+        val file = File(path)
+        if (!file.exists() || file.length() == 0L) return@withContext null
+
+        runCatching {
+            java.util.zip.ZipFile(file).use { zip ->
+                val containerEntry = zip.getEntry("META-INF/container.xml")
+                    ?: zip.entries().asSequence().firstOrNull { it.name.equals("META-INF/container.xml", ignoreCase = true) }
+                    ?: return null
+                val containerXml = zip.getInputStream(containerEntry).bufferedReader().readText()
+                val opfPath = Regex("""full-path=["']([^"']+)["']""").find(containerXml)?.groupValues?.get(1) ?: "OEBPS/content.opf"
+                val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
+
+                val opfEntry = zip.getEntry(opfPath)
+                    ?: zip.entries().asSequence().firstOrNull { it.name.equals(opfPath, ignoreCase = true) }
+                    ?: return null
+                val opfXml = zip.getInputStream(opfEntry).bufferedReader().readText()
+
+                val manifestMap = mutableMapOf<String, String>()
+                val itemRegex = Regex("""<item\s+[^>]*>""", RegexOption.IGNORE_CASE)
+                itemRegex.findAll(opfXml).forEach { match ->
+                    val tag = match.value
+                    val id = Regex("""id=["']([^"']+)["']""").find(tag)?.groupValues?.get(1)
+                    val href = Regex("""href=["']([^"']+)["']""").find(tag)?.groupValues?.get(1)
+                    if (id != null && href != null) {
+                        manifestMap[id] = href
+                    }
+                }
+
+                val spineXml = Regex("""<spine[^>]*>(.*?)</spine>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+                    .find(opfXml)?.groupValues?.get(1) ?: ""
+                val spineIds = Regex("""<itemref\s+[^>]*idref=["']([^"']+)["']""").findAll(spineXml).map { it.groupValues[1] }.toList()
+
+                val chapters = mutableListOf<String>()
+                for (idref in spineIds) {
+                    val href = manifestMap[idref] ?: continue
+                    val cleanHref = href.substringBefore('#').substringBefore('?')
+                    val combined = if (opfDir.isEmpty()) cleanHref else "$opfDir/$cleanHref"
+                    val parts = mutableListOf<String>()
+                    for (part in combined.split('/')) {
+                        when (part) {
+                            "", "." -> continue
+                            ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.size - 1)
+                            else -> parts.add(part)
+                        }
+                    }
+                    val zipPath = parts.joinToString("/")
+                    val entry = zip.getEntry(zipPath)
+                        ?: zip.entries().asSequence().firstOrNull { it.name.equals(zipPath, ignoreCase = true) }
+                        ?: continue
+
+                    val xhtml = zip.getInputStream(entry).bufferedReader().readText()
+                    val md = convertHtmlToMarkdown(xhtml)
+                    if (md.isNotBlank()) {
+                        chapters.add(md)
+                    }
+                }
+
+                if (chapters.isEmpty()) null else chapters.joinToString("\n\n---\n\n")
+            }
+        }.getOrNull()
+    }
 }

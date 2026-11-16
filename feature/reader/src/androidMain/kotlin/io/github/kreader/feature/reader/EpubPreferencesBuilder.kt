@@ -69,6 +69,8 @@ fun buildReadiumPreferences(
         FontFamily(typography.fontFamily)
     }
 
+    val scaledMargin = (typography.paddingHorizontal.toDouble() / 16.0).coerceIn(0.15, 2.5)
+
     return EpubPreferences(
         backgroundColor = backgroundColor,
         textColor = textColor,
@@ -77,7 +79,7 @@ fun buildReadiumPreferences(
         lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceAtLeast(1.5),
         columnCount = ColumnCount.ONE,
         spread = Spread.NEVER,
-        pageMargins = 0.15,
+        pageMargins = scaledMargin,
         scroll = isScrollMode,
         readingProgression = progression,
         ligatures = true,

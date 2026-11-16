@@ -26,7 +26,7 @@ data class ReaderTypography(
     val lineHeightMultiplier: Float = 1.4f,
     val letterSpacingSp: Float = 0f,
     val textAlignment: TextAlignment = TextAlignment.JUSTIFY,
-    val paddingHorizontal: Int = 0,
+    val paddingHorizontal: Int = 16,
     val paddingVertical: Int = 0
 ) {
     @Serializable

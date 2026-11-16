@@ -135,40 +135,78 @@ val AmoledColorScheme: ColorScheme = darkColorScheme(
 fun createCustomColorScheme(theme: ReaderTheme): ColorScheme {
     val bg = parseHexToComposeColor(theme.backgroundColorHex, Color.White)
     val text = parseHexToComposeColor(theme.textColorHex, Color.Black)
-    val luminance = 0.299f * bg.red + 0.587f * bg.green + 0.114f * bg.blue
-    val isDark = luminance < 0.5f
+    val accent = parseHexToComposeColor(theme.accentColorHex, Color(0xFF3B82F6))
+
+    val bgLuminance = 0.299f * bg.red + 0.587f * bg.green + 0.114f * bg.blue
+    val isDark = bgLuminance < 0.5f
+
+    val accentLuminance = 0.299f * accent.red + 0.587f * accent.green + 0.114f * accent.blue
+    // If accent is bright, onPrimary must be dark; if accent is dark, onPrimary must be white
+    val onAccent = if (accentLuminance > 0.55f) Color(0xFF121212) else Color(0xFFFFFFFF)
+
+    // Contrast-aware container colors
+    val primaryContainer = if (isDark) {
+        accent.copy(alpha = 0.22f)
+    } else {
+        accent.copy(alpha = 0.14f)
+    }
+    val onPrimaryContainer = if (isDark) {
+        if (accentLuminance < 0.35f) text else accent
+    } else {
+        if (accentLuminance > 0.65f) text else accent
+    }
+
+    val outlineColor = if (isDark) Color(0x33FFFFFF) else Color(0x24000000)
+    val outlineVariantColor = if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
+    val surfaceContainerColor = if (isDark) bg.copy(alpha = 0.85f) else bg.copy(alpha = 0.90f)
 
     return if (isDark) {
         darkColorScheme(
-            primary = text,
-            onPrimary = bg,
-            primaryContainer = bg.copy(alpha = 0.85f),
-            onPrimaryContainer = text,
+            primary = accent,
+            onPrimary = onAccent,
+            primaryContainer = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            secondary = accent,
+            onSecondary = onAccent,
+            secondaryContainer = primaryContainer,
+            onSecondaryContainer = onPrimaryContainer,
             surface = bg,
             onSurface = text,
-            surfaceVariant = bg.copy(alpha = 0.9f),
-            onSurfaceVariant = text.copy(alpha = 0.7f),
-            surfaceContainer = bg.copy(alpha = 0.8f),
-            surfaceContainerLow = bg.copy(alpha = 0.9f),
-            surfaceContainerHigh = bg.copy(alpha = 0.7f),
+            surfaceVariant = bg,
+            onSurfaceVariant = text.copy(alpha = 0.75f),
+            surfaceContainerLowest = bg,
+            surfaceContainerLow = bg,
+            surfaceContainer = surfaceContainerColor,
+            surfaceContainerHigh = bg,
+            surfaceContainerHighest = bg,
             background = bg,
-            onBackground = text
+            onBackground = text,
+            outline = outlineColor,
+            outlineVariant = outlineVariantColor
         )
     } else {
         lightColorScheme(
-            primary = text,
-            onPrimary = bg,
-            primaryContainer = bg.copy(alpha = 0.85f),
-            onPrimaryContainer = text,
+            primary = accent,
+            onPrimary = onAccent,
+            primaryContainer = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            secondary = accent,
+            onSecondary = onAccent,
+            secondaryContainer = primaryContainer,
+            onSecondaryContainer = onPrimaryContainer,
             surface = bg,
             onSurface = text,
-            surfaceVariant = bg.copy(alpha = 0.9f),
-            onSurfaceVariant = text.copy(alpha = 0.7f),
-            surfaceContainer = bg.copy(alpha = 0.8f),
-            surfaceContainerLow = bg.copy(alpha = 0.9f),
-            surfaceContainerHigh = bg.copy(alpha = 0.7f),
+            surfaceVariant = bg,
+            onSurfaceVariant = text.copy(alpha = 0.75f),
+            surfaceContainerLowest = bg,
+            surfaceContainerLow = bg,
+            surfaceContainer = surfaceContainerColor,
+            surfaceContainerHigh = bg,
+            surfaceContainerHighest = bg,
             background = bg,
-            onBackground = text
+            onBackground = text,
+            outline = outlineColor,
+            outlineVariant = outlineVariantColor
         )
     }
 }
