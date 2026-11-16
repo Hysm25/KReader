@@ -3,6 +3,7 @@ package io.github.kreader.feature.reader
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
@@ -14,11 +15,12 @@ import io.github.kreader.core.model.ThemeMode
 actual fun ManageSystemBars(isControlsVisible: Boolean, theme: ReaderTheme) {
     val context = LocalContext.current
     val activity = context.findActivity() ?: return
+    val isSystemDark = isSystemInDarkTheme()
 
     val isDarkTheme = when (theme.mode) {
         ThemeMode.LIGHT, ThemeMode.SEPIA -> false
         ThemeMode.DARK -> true
-        ThemeMode.SYSTEM -> false
+        ThemeMode.SYSTEM -> isSystemDark
     }
 
     DisposableEffect(isDarkTheme, activity) {
@@ -31,10 +33,7 @@ actual fun ManageSystemBars(isControlsVisible: Boolean, theme: ReaderTheme) {
         insetsController.isAppearanceLightStatusBars = !isDarkTheme
         insetsController.isAppearanceLightNavigationBars = !isDarkTheme
 
-        onDispose {
-            insetsController.isAppearanceLightStatusBars = true
-            insetsController.isAppearanceLightNavigationBars = true
-        }
+        onDispose {}
     }
 }
 

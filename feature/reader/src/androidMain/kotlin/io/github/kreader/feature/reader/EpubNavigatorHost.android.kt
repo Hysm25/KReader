@@ -141,10 +141,23 @@ actual fun EpubNavigatorHost(
         )
     }
 
-    // 2. Build preferences (automatic reading direction + custom font support)
+    // 2. Build preferences (automatic reading direction + custom font support + system dark mode)
+    val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val effectiveRtl = detectedRtl == true
-    val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl) {
-        buildReadiumPreferences(theme, typography, isScrollMode, isRtl = effectiveRtl)
+    val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl, isSystemDark) {
+        buildReadiumPreferences(theme, typography, isScrollMode, isRtl = effectiveRtl, isSystemInDarkTheme = isSystemDark)
+    }
+
+    // Re-snap to current locator when horizontal or vertical margin changes
+    LaunchedEffect(typography.paddingHorizontal, typography.paddingVertical) {
+        val frag = currentFragment ?: return@LaunchedEffect
+        if (isNavigatorReady && frag.isAdded && frag.context != null) {
+            kotlinx.coroutines.delay(60)
+            runCatching {
+                val loc = frag.currentLocator.value
+                frag.go(loc, animated = false)
+            }
+        }
     }
 
     // 3. Submit preferences on change (deferred until fragment is attached and ready, without redundant submissions)

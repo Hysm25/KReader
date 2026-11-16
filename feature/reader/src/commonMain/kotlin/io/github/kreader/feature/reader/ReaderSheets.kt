@@ -27,6 +27,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.Notes
@@ -39,6 +42,8 @@ import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -62,7 +67,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -148,8 +155,9 @@ fun ReaderNavigationDrawer(
                     indication = null,
                     onClick = {}
                 ),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
@@ -181,6 +189,14 @@ fun ReaderNavigationDrawer(
                 // Tabs: Contents, Bookmarks, Highlights & Notes
                 TabRow(
                     selectedTabIndex = currentTab.ordinal,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    divider = {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                            thickness = 0.5.dp
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Tab(
@@ -268,8 +284,8 @@ private fun ContentsTabContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
                         .clickable { onItemClick(flatItem.item.locator) }
                         .padding(
                             start = (12 + flatItem.depth * 16).dp,
@@ -319,8 +335,8 @@ private fun BookmarksTabContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
                         .clickable { onBookmarkClick(bookmark) }
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -379,8 +395,8 @@ private fun HighlightsTabContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
                         .clickable { onHighlightClick(highlight) }
                         .padding(12.dp),
                     verticalAlignment = Alignment.Top
@@ -475,7 +491,7 @@ fun ReaderSearchSheet(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxHeight(0.75f)
+                .fillMaxHeight(0.8f)
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .clickable(
@@ -483,67 +499,105 @@ fun ReaderSearchSheet(
                     indication = null,
                     onClick = {}
                 ),
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                // Header with search bar and close
+                // Drag handle
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                        .align(Alignment.CenterHorizontally)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // M3 Pill Search Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = onQueryChange,
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Search book content...") },
-                        singleLine = true,
-                        leadingIcon = {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.Search,
-                                contentDescription = null
+                                contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        },
-                        trailingIcon = {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            BasicTextField(
+                                value = query,
+                                onValueChange = onQueryChange,
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = {
+                                    if (query.isNotBlank() && !isSearching) onSearch()
+                                }),
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.weight(1f),
+                                decorationBox = { innerTextField ->
+                                    if (query.isEmpty()) {
+                                        Text(
+                                            text = "Search in book...",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
                             if (query.isNotEmpty()) {
-                                IconButton(onClick = { onQueryChange("") }) {
+                                IconButton(
+                                    onClick = { onQueryChange("") },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = "Clear search"
+                                        contentDescription = "Clear search",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
                         }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = onSearch,
-                        enabled = query.isNotBlank() && !isSearching
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Search")
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close search"
+                            contentDescription = "Close search",
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (isSearching) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -562,42 +616,46 @@ fun ReaderSearchSheet(
                         )
                     }
                 } else {
-                    Text(
-                        text = "${results.size} matches found",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    if (results.isNotEmpty()) {
+                        Text(
+                            text = "${results.size} matches found",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(results) { result ->
-                            Column(
+                            Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                    .clickable { onResultClick(result) }
-                                    .padding(12.dp)
+                                    .clickable { onResultClick(result) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                             ) {
-                                val before = result.text?.before.orEmpty()
-                                val highlight = result.text?.highlight.orEmpty()
-                                val after = result.text?.after.orEmpty()
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    val before = result.text?.before.orEmpty()
+                                    val highlight = result.text?.highlight.orEmpty()
+                                    val after = result.text?.after.orEmpty()
 
-                                Text(
-                                    text = if (highlight.isNotEmpty()) "...$before[$highlight]$after..." else (result.title ?: result.href),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                val prog = ((result.locations.totalProgression ?: result.locations.progression ?: 0f) * 100).toInt()
-                                Text(
-                                    text = "Progression: $prog%",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                    Text(
+                                        text = if (highlight.isNotEmpty()) "...$before[$highlight]$after..." else (result.title ?: result.href),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    val prog = ((result.locations.totalProgression ?: result.locations.progression ?: 0f) * 100).toInt()
+                                    Text(
+                                        text = "Progression: $prog%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
@@ -789,6 +847,9 @@ fun ReaderSettingsSheet(
 
     val interactionSource = remember { MutableInteractionSource() }
 
+    var tempHorizontalPadding by remember(typography.paddingHorizontal) { mutableStateOf(typography.paddingHorizontal.toFloat()) }
+    var tempVerticalPadding by remember(typography.paddingVertical) { mutableStateOf(typography.paddingVertical.toFloat()) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -808,18 +869,28 @@ fun ReaderSettingsSheet(
                     indication = null,
                     onClick = {}
                 ),
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .verticalScroll(rememberScrollState())
-                    .padding(20.dp),
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Drag handle
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                        .align(Alignment.CenterHorizontally)
+                )
+
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -838,7 +909,10 @@ fun ReaderSettingsSheet(
                     }
                 }
 
-                HorizontalDivider()
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    thickness = 0.5.dp
+                )
 
                 // Theme Presets: System, Light, Sepia, Dark, AMOLED
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1063,14 +1137,25 @@ fun ReaderSettingsSheet(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            text = "${typography.paddingHorizontal} dp",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Text(
+                                text = "${tempHorizontalPadding.toInt()} dp",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                     Slider(
-                        value = typography.paddingHorizontal.toFloat(),
-                        onValueChange = { onTypographyChange(typography.copy(paddingHorizontal = it.toInt())) },
+                        value = tempHorizontalPadding,
+                        onValueChange = { tempHorizontalPadding = it },
+                        onValueChangeFinished = {
+                            onTypographyChange(typography.copy(paddingHorizontal = tempHorizontalPadding.toInt()))
+                        },
                         valueRange = 0f..48f,
                         steps = 11,
                         modifier = Modifier.fillMaxWidth()
@@ -1089,14 +1174,25 @@ fun ReaderSettingsSheet(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            text = "${typography.paddingVertical} dp",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Text(
+                                text = "${tempVerticalPadding.toInt()} dp",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                     Slider(
-                        value = typography.paddingVertical.toFloat(),
-                        onValueChange = { onTypographyChange(typography.copy(paddingVertical = it.toInt())) },
+                        value = tempVerticalPadding,
+                        onValueChange = { tempVerticalPadding = it },
+                        onValueChangeFinished = {
+                            onTypographyChange(typography.copy(paddingVertical = tempVerticalPadding.toInt()))
+                        },
                         valueRange = 0f..32f,
                         steps = 7,
                         modifier = Modifier.fillMaxWidth()

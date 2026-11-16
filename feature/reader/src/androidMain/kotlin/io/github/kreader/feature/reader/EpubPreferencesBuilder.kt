@@ -14,7 +14,8 @@ fun buildReadiumPreferences(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
-    isRtl: Boolean
+    isRtl: Boolean,
+    isSystemInDarkTheme: Boolean = false
 ): EpubPreferences {
     val backgroundColor = when (theme.mode) {
         ThemeMode.LIGHT -> Color(0xFFFFFFFF.toInt())
@@ -24,7 +25,11 @@ fun buildReadiumPreferences(
             Color(0xFF121212.toInt()) // Neutral Dark
         }
         ThemeMode.SEPIA -> Color(0xFFFBF0D9.toInt())
-        ThemeMode.SYSTEM -> null
+        ThemeMode.SYSTEM -> if (isSystemInDarkTheme) {
+            Color(0xFF121212.toInt())
+        } else {
+            Color(0xFFFAFAFA.toInt())
+        }
     }
 
     val textColor = when (theme.mode) {
@@ -35,7 +40,11 @@ fun buildReadiumPreferences(
             Color(0xFFE6E6E6.toInt())
         }
         ThemeMode.SEPIA -> Color(0xFF3B2F2F.toInt())
-        ThemeMode.SYSTEM -> null
+        ThemeMode.SYSTEM -> if (isSystemInDarkTheme) {
+            Color(0xFFE6E6E6.toInt())
+        } else {
+            Color(0xFF1A1A1A.toInt())
+        }
     }
 
     val progression = if (isRtl) {

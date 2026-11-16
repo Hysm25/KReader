@@ -1,5 +1,6 @@
 package io.github.kreader
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -10,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Bookmark
@@ -22,9 +24,11 @@ import io.github.kreader.feature.library.LibraryScreen
 import io.github.kreader.feature.library.metadata.rememberBookMetadataExtractor
 import io.github.kreader.feature.library.rememberLibraryViewModel
 import io.github.kreader.feature.library.repository.rememberBookRepository
+import io.github.kreader.feature.reader.ManageSystemBars
 import io.github.kreader.feature.reader.NavigationDrawerTab
 import io.github.kreader.feature.reader.ReaderScreen
 import io.github.kreader.feature.reader.ReaderUiState
+import io.github.kreader.feature.reader.getReaderColorScheme
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.launch
@@ -32,24 +36,30 @@ import kotlinx.datetime.Clock
 
 @Composable
 fun App() {
-    MaterialTheme {
-        Surface {
-            val bookRepository = rememberBookRepository()
-            val metadataExtractor = rememberBookMetadataExtractor()
-            val libraryViewModel = rememberLibraryViewModel(bookRepository, metadataExtractor)
-            val libraryUiState by libraryViewModel.uiState.collectAsState()
-            val persistedPreferences by bookRepository.observeReaderPreferences().collectAsState(ReaderPreferences())
-            val incomingSource by ExternalBookOpener.incomingSource.collectAsState()
-            val scope = rememberCoroutineScope()
+    val bookRepository = rememberBookRepository()
+    val metadataExtractor = rememberBookMetadataExtractor()
+    val libraryViewModel = rememberLibraryViewModel(bookRepository, metadataExtractor)
+    val libraryUiState by libraryViewModel.uiState.collectAsState()
+    val persistedPreferences by bookRepository.observeReaderPreferences().collectAsState(ReaderPreferences())
+    val incomingSource by ExternalBookOpener.incomingSource.collectAsState()
+    val scope = rememberCoroutineScope()
 
-            var selectedBook by remember { mutableStateOf<Book?>(null) }
+    var selectedBook by remember { mutableStateOf<Book?>(null) }
 
-            LaunchedEffect(incomingSource) {
-                val src = incomingSource ?: return@LaunchedEffect
-                libraryViewModel.importBook(src)
-                ExternalBookOpener.clear()
-            }
+    LaunchedEffect(incomingSource) {
+        val src = incomingSource ?: return@LaunchedEffect
+        libraryViewModel.importBook(src)
+        ExternalBookOpener.clear()
+    }
 
+    val activeTheme = persistedPreferences.theme
+    ManageSystemBars(isControlsVisible = true, theme = activeTheme)
+
+    MaterialTheme(colorScheme = getReaderColorScheme(activeTheme)) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
             val bookToRead = selectedBook
             if (bookToRead == null) {
                 LibraryScreen(

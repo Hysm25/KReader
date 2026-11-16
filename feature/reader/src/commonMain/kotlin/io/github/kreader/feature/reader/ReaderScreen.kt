@@ -83,6 +83,7 @@ fun ReaderScreen(
     val epubController = rememberEpubNavigatorController()
     val scope = rememberCoroutineScope()
 
+    val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val screenBgColor = when (state.theme.mode) {
         ThemeMode.LIGHT -> Color(0xFFFFFFFF)
         ThemeMode.SEPIA -> Color(0xFFFBF0D9)
@@ -91,7 +92,7 @@ fun ReaderScreen(
         } else {
             Color(0xFF121212)
         }
-        ThemeMode.SYSTEM -> MaterialTheme.colorScheme.background
+        ThemeMode.SYSTEM -> if (isSystemDark) Color(0xFF121212) else Color(0xFFFAFAFA)
     }
 
     // Android system back button management: close dialogs/sheets/drawers/controls first, then back to library
