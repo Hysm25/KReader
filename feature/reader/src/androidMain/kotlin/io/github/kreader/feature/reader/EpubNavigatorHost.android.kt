@@ -109,8 +109,8 @@ actual fun EpubNavigatorHost(
         opener.open(book.source, book.id).fold(
             onSuccess = { pub ->
                 publication = pub
-                val isPubRtl = (pub.metadata.effectiveReadingProgression == org.readium.r2.shared.publication.ReadingProgression.RTL) ||
-                    (pub.metadata.readingProgression == org.readium.r2.shared.publication.ReadingProgression.RTL) ||
+                val readingProg = pub.metadata.readingProgression
+                val isPubRtl = (readingProg == org.readium.r2.shared.publication.ReadingProgression.RTL) ||
                     pub.metadata.languages.any { lang ->
                         lang.startsWith("ar", ignoreCase = true) ||
                             lang.startsWith("fa", ignoreCase = true) ||
