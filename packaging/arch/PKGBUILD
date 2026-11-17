@@ -1,0 +1,55 @@
+# Maintainer: Hysm25 <https://github.com/Hysm25>
+pkgname=kreader
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Modern, local-first EPUB reader with Obsidian-style vault persistence"
+arch=('x86_64')
+url="https://github.com/Hysm25/KReader"
+license=('MIT')
+depends=(
+    'java-runtime>=21'
+    'libglvnd'
+    'fontconfig'
+    'freetype2'
+    'libx11'
+    'libxext'
+    'libxrender'
+    'libxcursor'
+)
+optdepends=(
+    'noto-fonts: Default Unicode font coverage'
+    'noto-fonts-cjk: Chinese, Japanese, and Korean script support'
+    'noto-fonts-arabic: High-quality Arabic and Persian font coverage'
+)
+source=(
+    "kreader.sh"
+    "kreader.desktop"
+    "kreader.svg"
+)
+sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+)
+
+package() {
+    # 1. Install binary launcher script
+    install -Dm755 "$srcdir/kreader.sh" "$pkgdir/usr/bin/kreader"
+
+    # 2. Install XDG desktop entry
+    install -Dm644 "$srcdir/kreader.desktop" "$pkgdir/usr/share/applications/kreader.desktop"
+
+    # 3. Install scalable application icon
+    install -Dm644 "$srcdir/kreader.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/kreader.svg"
+
+    # 4. Install application JAR libraries into /usr/lib/kreader/lib
+    install -dm755 "$pkgdir/usr/lib/kreader/lib"
+
+    if [ -d "$srcdir/lib" ]; then
+        cp -a "$srcdir/lib/"* "$pkgdir/usr/lib/kreader/lib/"
+    elif [ -d "$srcdir/kreader-dist/lib" ]; then
+        cp -a "$srcdir/kreader-dist/lib/"* "$pkgdir/usr/lib/kreader/lib/"
+    elif [ -d "$srcdir/../composeApp/build/compose/binaries/main/app/kreader/lib" ]; then
+        cp -a "$srcdir/../composeApp/build/compose/binaries/main/app/kreader/lib/"* "$pkgdir/usr/lib/kreader/lib/"
+    fi
+}

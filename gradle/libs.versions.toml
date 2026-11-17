@@ -16,6 +16,7 @@ kotlinx-serialization = "1.7.3"
 okio = "3.9.1"
 readium = "3.0.0"
 desugar-jdk-libs = "2.1.4"
+jsoup = "1.18.3"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
@@ -37,6 +38,7 @@ readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version
 readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", version.ref = "readium" }
 readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 
 # Gradle Plugins
 android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }

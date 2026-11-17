@@ -4,160 +4,108 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose Multiplatform](https://img.shields.io/badge/Compose_Multiplatform-1.7.1-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/lp/compose-multiplatform/)
 [![Readium](https://img.shields.io/badge/Readium_Kotlin_Toolkit-3.0.0-0284C7.svg)](https://readium.org)
+[![Arch Linux](https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793D1.svg?logo=archlinux&logoColor=white)](https://archlinux.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## System Overview
 
-**KReader** is a modern, local-first EPUB reader for Android (production) and Desktop (experimental preview) built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**.
+**KReader** is a modern, local-first EPUB reader for **Android** and **Linux Desktop (Arch Linux / CachyOS)** built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**.
 
 Built on an **Obsidian-style folder vault** philosophy, KReader allows you to open and manage your books directly inside any folder on your device or storage. Books remain in place—never duplicated into proprietary app databases or hidden sandboxes. All reading progress, preferences, and annotations are saved in clean, human-readable JSON files inside a portable `.kreader/` configuration directory.
 
 ```
 KReader/
-├── composeApp/                 # Application entry points (Android MainActivity & Desktop main)
+├── composeApp/                 # Application entry points (Android MainActivity & Desktop main), packaging DSL
 ├── core/
 │   ├── model/                  # Domain entities (Book, Locator, ReaderPreferences, ReaderTheme)
 │   ├── database/               # VaultStorage (.kreader JSON engine) & BookRepository
 │   └── engine-api/             # Reader engine contracts, navigation controller & key dispatcher
 ├── engine/
-│   └── epub-adapter/           # Readium 3.0 integration, publication opener & locator mapping
-└── feature/
-    ├── library/                # Library screen, vault onboarding, book grid, metadata extraction
-    └── reader/                 # Reader screen, ReaderViewModel, Readium navigator host, typography sheets
+│   └── epub-adapter/           # Readium 3.0 (Android) & Pure Compose Block AST engine (Desktop)
+├── feature/
+│   ├── library/                # Library screen, vault onboarding, book grid, metadata extraction
+│   └── reader/                 # Reader screen, ReaderViewModel, navigator hosts (Android Readium & Desktop AST)
+└── packaging/
+    └── arch/                   # Arch Linux PKGBUILD, launcher script, desktop entry & icons
 ```
 
 ---
 
 ## Subdirectories & System Boundaries
 
-- **`composeApp`**: [./composeApp/README.md](./composeApp/README.md) - Application entry points (Android `MainActivity` and Desktop `main`), root Compose UI scaffolding (`App.kt`), and system lifecycle bridges.
+- **`composeApp`**: [./composeApp/README.md](./composeApp/README.md) - Application entry points (Android `MainActivity` and Desktop `main`), root Compose UI scaffolding (`App.kt`), desktop distribution tasks, and system lifecycle bridges.
 - **`core`**: [./core/README.md](./core/README.md) - Foundational domain entities (`model`), local-first `.kreader/` JSON vault persistence (`database`), and reader engine contracts (`engine-api`).
-- **`engine`**: [./engine/README.md](./engine/README.md) - Readium 3.0 EPUB publication engine adapter (Android production) and platform simulation stubs (`epub-adapter`).
+- **`engine`**: [./engine/README.md](./engine/README.md) - Readium 3.0 EPUB publication engine adapter (Android production) and pure Compose Block AST EPUB engine (Linux Desktop production) (`epub-adapter`).
 - **`feature`**: [./feature/README.md](./feature/README.md) - Presentation UI modules for book vault library browsing (`library`) and EPUB reader viewport controls (`reader`).
+- **`packaging/arch`**: Native Arch Linux / CachyOS package files (`PKGBUILD`, `kreader.desktop`, launcher script, scalable SVG icon).
 
 ---
 
 ## Global Invariants
 
 - **`[VaultWorkspace]`**: All reading progression, last read timestamps, and locator pointers are indexed strictly by relative vault paths (`relativePath`), ensuring full vault portability across local file systems, SD cards, and cloud drives.
-- **`[Storage Access Framework]`**: Android vault operations preserve original files in-place without copying books to internal app sandbox storage; concurrent writes to `.kreader/*.json` configs are serialized via per-file `Mutex` locks to prevent duplicate `* (1).json` files.
-- **`[Reader Viewport Stability]`**: Reading layouts enforce single-column pagination (`ColumnCount.ONE`) and floating overlay toolbars to eliminate viewport resize reflow and multi-column text overlap during theme or margin adjustments.
+- **`[Cross-Platform Locators]`**: Desktop and Android synchronize highlights and reading head positions through normalized `TextQuoteSelector` (`exact`, `prefix`, `suffix`) records with Unicode NFC canonicalization and whitespace collapsing.
+- **`[Storage Access Framework & Atomic Writes]`**: Android vault operations preserve original files in-place without copying books to internal app sandbox storage; concurrent writes to `.kreader/*.json` configs are serialized via atomic replacement (`.tmp` -> `ATOMIC_MOVE`) to prevent data corruption.
+- **`[Reader Viewport Stability]`**: Reading layouts enforce virtualized block rendering and floating overlay toolbars to eliminate viewport resize reflow and multi-column text overlap during theme or margin adjustments.
 
 ---
 
 ## Global Side Effects
 
 - **`[Vault Directory Mutation]`**: Scans, creates, and writes configuration files (`workspace.json`, `appearance.json`, `annotations.json`, `themes.json`), cover images (`.kreader/covers/`), custom fonts (`.kreader/fonts/`), and exported notes (`<Book_Title>.md`) inside the user's selected vault directory.
-- **`[System Bars & Wake Locks]`**: Enters immersive sticky fullscreen mode, overrides window brightness, and locks screen timeout (`FLAG_KEEP_SCREEN_ON`) during active reader sessions on Android.
+- **`[Desktop Launcher Pre-flight Diagnostics]`**: The `/usr/bin/kreader` launcher checks for non-headless Java 21+ environments and graphical drivers, directing failure logs to `~/.local/share/kreader/logs/startup.log`.
 
 ---
 
-## System Verification
+## System Verification & Build Commands
 
-- Run tests: `./gradlew test`
-- Build Android: `./gradlew :composeApp:assembleDebug --configuration-cache`
-- Run Desktop: `./gradlew :composeApp:run`
+All shell commands use `fish` syntax:
+
+```fish
+# Check project setup and validate tasks
+./gradlew tasks
+
+# Assemble the Android Debug APK locally
+./gradlew :composeApp:assembleDebug --configuration-cache
+
+# Run Desktop application
+./gradlew :composeApp:run
+
+# Package Desktop distribution locally
+./gradlew :composeApp:createDistributable
+```
 
 ---
 
 ## Key Features
 
 ### 📂 Obsidian-Style Folder Vault
-- **In-Place EPUB Reading**: Select your books directory via Android Storage Access Framework (`OpenDocumentTree` with persistable permissions) or Desktop file chooser. KReader scans and opens books in place without copying them to internal app storage.
+- **In-Place EPUB Reading**: Select your books directory via Android Storage Access Framework (`OpenDocumentTree`) or Desktop file chooser. KReader scans and opens books in place.
 - **Portable `.kreader/` Configuration**: All app data travels with your folder:
   - `.kreader/appearance.json`: Theme, typography, line height, padding, and reading mode settings.
   - `.kreader/workspace.json`: Reading progress percentages, last-opened timestamps, and serialized Readium `Locator` records keyed by portable relative file paths.
   - `.kreader/annotations.json`: Multi-color highlights and bookmarks keyed by book relative paths.
-  - `.kreader/covers/`: Extracted cover art thumbnails cached directly inside the vault for instant subsequent launches.
+  - `.kreader/covers/`: Extracted cover art thumbnails cached directly inside the vault.
   - `.kreader/fonts/`: Imported `.ttf` and `.otf` custom fonts stored inside the vault.
-- **Concurrency & Atomic Storage**: Thread-safe operations protected by per-file `Mutex` locks with atomic overwrites, preventing corrupted or duplicate `* (1).json` files.
+- **Atomic Storage**: Thread-safe operations protected by atomic file updates, preventing corrupted or duplicate JSON files.
 
-### 📖 High-Performance EPUB Engine (Readium 3.0)
-- **Readium Kotlin Toolkit 3.0**: Powered by `readium-shared`, `readium-streamer`, and `readium-navigator` on Android.
-- **Automatic Reading Direction (RTL / LTR)**: Detects reading direction automatically from EPUB metadata (`page-progression-direction="rtl"`, language tags, or Arabic script detection). The reader layout and bottom progress bar mirror automatically.
-- **Single-Page Column Stability**: Enforced single-column layout (`ColumnCount.ONE`) paired with post-layout realignment prevents multi-column text overlap glitches when customizing margins.
-- **Fixed Viewport (Zero Reflow)**: Floating overlay top and bottom bars ensure that toggling controls never resizes the reader container or reflows text.
-- **Physical Volume Key Navigation**: Turn pages effortlessly with hardware volume buttons.
+### 📖 High-Performance EPUB Engines
+- **Android Engine (Readium 3.0)**: Powered by `readium-shared`, `readium-streamer`, and `readium-navigator` on Android.
+- **Desktop Engine (Pure Compose Block AST)**: In-house Jsoup-based XHTML/CSS parser converting chapters into a typed `ReaderContentBlock` AST rendered natively in Compose with zero browser engine dependencies.
+- **Automatic Reading Direction (RTL / LTR)**: Detects reading direction automatically from EPUB metadata or Arabic script detection. Navigation and keyboard arrow keys mirror automatically.
+- **Dual-Page & Continuous Scroll Modes**: Seamlessly toggle between responsive continuous vertical scrolling and single or dual-column pagination with pre-calculated `TextMeasurer` layout bounds.
 
-### 🎨 Instant Custom Fonts & Typography
-- **Instant Font Application**: Import `.ttf` or `.otf` custom fonts. Fonts are pre-warmed on background threads and injected before initial paint, eliminating default-font flashes on chapter and page turns.
-- **Live Typography Controls**: Real-time adjustments for font size, line height multiplier, and horizontal/vertical viewport padding without resetting reading position.
+### 📦 Native Arch Linux / CachyOS Packaging
+- **Native `.pkg.tar.zst` Package**: Easily installable via `pacman -U kreader-<version>-1-x86_64.pkg.tar.zst`.
+- **Lean Distribution**: Targets host `java-runtime>=21` and native graphics libraries to keep the package under 20MB.
+- **Pre-flight Diagnostic Launcher**: Validates Java versions, detects Wayland/X11 session types, and provides actionable CLI advice if a headless JRE is active.
+- **Automated CI Pipeline**: Dual-stage GitHub Actions Linux job building the JVM distributable on Ubuntu and compiling the signed Arch package in an `archlinux:latest` container.
 
-### ⚡ 60Hz / 120Hz High Refresh Rate
-- Automatically requests the highest supported display refresh rate (60Hz, 90Hz, 120Hz) matching your device resolution.
-- Full hardware acceleration enabled across both the application window and WebView renderer.
+### 🎨 Custom Fonts & Typography
+- **Custom Font Injection**: Import `.ttf` or `.otf` custom fonts into the vault. Desktop Compose routes fonts through Skia and HarfBuzz for Arabic shaping.
+- **Live Typography Controls**: Real-time adjustments for font size, line height multiplier, and viewport margins.
 
 ### 🔍 In-Book Search & Annotations
-- **In-Book Search**: Fast full-text search with match counts, keyword navigation, excerpt previews, and empty-state guidance.
+- **In-Book Search**: Full-text search with match counts, keyword navigation, excerpt previews, and streaming coroutine execution.
 - **Table of Contents**: Nested chapter navigation drawer with reading order mapping.
-- **Highlights & Notes**: Highlight text in multiple colors (Yellow, Green, Blue, Pink), attach notes, and manage bookmarks.
-
-### 📱 Material 3 Expressive UI
-- **Pure Color Schemes**: Thoughtfully designed palettes for **System** (synced with OS dark mode, matching EPUB page colors), **Light**, **Sepia** (warm paper), **Dark**, and **AMOLED** (true `#000000`).
-- **Refined Color Tokens**: Eliminates default lavender/purple tints in favor of neutral slate and warm brown tones.
-- **Library Grid**: Visual cover cards, progress badges, sort options (Recently Read, Recently Added, Title), multi-select batch sharing, and folder file deletion.
-
----
-
-## Tech Stack
-
-| Component | Technology |
-|---|---|
-| **Language** | [Kotlin 2.1.0](https://kotlinlang.org) |
-| **UI Framework** | [Compose Multiplatform 1.7.1](https://www.jetbrains.com/lp/compose-multiplatform/) |
-| **EPUB Engine** | [Readium Kotlin Toolkit 3.0.0](https://readium.org) (`streamer`, `navigator`, `shared`) on Android |
-| **Design System** | Material Design 3 (Compose Material 3, Material Icons Extended) |
-| **Data Persistence** | `kotlinx.serialization.json` (Human-readable `.kreader` vault) |
-| **Concurrency** | `kotlinx.coroutines` |
-| **Date & Time** | `kotlinx.datetime` |
-| **File I/O** | Android DocumentFile (SAF), Okio |
-| **Target Platforms** | Android (minSdk 24, targetSdk 35; production) & Desktop (JVM 17; experimental preview) |
-
----
-
-## Installation
-
-### Download APK
-Pre-compiled APKs for Android devices are available on the [GitHub Releases](https://github.com/Hysm25/KReader/releases) page:
-- **`arm64-v8a`**: Recommended for modern Android smartphones and tablets (64-bit ARM).
-- **`armeabi-v7a`**: For older 32-bit ARM devices.
-- **`x86_64`**: For Android emulators and x86-based Android devices.
-
----
-
-## Building from Source
-
-### Prerequisites
-- **JDK 17** (Temurin recommended)
-- **Android SDK** (API Level 35)
-
-### Build Commands
-
-Using standard terminal or `fish` shell:
-
-```fish
-# Check Gradle configuration and available tasks
-./gradlew tasks
-
-# Run Unit Tests
-./gradlew test
-
-# Assemble Android Debug APKs (arm64-v8a, armeabi-v7a, x86_64)
-./gradlew :composeApp:assembleDebug --configuration-cache
-
-# Assemble Android Release APKs
-./gradlew :composeApp:assembleRelease --configuration-cache
-
-# Run Desktop Application (JVM - Experimental Preview)
-./gradlew :composeApp:run
-```
-
-APKs will be located in:
-- Debug: `composeApp/build/outputs/apk/debug/`
-- Release: `composeApp/build/outputs/apk/release/`
-
----
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
+- **Cross-Platform Highlights & Notes**: Highlights synchronized across Android and Linux via W3C `TextQuoteSelector` (`exact`, `prefix`, `suffix`) matching.

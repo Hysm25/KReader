@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F1F5F9"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Subtle Rim Light -->
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+
+  <!-- Book Symbol Group -->
+  <g filter="url(#shadow)" transform="translate(64, 88)">
+    <!-- Book Spine Glow / Backing -->
+    <path d="M 192 272 C 152 260 64 260 24 280 L 24 48 C 64 28 152 28 192 40 C 232 28 320 28 360 48 L 360 280 C 320 260 232 260 192 272 Z" fill="url(#accent)" opacity="0.9"/>
+
+    <!-- Left Page -->
+    <path d="M 184 264 C 148 252 68 252 32 270 L 32 40 C 68 22 148 22 184 34 Z" fill="url(#page)"/>
+
+    <!-- Right Page -->
+    <path d="M 200 264 C 236 252 316 252 352 270 L 352 40 C 316 22 236 22 200 34 Z" fill="url(#page)"/>
+
+    <!-- Bookmark Ribbon -->
+    <path d="M 184 24 L 184 136 L 192 124 L 200 136 L 200 24 Z" fill="#F43F5E"/>
+
+    <!-- Text Lines Left Page -->
+    <rect x="56" y="72" width="96" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="56" y="96" width="104" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="56" y="120" width="80" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="56" y="144" width="96" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="56" y="168" width="64" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+
+    <!-- Text Lines Right Page -->
+    <rect x="228" y="72" width="96" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="228" y="96" width="88" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="228" y="120" width="104" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="228" y="144" width="72" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+    <rect x="228" y="168" width="96" height="8" rx="4" fill="#94A3B8" opacity="0.6"/>
+  </g>
+</svg>

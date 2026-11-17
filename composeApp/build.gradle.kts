@@ -58,6 +58,20 @@ kotlin {
     }
 }
 
+compose.desktop {
+    application {
+        mainClass = "io.github.kreader.MainKt"
+
+        nativeDistributions {
+            targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.AppImage, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
+            packageName = "kreader"
+            packageVersion = "1.0.0"
+            description = "KReader EPUB Reader"
+            vendor = "io.github.kreader"
+        }
+    }
+}
+
 android {
     namespace = "io.github.kreader"
     compileSdk = libs.versions.android.compileSdk.get().toInt()

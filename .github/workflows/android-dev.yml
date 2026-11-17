@@ -1,4 +1,4 @@
-name: Android CI & Release
+name: Multiplatform CI & Release
 
 on:
   push:
@@ -41,9 +41,9 @@ concurrency:
 
 jobs:
   build-and-release:
-    name: Build Android APKs & Publish Release
+    name: Build Android APKs & Arch Linux Package
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Repository
@@ -79,6 +79,25 @@ jobs:
       - name: Assemble Android Release APKs
         run: ./gradlew :composeApp:assembleRelease --configuration-cache --no-daemon --stacktrace
 
+      - name: Assemble Desktop Distributable
+        run: ./gradlew :composeApp:createDistributable --no-daemon --stacktrace
+
+      - name: Build Arch Linux .pkg.tar.zst Package
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            archlinux:latest \
+            bash -c "
+              pacman -Syu --noconfirm base-devel sudo zstd &&
+              useradd -m -s /bin/bash builder &&
+              echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers &&
+              chown -R builder:builder /workspace &&
+              su builder -c 'cd /workspace && ./packaging/arch/build-package.sh' &&
+              cd /workspace/packaging/arch/build &&
+              sha256sum *.pkg.tar.zst > SHA256SUMS
+            "
+
       - name: Upload arm64-v8a Release APK
         uses: actions/upload-artifact@v4
         with:
@@ -106,6 +125,17 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Upload Arch Linux Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kreader-arch-pkg
+          path: |
+            packaging/arch/build/*.pkg.tar.zst
+            packaging/arch/build/SHA256SUMS
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Determine Release Tag
         id: release_meta
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.create_release == true || inputs.tag_name != ''))
@@ -128,5 +158,7 @@ jobs:
           generate_release_notes: true
           files: |
             composeApp/build/outputs/apk/release/*release*.apk
+            packaging/arch/build/*.pkg.tar.zst
+            packaging/arch/build/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

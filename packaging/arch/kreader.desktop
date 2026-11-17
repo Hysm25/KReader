@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=KReader
+Comment=Modern, local-first EPUB reader
+GenericName=E-Book Reader
+Exec=kreader %F
+Icon=kreader
+Terminal=false
+Type=Application
+Categories=Office;Viewer;Literature;
+MimeType=application/epub+zip;
+StartupWMClass=io-github-kreader-MainKt
+Keywords=epub;reader;books;ebooks;viewer;
