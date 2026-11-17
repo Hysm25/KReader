@@ -100,7 +100,6 @@ fun App() {
                     theme = persistedPreferences.theme,
                     typography = persistedPreferences.typography,
                     isScrollMode = persistedPreferences.isScrollMode,
-                    brightness = persistedPreferences.brightness,
                     customFonts = persistedPreferences.customFonts,
                     customThemes = customThemes,
                     keepScreenOn = persistedPreferences.keepScreenOn,
@@ -118,11 +117,6 @@ fun App() {
                     onScrollModeChange = { isScroll ->
                         scope.launch {
                             bookRepository.saveReaderPreferences(persistedPreferences.copy(isScrollMode = isScroll))
-                        }
-                    },
-                    onBrightnessChange = { b ->
-                        scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(brightness = b))
                         }
                     },
                     onKeepScreenOnChange = { enabled ->
@@ -193,7 +187,6 @@ fun App() {
                             typography = effectivePreferences.typography,
                             isScrollMode = effectivePreferences.isScrollMode,
                             pageLayout = effectivePreferences.pageLayout,
-                            brightness = effectivePreferences.brightness,
                             keepScreenOn = effectivePreferences.keepScreenOn,
                             orientationLock = effectivePreferences.orientationLock,
                             isRtl = initialIsRtl
@@ -207,7 +200,6 @@ fun App() {
                         typography = effectivePreferences.typography,
                         isScrollMode = effectivePreferences.isScrollMode,
                         pageLayout = effectivePreferences.pageLayout,
-                        brightness = effectivePreferences.brightness,
                         keepScreenOn = effectivePreferences.keepScreenOn,
                         orientationLock = effectivePreferences.orientationLock
                     )
@@ -380,13 +372,6 @@ fun App() {
                         readerState = readerState.copy(isScrollMode = isScroll)
                         scope.launch {
                             val updated = effectivePreferences.copy(isScrollMode = isScroll)
-                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
-                        }
-                    },
-                    onBrightnessChange = { b ->
-                        readerState = readerState.copy(brightness = b)
-                        scope.launch {
-                            val updated = effectivePreferences.copy(brightness = b)
                             bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                         }
                     },

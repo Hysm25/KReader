@@ -12,7 +12,9 @@ import io.github.kreader.core.model.ReaderPreferences
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,6 +91,15 @@ class JsonVaultBookRepository(
     private val _workspace = MutableStateFlow(VaultWorkspace())
     private val _annotations = MutableStateFlow(VaultAnnotations())
     private val _customThemes = MutableStateFlow<List<CustomTheme>>(emptyList())
+    private var saveWorkspaceJob: Job? = null
+
+    private fun scheduleSaveWorkspace(workspace: VaultWorkspace) {
+        saveWorkspaceJob?.cancel()
+        saveWorkspaceJob = scope.launch(ioDispatcher) {
+            delay(1000)
+            vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(workspace))
+        }
+    }
 
     init {
         scope.launch {
@@ -283,7 +294,7 @@ class JsonVaultBookRepository(
         val newWorkspace = currentWorkspace.copy(books = updatedBooks)
         _workspace.value = newWorkspace
 
-        vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
+        scheduleSaveWorkspace(newWorkspace)
     }
 
     override suspend fun deleteBook(id: String): Unit = withContext(ioDispatcher) {

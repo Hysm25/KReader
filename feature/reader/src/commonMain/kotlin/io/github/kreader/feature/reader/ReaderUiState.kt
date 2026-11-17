@@ -34,7 +34,6 @@ data class ReaderUiState(
     val isSearching: Boolean = false,
     val isScrollMode: Boolean = false,
     val pageLayout: PageLayout = PageLayout.SINGLE,
-    val brightness: Float = 1.0f,
     val theme: ReaderTheme = ReaderTheme(),
     val typography: ReaderTypography = ReaderTypography(lineHeightMultiplier = 1.6f),
     val currentLocator: Locator? = null,

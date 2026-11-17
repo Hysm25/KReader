@@ -122,7 +122,8 @@ fun ReaderTopBar(
 @Composable
 fun ReaderBottomBar(
     progression: Float,
-    pageInfo: String,
+    pageInfo: String = "",
+    chapterTitle: String? = null,
     onSeek: (Float) -> Unit,
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit,
@@ -147,7 +148,11 @@ fun ReaderBottomBar(
             if (mins == 0) "~$hrs hr left" else "~$hrs hr $mins min left"
         }
     }
-    val displayPageInfo = "$pct% • $timeText"
+    val displayPageInfo = when {
+        !chapterTitle.isNullOrBlank() -> "$pct% • $chapterTitle • $timeText"
+        pageInfo.isNotBlank() && !pageInfo.endsWith("%") -> pageInfo
+        else -> "$pct% • $timeText"
+    }
 
     val layoutDir = if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     Surface(
@@ -217,13 +222,17 @@ fun ReaderBottomBar(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.padding(horizontal = 8.dp)
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(horizontal = 8.dp)
                         ) {
                             Text(
                                 text = displayPageInfo,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }

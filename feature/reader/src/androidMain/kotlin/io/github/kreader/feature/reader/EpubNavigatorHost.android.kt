@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -294,6 +295,30 @@ actual fun EpubNavigatorHost(
                 frag.clearSelection()
             }
         }
+        controller.highlightSearchResult = { locator ->
+            val frag = currentFragment
+            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                scope.launch {
+                    val searchDeco = Decoration(
+                        id = "search_match_${System.currentTimeMillis()}",
+                        locator = locator.toReadium(),
+                        style = Decoration.Style.Highlight(
+                            tint = android.graphics.Color.argb(140, 255, 160, 0),
+                            isActive = true
+                        )
+                    )
+                    frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
+                }
+            }
+        }
+        controller.clearSearchHighlight = {
+            val frag = currentFragment
+            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                scope.launch {
+                    frag.applyDecorations(emptyList(), group = "search-highlight")
+                }
+            }
+        }
         controller.search = { query ->
             val pub = publication
             val results = mutableListOf<Locator>()
@@ -323,6 +348,8 @@ actual fun EpubNavigatorHost(
             controller.goPrevious = null
             controller.seekToProgression = null
             controller.clearSelection = null
+            controller.highlightSearchResult = null
+            controller.clearSearchHighlight = null
             controller.search = null
         }
     }
@@ -347,12 +374,23 @@ actual fun EpubNavigatorHost(
             val containerId = remember(book.id) { View.generateViewId() }
             val fragmentTag = remember(book.id) { "epub_nav_${book.id}" }
 
+            val activeDecorations = remember { mutableStateListOf<Decoration>() }
+
             val selectionCallback = remember(scope) {
                 SelectionActionModeCallback(
                     scope = scope,
                     fragmentProvider = { currentFragment },
                     onHighlight = { loc, color -> currentOnAddHighlight(loc, color) },
-                    onAddNote = { loc, text -> currentOnAddNoteRequested(loc, text) }
+                    onAddNote = { loc, text -> currentOnAddNoteRequested(loc, text) },
+                    onImmediateDecorate = { deco ->
+                        val frag = currentFragment
+                        if (frag != null && frag.isAdded && frag.context != null) {
+                            scope.launch {
+                                activeDecorations.add(deco)
+                                frag.applyDecorations(activeDecorations.toList(), group = "highlights")
+                            }
+                        }
+                    }
                 )
             }
 
@@ -384,6 +422,7 @@ actual fun EpubNavigatorHost(
                                 )
                                 f.addInputListener(object : InputListener {
                                     override fun onTap(event: TapEvent): Boolean {
+                                        controller.clearSearchHighlight?.invoke()
                                         currentOnTap()
                                         return true
                                     }
@@ -444,6 +483,7 @@ actual fun EpubNavigatorHost(
                         )
                         existing.addInputListener(object : InputListener {
                             override fun onTap(event: TapEvent): Boolean {
+                                controller.clearSearchHighlight?.invoke()
                                 currentOnTap()
                                 return true
                             }
@@ -568,7 +608,9 @@ actual fun EpubNavigatorHost(
                                 style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
                             )
                         }
-                        frag.applyDecorations(decorations, group = "highlights")
+                        activeDecorations.clear()
+                        activeDecorations.addAll(decorations)
+                        frag.applyDecorations(activeDecorations.toList(), group = "highlights")
                     }
                 }
             }
@@ -580,6 +622,7 @@ actual fun EpubNavigatorHost(
                 if (!frag.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@LaunchedEffect
 
                 var lastSpineHref: String? = null
+                var lastProgression: Float? = null
                 frag.currentLocator.collect { readiumLocator ->
                     if (frag.isAdded && frag.context != null) {
                         // Avoid redundant font re-injection on every page turn within the same chapter
@@ -597,6 +640,10 @@ actual fun EpubNavigatorHost(
                             val prog = domainLocator.locations.totalProgression
                                 ?: domainLocator.locations.progression
                                 ?: 0f
+                            if (lastProgression != null && kotlin.math.abs(prog - (lastProgression ?: 0f)) > 0.0001f) {
+                                controller.clearSearchHighlight?.invoke()
+                            }
+                            lastProgression = prog
                             currentOnProgressChanged(prog, domainLocator)
                         }
                     }
@@ -619,7 +666,7 @@ private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont
                 val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
                 fmt to b64
             }
-            val contentSelectors = "body, p, div, span, h1, h2, h3, h4, h5, h6, li, blockquote, em, strong"
+            val contentSelectors = "body, p, h1, h2, h3, h4, h5, h6, li, blockquote"
             """
                 (function() {
                     var el = document.getElementById('kreader-custom-font');
@@ -674,7 +721,8 @@ private class SelectionActionModeCallback(
     private val scope: CoroutineScope,
     private val fragmentProvider: () -> EpubNavigatorFragment?,
     private val onHighlight: (locator: Locator, colorHex: String) -> Unit,
-    private val onAddNote: (locator: Locator, selectedText: String) -> Unit
+    private val onAddNote: (locator: Locator, selectedText: String) -> Unit,
+    private val onImmediateDecorate: (Decoration) -> Unit
 ) : ActionMode.Callback {
 
     companion object {
@@ -719,6 +767,23 @@ private class SelectionActionModeCallback(
                         onAddNote(locator, text)
                     } else if (colorHex != null) {
                         onHighlight(locator, colorHex)
+                        val baseColor = try {
+                            android.graphics.Color.parseColor(colorHex)
+                        } catch (_: Exception) {
+                            android.graphics.Color.YELLOW
+                        }
+                        val tintColor = android.graphics.Color.argb(
+                            77,
+                            android.graphics.Color.red(baseColor),
+                            android.graphics.Color.green(baseColor),
+                            android.graphics.Color.blue(baseColor)
+                        )
+                        val deco = Decoration(
+                            id = "hl_${System.currentTimeMillis()}",
+                            locator = selection.locator,
+                            style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
+                        )
+                        onImmediateDecorate(deco)
                     }
                     fragment.clearSelection()
                 }

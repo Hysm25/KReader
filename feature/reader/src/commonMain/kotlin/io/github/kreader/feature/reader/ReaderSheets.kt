@@ -38,7 +38,6 @@ import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmark
-import androidx.compose.material.icons.rounded.BrightnessMedium
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
@@ -1072,7 +1071,6 @@ fun ReaderSettingsSheet(
     isScrollMode: Boolean,
     title: String = "Reading Settings",
     isGlobal: Boolean = false,
-    brightness: Float = 1.0f,
     customFonts: List<CustomFont> = emptyList(),
     customThemes: List<CustomTheme> = emptyList(),
     keepScreenOn: Boolean = false,
@@ -1080,7 +1078,6 @@ fun ReaderSettingsSheet(
     onThemeChange: (ReaderTheme) -> Unit,
     onTypographyChange: (ReaderTypography) -> Unit,
     onScrollModeChange: (Boolean) -> Unit,
-    onBrightnessChange: (Float) -> Unit = {},
     onResetToDefaults: () -> Unit = {},
     onImportCustomFont: (CustomFont) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
@@ -1101,7 +1098,6 @@ fun ReaderSettingsSheet(
     var selectedTab by remember { mutableStateOf(ReaderSettingsTab.THEME) }
     var tempHorizontalPadding by remember(typography.paddingHorizontal) { mutableStateOf(typography.paddingHorizontal.toFloat()) }
     var tempVerticalPadding by remember(typography.paddingVertical) { mutableStateOf(typography.paddingVertical.toFloat()) }
-    var tempBrightness by remember(brightness) { mutableStateOf(brightness) }
 
     Box(
         modifier = Modifier
@@ -1318,64 +1314,7 @@ fun ReaderSettingsSheet(
                                 }
                             }
 
-                            // 2. Display Brightness Card
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.BrightnessMedium,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Text(
-                                                text = "Screen Brightness",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.surfaceContainerHigh
-                                        ) {
-                                            Text(
-                                                text = "${(tempBrightness * 100).toInt()}%",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                    Slider(
-                                        value = tempBrightness,
-                                        onValueChange = {
-                                            tempBrightness = it
-                                            onBrightnessChange(it)
-                                        },
-                                        valueRange = 0.05f..1.0f,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-
-                            // 3. Keep Screen On Card
+                            // 2. Keep Screen On Card
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -1973,63 +1912,124 @@ private fun CustomThemeEditor(
                 }
             }
 
-            // Hex Inputs for Background, Text, and Accent
-            Row(
+            // Hex Inputs for Background, Text, and Accent - Clean Stacked Rows
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedTextField(
-                    value = bgHex,
-                    onValueChange = { newBg ->
-                        bgHex = newBg
-                        if (newBg.startsWith("#") && (newBg.length == 7 || newBg.length == 9)) {
-                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = newBg, textColorHex = textHex, accentColorHex = accentHex))
-                        }
-                    },
-                    label = { Text("Background") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
+                // Background Color Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(currentBgColor)
+                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    )
+                    Text(
+                        text = "Background Color",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = bgHex,
+                        onValueChange = { newBg ->
+                            bgHex = newBg
+                            if (newBg.startsWith("#") && (newBg.length == 7 || newBg.length == 9)) {
+                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = newBg, textColorHex = textHex, accentColorHex = accentHex))
+                            }
+                        },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.width(130.dp)
+                    )
+                }
 
-                OutlinedTextField(
-                    value = textHex,
-                    onValueChange = { newTxt ->
-                        textHex = newTxt
-                        if (newTxt.startsWith("#") && (newTxt.length == 7 || newTxt.length == 9)) {
-                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = newTxt, accentColorHex = accentHex))
-                        }
-                    },
-                    label = { Text("Text") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
+                // Text Color Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(currentTextColor)
+                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    )
+                    Text(
+                        text = "Text Color",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = textHex,
+                        onValueChange = { newTxt ->
+                            textHex = newTxt
+                            if (newTxt.startsWith("#") && (newTxt.length == 7 || newTxt.length == 9)) {
+                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = newTxt, accentColorHex = accentHex))
+                            }
+                        },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.width(130.dp)
+                    )
+                }
 
-                OutlinedTextField(
-                    value = accentHex,
-                    onValueChange = { newAcc ->
-                        accentHex = newAcc
-                        if (newAcc.startsWith("#") && (newAcc.length == 7 || newAcc.length == 9)) {
-                            onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = textHex, accentColorHex = newAcc))
-                        }
-                    },
-                    label = { Text("Accent") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
+                // Primary Accent Color Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(currentAccentColor)
+                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    )
+                    Text(
+                        text = "Primary Accent",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = accentHex,
+                        onValueChange = { newAcc ->
+                            accentHex = newAcc
+                            if (newAcc.startsWith("#") && (newAcc.length == 7 || newAcc.length == 9)) {
+                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = textHex, accentColorHex = newAcc))
+                            }
+                        },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.width(130.dp)
+                    )
+                }
             }
 
             // Save Custom Theme to Vault
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
                     value = themeName,
                     onValueChange = { themeName = it },
                     placeholder = { Text("Theme name...") },
                     singleLine = true,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 )
                 Button(
                     onClick = {
@@ -2045,11 +2045,12 @@ private fun CustomThemeEditor(
                             )
                         )
                         themeName = ""
-                    }
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(imageVector = Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Save Theme")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Save Custom Theme")
                 }
             }
         }

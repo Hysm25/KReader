@@ -8,6 +8,3 @@ expect fun KeepScreenOn(enabled: Boolean)
 
 @Composable
 expect fun ManageOrientation(orientationLock: OrientationLock)
-
-@Composable
-expect fun ManageBrightness(brightness: Float)

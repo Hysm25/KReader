@@ -78,7 +78,6 @@ fun ReaderScreen(
     onThemeChange: (ReaderTheme) -> Unit = {},
     onTypographyChange: (ReaderTypography) -> Unit = {},
     onScrollModeChange: (Boolean) -> Unit = {},
-    onBrightnessChange: (Float) -> Unit = {},
     onResetToDefaults: () -> Unit = {},
     onProgressChanged: (progression: Float, locator: Locator) -> Unit = { _, _ -> },
     onTableOfContentsLoaded: (List<TocItem>) -> Unit = {},
@@ -144,7 +143,21 @@ fun ReaderScreen(
     ManageSystemBars(isControlsVisible = state.isControlsVisible, theme = state.theme)
     KeepScreenOn(enabled = state.keepScreenOn)
     ManageOrientation(orientationLock = state.orientationLock)
-    ManageBrightness(brightness = state.brightness)
+
+    // Live UI progress tracking: updates synchronously on every single page turn with zero debounce
+    var liveProgression by remember(state.book?.id) {
+        mutableStateOf(state.totalProgression.takeIf { it > 0f } ?: (state.book?.totalProgression ?: 0f))
+    }
+    var liveLocator by remember(state.book?.id) {
+        mutableStateOf(state.currentLocator ?: state.book?.lastLocator)
+    }
+
+    LaunchedEffect(state.totalProgression, state.currentLocator) {
+        liveProgression = state.totalProgression
+        if (state.currentLocator != null) {
+            liveLocator = state.currentLocator
+        }
+    }
 
     // Hardware volume button navigation
     DisposableEffect(state.book?.id, state.isRtl) {
@@ -210,7 +223,11 @@ fun ReaderScreen(
                     onAddNoteRequested = { locator, selectedText ->
                         onOpenAddNoteDialog(locator, selectedText)
                     },
-                    onProgressChanged = onProgressChanged,
+                    onProgressChanged = { prog, loc ->
+                        liveProgression = prog
+                        liveLocator = loc
+                        onProgressChanged(prog, loc)
+                    },
                     onTableOfContentsLoaded = onTableOfContentsLoaded,
                     onDirectionDetected = onDirectionDetected,
                     onTap = onToggleControls,
@@ -285,16 +302,20 @@ fun ReaderScreen(
                 exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                val readyState = state.engineState as? ReaderEngineState.Ready
-                val prog = state.totalProgression.takeIf { it > 0f }
-                    ?: (state.book?.totalProgression ?: (readyState?.totalProgression ?: 0f))
+                val prog = liveProgression
+                val currentChapterTitle = state.tocItems.find {
+                    val currHref = liveLocator?.href?.substringBefore('#')
+                    currHref != null && it.locator.href.substringBefore('#') == currHref
+                }?.title ?: liveLocator?.title
                 val pageInfo = "${(prog * 100).toInt()}%"
 
                 ReaderBottomBar(
                     progression = prog,
                     pageInfo = pageInfo,
+                    chapterTitle = currentChapterTitle,
                     isRtl = state.isRtl,
                     onSeek = { targetProg ->
+                        liveProgression = targetProg
                         epubController.seekToProgression?.invoke(targetProg)
                         onSeek(targetProg)
                     },
@@ -348,6 +369,7 @@ fun ReaderScreen(
                 onSearch = executeSearch,
                 onResultClick = { locator ->
                     epubController.goTo?.invoke(locator)
+                    epubController.highlightSearchResult?.invoke(locator)
                     onDismissSearch()
                 },
                 onDismiss = onDismissSearch
@@ -375,7 +397,6 @@ fun ReaderScreen(
                 theme = state.theme,
                 typography = state.typography,
                 isScrollMode = state.isScrollMode,
-                brightness = state.brightness,
                 customFonts = customFonts,
                 customThemes = customThemes,
                 keepScreenOn = state.keepScreenOn,
@@ -383,7 +404,6 @@ fun ReaderScreen(
                 onThemeChange = onThemeChange,
                 onTypographyChange = onTypographyChange,
                 onScrollModeChange = onScrollModeChange,
-                onBrightnessChange = onBrightnessChange,
                 onResetToDefaults = onResetToDefaults,
                 onImportCustomFont = onImportCustomFont,
                 onDeleteCustomFont = onDeleteCustomFont,
