@@ -144,19 +144,19 @@ actual fun EpubNavigatorHost(
                 else -> FontFamily.Default
             }
         }
-    }
+    } ?: FontFamily.Default
 
     // Resolve theme colors
-    val backgroundColor = remember(theme.backgroundColor) {
+    val backgroundColor = remember(theme.backgroundColorHex) {
         runCatching {
-            val hex = theme.backgroundColor.removePrefix("#")
+            val hex = theme.backgroundColorHex.removePrefix("#")
             Color(hex.toLong(16) or 0xFF000000L)
         }.getOrDefault(Color(0xFFFFFFFF))
     }
 
-    val textColor = remember(theme.textColor) {
+    val textColor = remember(theme.textColorHex) {
         runCatching {
-            val hex = theme.textColor.removePrefix("#")
+            val hex = theme.textColorHex.removePrefix("#")
             Color(hex.toLong(16) or 0xFF000000L)
         }.getOrDefault(Color(0xFF1E293B))
     }
@@ -439,7 +439,7 @@ actual fun EpubNavigatorHost(
                                 onAddNoteRequested(loc, quote)
                             }
                         )
-                        Spacer(modifier = Modifier.height((typography.fontSize * 0.4f).dp))
+                        Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.4f).dp))
                     }
                 }
             }
@@ -492,7 +492,7 @@ actual fun EpubNavigatorHost(
                                     onAddNoteRequested(loc, quote)
                                 }
                             )
-                            Spacer(modifier = Modifier.height((typography.fontSize * 0.35f).dp))
+                            Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
                         }
                     }
 
@@ -568,8 +568,8 @@ private fun RenderBlock(
                     text = styledText,
                     color = textColor,
                     fontFamily = fontFamily,
-                    fontSize = typography.fontSize.sp,
-                    lineHeight = (typography.fontSize * typography.lineHeight).sp,
+                    fontSize = typography.fontSizeSp.sp,
+                    lineHeight = (typography.fontSizeSp * typography.lineHeightMultiplier).sp,
                     textAlign = textAlign,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         textDirection = textDirection
@@ -580,10 +580,10 @@ private fun RenderBlock(
         }
         is ReaderContentBlock.Heading -> {
             val headingSize = when (block.level) {
-                1 -> (typography.fontSize * 1.6f).sp
-                2 -> (typography.fontSize * 1.4f).sp
-                3 -> (typography.fontSize * 1.25f).sp
-                else -> (typography.fontSize * 1.1f).sp
+                1 -> (typography.fontSizeSp * 1.6f).sp
+                2 -> (typography.fontSizeSp * 1.4f).sp
+                3 -> (typography.fontSizeSp * 1.25f).sp
+                else -> (typography.fontSizeSp * 1.1f).sp
             }
             Text(
                 text = block.annotatedText,
@@ -616,9 +616,9 @@ private fun RenderBlock(
                     text = block.annotatedText,
                     color = textColor.copy(alpha = 0.85f),
                     fontFamily = fontFamily,
-                    fontSize = (typography.fontSize * 0.95f).sp,
+                    fontSize = (typography.fontSizeSp * 0.95f).sp,
                     fontStyle = FontStyle.Italic,
-                    lineHeight = (typography.fontSize * typography.lineHeight).sp,
+                    lineHeight = (typography.fontSizeSp * typography.lineHeightMultiplier).sp,
                     textAlign = textAlign,
                     style = MaterialTheme.typography.bodyMedium.copy(textDirection = textDirection)
                 )
@@ -635,7 +635,7 @@ private fun RenderBlock(
                     Text(
                         text = "${block.bullet} ",
                         color = textColor.copy(alpha = 0.7f),
-                        fontSize = typography.fontSize.sp,
+                        fontSize = typography.fontSizeSp.sp,
                         fontFamily = fontFamily
                     )
                 }
@@ -643,8 +643,8 @@ private fun RenderBlock(
                     text = block.annotatedText,
                     color = textColor,
                     fontFamily = fontFamily,
-                    fontSize = typography.fontSize.sp,
-                    lineHeight = (typography.fontSize * typography.lineHeight).sp,
+                    fontSize = typography.fontSizeSp.sp,
+                    lineHeight = (typography.fontSizeSp * typography.lineHeightMultiplier).sp,
                     textAlign = textAlign,
                     style = MaterialTheme.typography.bodyLarge.copy(textDirection = textDirection)
                 )
@@ -652,7 +652,7 @@ private fun RenderBlock(
                     Text(
                         text = " ${block.bullet}",
                         color = textColor.copy(alpha = 0.7f),
-                        fontSize = typography.fontSize.sp,
+                        fontSize = typography.fontSizeSp.sp,
                         fontFamily = fontFamily
                     )
                 }
