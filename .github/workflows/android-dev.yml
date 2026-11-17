@@ -65,35 +65,8 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Assemble Android APKs (Debug & Release)
-        run: ./gradlew :composeApp:assembleDebug :composeApp:assembleRelease --configuration-cache --no-daemon --stacktrace
-
-      - name: Upload arm64-v8a Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kreader-debug-arm64-v8a
-          path: composeApp/build/outputs/apk/debug/*arm64-v8a*.apk
-          compression-level: 0
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Upload armeabi-v7a Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kreader-debug-armeabi-v7a
-          path: composeApp/build/outputs/apk/debug/*armeabi-v7a*.apk
-          compression-level: 0
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Upload x86_64 Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kreader-debug-x86_64
-          path: composeApp/build/outputs/apk/debug/*x86_64*.apk
-          compression-level: 0
-          retention-days: 7
-          if-no-files-found: error
+      - name: Assemble Android Release APKs
+        run: ./gradlew :composeApp:assembleRelease --configuration-cache --no-daemon --stacktrace
 
       - name: Upload arm64-v8a Release APK
         uses: actions/upload-artifact@v4

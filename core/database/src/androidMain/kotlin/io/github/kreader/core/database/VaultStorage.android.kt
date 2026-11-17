@@ -63,6 +63,7 @@ actual class VaultStorage(private val context: Context) {
     private val fileMutexes = ConcurrentHashMap<String, Mutex>()
     private fun getFileMutex(fileName: String): Mutex =
         fileMutexes.getOrPut(fileName) { Mutex() }
+    private val coverMutex = Mutex()
 
     private fun loadInitialVault(): String? {
         val saved = prefs.getString("active_vault_uri", null) ?: return null
@@ -232,54 +233,74 @@ actual class VaultStorage(private val context: Context) {
             val localFile = File(localCoverPath)
             if (!localFile.exists() || localFile.length() == 0L) return@withContext null
             val ext = localFile.extension.ifBlank { "jpg" }
-            val coverName = "${relativePath.replace('/', '_').replace('\\', '_')}.$ext"
+            val cleanBase = relativePath.removeSuffix(".epub").removeSuffix(".EPUB").replace('/', '_').replace('\\', '_')
+            val coverName = "$cleanBase.$ext"
             val bytes = localFile.readBytes()
             saveCover(coverName, bytes)
         }.getOrNull()
     }
 
-    actual suspend fun saveCover(coverName: String, bytes: ByteArray): String? = withContext(Dispatchers.IO) {
-        // 1. Save inside vault .kreader/covers/
-        runCatching {
-            val coversDir = getOrCreateSubDir("covers")
-            if (coversDir != null) {
-                val coverFile = coversDir.findFile(coverName) ?: coversDir.createFile("image/jpeg", coverName)
-                if (coverFile != null) {
-                    context.contentResolver.openOutputStream(coverFile.uri, "wt")?.use { out ->
-                        out.write(bytes)
+    actual suspend fun saveCover(coverName: String, bytes: ByteArray): String? = coverMutex.withLock {
+        withContext(Dispatchers.IO) {
+            // 1. Save inside vault .kreader/covers/
+            runCatching {
+                val coversDir = getOrCreateSubDir("covers")
+                if (coversDir != null) {
+                    val nameWithoutExt = coverName.substringBeforeLast(".")
+                    val ext = coverName.substringAfterLast(".", "jpg")
+                    val strayRegex = Regex("^" + Regex.escape(nameWithoutExt) + """( \(\d+\))\.""" + Regex.escape(ext) + "$")
+                    for (f in coversDir.listFiles()) {
+                        val fn = f.name.orEmpty()
+                        if (strayRegex.matches(fn)) {
+                            runCatching { f.delete() }
+                        }
+                    }
+
+                    val coverFile = coversDir.findFile(coverName) ?: coversDir.createFile("image/jpeg", coverName)
+                    if (coverFile != null) {
+                        context.contentResolver.openOutputStream(coverFile.uri, "wt")?.use { out ->
+                            out.write(bytes)
+                            out.flush()
+                        }
                     }
                 }
             }
-        }
 
-        // 2. Cache in app cache directory for fast local loading in UI (atomic write)
-        runCatching {
-            val cacheCoversDir = File(context.cacheDir, "covers").apply { mkdirs() }
-            val tempFile = File(cacheCoversDir, "$coverName.tmp")
-            tempFile.writeBytes(bytes)
-            val localCover = File(cacheCoversDir, coverName)
-            if (tempFile.renameTo(localCover)) {
-                localCover.absolutePath
-            } else {
-                tempFile.copyTo(localCover, overwrite = true)
-                tempFile.delete()
-                localCover.absolutePath
-            }
-        }.getOrNull()
+            // 2. Cache in app cache directory for fast local loading in UI (atomic write)
+            runCatching {
+                val cacheCoversDir = File(context.cacheDir, "covers").apply { mkdirs() }
+                val tempFile = File(cacheCoversDir, "$coverName.tmp")
+                tempFile.writeBytes(bytes)
+                val localCover = File(cacheCoversDir, coverName)
+                if (tempFile.renameTo(localCover)) {
+                    localCover.absolutePath
+                } else {
+                    tempFile.copyTo(localCover, overwrite = true)
+                    tempFile.delete()
+                    localCover.absolutePath
+                }
+            }.getOrNull()
+        }
     }
 
     actual suspend fun getCoverPath(coverName: String): String? = withContext(Dispatchers.IO) {
-        val baseName = coverName.substringBeforeLast(".")
+        val cleanBase = coverName.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
         val cacheCoversDir = File(context.cacheDir, "covers")
         val localFiles = cacheCoversDir.listFiles()
-        val matchingLocal = localFiles?.firstOrNull { it.name.substringBeforeLast(".") == baseName && it.length() > 0L }
+        val matchingLocal = localFiles?.firstOrNull { file ->
+            val b = file.name.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+            b == cleanBase && file.length() > 0L
+        }
         if (matchingLocal != null) {
             return@withContext matchingLocal.absolutePath
         }
 
         // Restore from vault .kreader/covers/ if not present in cache
         val coversDir = getOrCreateSubDir("covers") ?: return@withContext null
-        val coverDoc = coversDir.listFiles().firstOrNull { it.name?.substringBeforeLast(".") == baseName } ?: return@withContext null
+        val coverDoc = coversDir.listFiles().firstOrNull { doc ->
+            val b = doc.name?.removeSuffix(".epub")?.removeSuffix(".EPUB")?.substringBeforeLast(".")
+            b == cleanBase
+        } ?: return@withContext null
         runCatching {
             cacheCoversDir.mkdirs()
             val localCover = File(cacheCoversDir, coverDoc.name ?: coverName)
@@ -294,11 +315,18 @@ actual class VaultStorage(private val context: Context) {
 
     actual suspend fun deleteCover(coverName: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            val cacheCover = File(context.cacheDir, "covers/$coverName")
-            if (cacheCover.exists()) cacheCover.delete()
+            val cleanBase = coverName.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+            val cacheCover = File(context.cacheDir, "covers")
+            cacheCover.listFiles()?.forEach { file ->
+                val b = file.name.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+                if (b == cleanBase) file.delete()
+            }
 
             val coversDir = getOrCreateSubDir("covers")
-            coversDir?.findFile(coverName)?.delete()
+            coversDir?.listFiles()?.forEach { doc ->
+                val b = doc.name?.removeSuffix(".epub")?.removeSuffix(".EPUB")?.substringBeforeLast(".")
+                if (b == cleanBase) doc.delete()
+            }
             true
         }.getOrDefault(false)
     }

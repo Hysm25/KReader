@@ -9,6 +9,13 @@ enum class PageLayout {
 }
 
 @Serializable
+enum class OrientationLock {
+    AUTO,
+    PORTRAIT,
+    LANDSCAPE
+}
+
+@Serializable
 data class CustomFont(
     val name: String,
     val path: String
@@ -23,5 +30,7 @@ data class ReaderPreferences(
     val pageMargins: Float = 0f,
     val brightness: Float = 1.0f,
     val volumeKeyNavigation: Boolean = true,
-    val customFonts: List<CustomFont> = emptyList()
+    val customFonts: List<CustomFont> = emptyList(),
+    val keepScreenOn: Boolean = false,
+    val orientationLock: OrientationLock = OrientationLock.AUTO
 )

@@ -34,8 +34,10 @@ import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.CustomFont
+import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
@@ -81,8 +83,13 @@ fun ReaderScreen(
     onProgressChanged: (progression: Float, locator: Locator) -> Unit = { _, _ -> },
     onTableOfContentsLoaded: (List<TocItem>) -> Unit = {},
     customFonts: List<CustomFont> = emptyList(),
+    customThemes: List<CustomTheme> = emptyList(),
     onImportCustomFont: (CustomFont) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
+    onSaveCustomTheme: (CustomTheme) -> Unit = {},
+    onDeleteCustomTheme: (String) -> Unit = {},
+    onKeepScreenOnChange: (Boolean) -> Unit = {},
+    onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
     onExportMarkdown: (suspend () -> String?)? = null,
     modifier: Modifier = Modifier
@@ -135,6 +142,8 @@ fun ReaderScreen(
     }
 
     ManageSystemBars(isControlsVisible = state.isControlsVisible, theme = state.theme)
+    KeepScreenOn(enabled = state.keepScreenOn)
+    ManageOrientation(orientationLock = state.orientationLock)
 
     // Hardware volume button navigation
     DisposableEffect(state.book?.id, state.isRtl) {
@@ -367,6 +376,9 @@ fun ReaderScreen(
                 isScrollMode = state.isScrollMode,
                 isApplyToThisBookOnly = state.isApplyToThisBookOnly,
                 customFonts = customFonts,
+                customThemes = customThemes,
+                keepScreenOn = state.keepScreenOn,
+                orientationLock = state.orientationLock,
                 onThemeChange = onThemeChange,
                 onTypographyChange = onTypographyChange,
                 onScrollModeChange = onScrollModeChange,
@@ -374,6 +386,10 @@ fun ReaderScreen(
                 onResetToDefaults = onResetToDefaults,
                 onImportCustomFont = onImportCustomFont,
                 onDeleteCustomFont = onDeleteCustomFont,
+                onSaveCustomTheme = onSaveCustomTheme,
+                onDeleteCustomTheme = onDeleteCustomTheme,
+                onKeepScreenOnChange = onKeepScreenOnChange,
+                onOrientationLockChange = onOrientationLockChange,
                 onDismiss = onDismissSettings
             )
 

@@ -5,6 +5,7 @@ import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CustomFont
+import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderPreferences
@@ -57,6 +58,9 @@ interface BookRepository {
     suspend fun resetPreferences(bookId: String)
     suspend fun addCustomFont(font: CustomFont)
     suspend fun deleteCustomFont(fontName: String)
+    fun observeCustomThemes(): Flow<List<CustomTheme>>
+    suspend fun saveCustomTheme(theme: CustomTheme)
+    suspend fun deleteCustomTheme(themeId: String)
     suspend fun exportBookToMarkdown(bookId: String): String?
 }
 
@@ -83,6 +87,7 @@ class JsonVaultBookRepository(
     private val _preferences = MutableStateFlow(ReaderPreferences())
     private val _workspace = MutableStateFlow(VaultWorkspace())
     private val _annotations = MutableStateFlow(VaultAnnotations())
+    private val _customThemes = MutableStateFlow<List<CustomTheme>>(emptyList())
 
     init {
         scope.launch {
@@ -113,6 +118,7 @@ class JsonVaultBookRepository(
         _books.value = emptyList()
         _workspace.value = VaultWorkspace()
         _annotations.value = VaultAnnotations()
+        _customThemes.value = emptyList()
     }
 
     private suspend fun loadVaultState() = withContext(ioDispatcher) {
@@ -142,6 +148,18 @@ class JsonVaultBookRepository(
             vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(loadedPrefs))
         }
         _preferences.value = loadedPrefs
+
+        // 1c. Load themes.json
+        val themesJson = vaultStorage.readConfig(THEMES_FILE)
+        val loadedThemes = if (!themesJson.isNullOrBlank()) {
+            runCatching { json.decodeFromString<List<CustomTheme>>(themesJson) }
+                .getOrElse {
+                    runCatching { json.decodeFromString<VaultThemes>(themesJson).themes }.getOrDefault(emptyList())
+                }
+        } else {
+            emptyList()
+        }
+        _customThemes.value = loadedThemes
 
         // 2. Load workspace.json
         val workspaceJson = vaultStorage.readConfig(WORKSPACE_FILE)
@@ -180,7 +198,8 @@ class JsonVaultBookRepository(
             val existing = existingBooksMap[relativePath]
             val progressRecord = currentWorkspace[relativePath]
 
-            val coverFileName = "${relativePath.replace('/', '_').replace('\\', '_')}.jpg"
+            val cleanBase = relativePath.removeSuffix(".epub").removeSuffix(".EPUB").replace('/', '_').replace('\\', '_')
+            val coverFileName = "$cleanBase.jpg"
             val cachedCover = existing?.coverPath ?: vaultStorage.getCoverPath(coverFileName)
 
             val cleanTitle = existing?.title ?: epub.displayName
@@ -271,7 +290,8 @@ class JsonVaultBookRepository(
         vaultStorage.deleteEpub(id)
 
         // 2. Delete cover thumbnail
-        val coverFileName = "${id.replace('/', '_').replace('\\', '_')}.jpg"
+        val cleanBase = id.removeSuffix(".epub").removeSuffix(".EPUB").replace('/', '_').replace('\\', '_')
+        val coverFileName = "$cleanBase.jpg"
         vaultStorage.deleteCover(coverFileName)
 
         // 3. Remove from workspace.json
@@ -507,9 +527,30 @@ class JsonVaultBookRepository(
         vaultStorage.exportMarkdown("$cleanTitle.md", sb.toString())
     }
 
+    override fun observeCustomThemes(): Flow<List<CustomTheme>> = _customThemes.asStateFlow()
+
+    override suspend fun saveCustomTheme(theme: CustomTheme): Unit = withContext(ioDispatcher) {
+        val current = _customThemes.value.toMutableList()
+        val index = current.indexOfFirst { it.id == theme.id }
+        if (index >= 0) {
+            current[index] = theme
+        } else {
+            current.add(theme)
+        }
+        _customThemes.value = current
+        vaultStorage.writeConfig(THEMES_FILE, json.encodeToString(current))
+    }
+
+    override suspend fun deleteCustomTheme(themeId: String): Unit = withContext(ioDispatcher) {
+        val current = _customThemes.value.filterNot { it.id == themeId }
+        _customThemes.value = current
+        vaultStorage.writeConfig(THEMES_FILE, json.encodeToString(current))
+    }
+
     companion object {
         const val APPEARANCE_FILE = "appearance.json"
         const val WORKSPACE_FILE = "workspace.json"
         const val ANNOTATIONS_FILE = "annotations.json"
+        const val THEMES_FILE = "themes.json"
     }
 }

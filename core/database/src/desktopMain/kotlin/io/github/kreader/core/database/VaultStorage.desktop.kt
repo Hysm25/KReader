@@ -100,7 +100,8 @@ actual class VaultStorage {
             val localFile = File(localCoverPath)
             if (!localFile.exists() || localFile.length() == 0L) return@withContext null
             val ext = localFile.extension.ifBlank { "jpg" }
-            val coverName = "${relativePath.replace('/', '_').replace('\\', '_')}.$ext"
+            val cleanBase = relativePath.removeSuffix(".epub").removeSuffix(".EPUB").replace('/', '_').replace('\\', '_')
+            val coverName = "$cleanBase.$ext"
             val bytes = localFile.readBytes()
             saveCover(coverName, bytes)
         }.getOrNull()
@@ -118,14 +119,23 @@ actual class VaultStorage {
         val kreader = getKReaderDir() ?: return@withContext null
         val coversDir = File(kreader, "covers")
         if (!coversDir.exists()) return@withContext null
-        val baseName = coverName.substringBeforeLast(".")
-        val coverFile = coversDir.listFiles()?.firstOrNull { it.name.substringBeforeLast(".") == baseName && it.length() > 0L }
+        val cleanBase = coverName.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+        val coverFile = coversDir.listFiles()?.firstOrNull {
+            val b = it.name.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+            b == cleanBase && it.length() > 0L
+        }
         coverFile?.absolutePath
     }
 
     actual suspend fun deleteCover(coverName: String): Boolean = withContext(Dispatchers.IO) {
         val kreader = getKReaderDir() ?: return@withContext false
-        File(kreader, "covers/$coverName").delete()
+        val cleanBase = coverName.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+        val coversDir = File(kreader, "covers")
+        coversDir.listFiles()?.forEach {
+            val b = it.name.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+            if (b == cleanBase) it.delete()
+        }
+        true
     }
 
     actual suspend fun saveFont(fontFileName: String, bytes: ByteArray): String? = withContext(Dispatchers.IO) {

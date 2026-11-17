@@ -20,6 +20,22 @@ data class ReaderTheme(
 )
 
 @Serializable
+data class CustomTheme(
+    val id: String,
+    val name: String,
+    val backgroundColorHex: String,
+    val textColorHex: String,
+    val accentColorHex: String
+)
+
+fun CustomTheme.toReaderTheme(): ReaderTheme = ReaderTheme(
+    mode = ThemeMode.CUSTOM,
+    backgroundColorHex = backgroundColorHex,
+    textColorHex = textColorHex,
+    accentColorHex = accentColorHex
+)
+
+@Serializable
 data class ReaderTypography(
     val fontFamily: String = "Default",
     val fontSizeSp: Float = 16f,
@@ -31,9 +47,8 @@ data class ReaderTypography(
 ) {
     @Serializable
     enum class TextAlignment {
-        START,
-        CENTER,
-        END,
-        JUSTIFY
+        DEFAULT,
+        JUSTIFY,
+        START
     }
 }

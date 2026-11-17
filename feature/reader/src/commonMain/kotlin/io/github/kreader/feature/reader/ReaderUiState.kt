@@ -5,8 +5,10 @@ import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
@@ -43,7 +45,10 @@ data class ReaderUiState(
     val highlights: List<Highlight> = emptyList(),
     val selectedHighlightForDetail: Highlight? = null,
     val pendingNoteLocator: Locator? = null,
-    val pendingNoteText: String? = null
+    val pendingNoteText: String? = null,
+    val keepScreenOn: Boolean = false,
+    val orientationLock: OrientationLock = OrientationLock.AUTO,
+    val customThemes: List<CustomTheme> = emptyList()
 ) {
     val isCurrentBookmarked: Boolean
         get() {

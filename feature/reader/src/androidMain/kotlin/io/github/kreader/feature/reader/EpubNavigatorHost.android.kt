@@ -184,7 +184,6 @@ actual fun EpubNavigatorHost(
             kotlinx.coroutines.delay(80)
             runCatching {
                 if (frag.isAdded && frag.context != null) {
-                    injectBaseStyles(frag, typography.paddingHorizontal)
                     val loc = frag.currentLocator.value
                     frag.go(loc, animated = false)
                     frag.view?.requestLayout()
@@ -193,12 +192,11 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // Re-apply column gap and re-snap when inter-page gap changes
+    // Re-snap when inter-page gap/margins change
     LaunchedEffect(typography.paddingHorizontal, typography.paddingVertical) {
         val frag = currentFragment ?: return@LaunchedEffect
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
             runCatching {
-                injectBaseStyles(frag, typography.paddingHorizontal)
                 kotlinx.coroutines.delay(60)
                 val loc = frag.currentLocator.value
                 frag.go(loc, animated = false)
@@ -359,7 +357,6 @@ actual fun EpubNavigatorHost(
                     override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
                             scope.launch {
-                                injectBaseStyles(f, typography.paddingHorizontal)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -396,7 +393,6 @@ actual fun EpubNavigatorHost(
                                 )
                             }
                             scope.launch {
-                                injectBaseStyles(f, typography.paddingHorizontal)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -585,7 +581,6 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
-                            injectBaseStyles(frag, typography.paddingHorizontal)
                             val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
                             if (selectedFont != null) {
                                 injectFontFace(frag, selectedFont)
@@ -607,29 +602,6 @@ actual fun EpubNavigatorHost(
 }
 
 private val fontBase64Cache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
-
-private suspend fun injectBaseStyles(frag: EpubNavigatorFragment, gapDp: Int = 16) {
-    runCatching {
-        val gapPx = (gapDp * 2).coerceAtLeast(8)
-        val js = """
-            (function() {
-                var el = document.getElementById('kreader-base-styles');
-                if (!el) {
-                    el = document.createElement('style');
-                    el.id = 'kreader-base-styles';
-                    (document.head || document.documentElement).appendChild(el);
-                }
-                el.textContent = ':root { --USER__maxLineLength: 100% !important; --RS__maxLineLength: 100% !important; --USER__colGap: ${gapPx}px !important; --RS__colGap: ${gapPx}px !important; overflow-x: hidden !important; } body { box-sizing: border-box !important; column-gap: ${gapPx}px !important; overflow-x: hidden !important; }';
-            })();
-        """.trimIndent()
-        frag.evaluateJavascript(js)
-        frag.view?.let { root ->
-            findWebViews(root).forEach { wv ->
-                wv.evaluateJavascript(js, null)
-            }
-        }
-    }
-}
 
 private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont) {
     runCatching {

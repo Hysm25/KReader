@@ -69,12 +69,19 @@ fun buildReadiumPreferences(
         FontFamily(typography.fontFamily)
     }
 
+    val textAlign = when (typography.textAlignment) {
+        ReaderTypography.TextAlignment.JUSTIFY -> org.readium.r2.navigator.preferences.TextAlign.JUSTIFY
+        ReaderTypography.TextAlignment.START -> org.readium.r2.navigator.preferences.TextAlign.START
+        ReaderTypography.TextAlignment.DEFAULT -> null
+    }
+
     val scaledMargin = (typography.paddingHorizontal.toDouble() / 16.0).coerceIn(0.15, 2.5)
 
     return EpubPreferences(
         backgroundColor = backgroundColor,
         textColor = textColor,
         fontFamily = fontFamily,
+        textAlign = textAlign,
         fontSize = (typography.fontSizeSp / 16.0).toDouble().coerceIn(0.6, 2.5),
         lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceAtLeast(1.5),
         columnCount = ColumnCount.ONE,

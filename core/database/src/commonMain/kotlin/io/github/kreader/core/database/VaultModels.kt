@@ -2,6 +2,7 @@ package io.github.kreader.core.database
 
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderPreferences
@@ -25,6 +26,11 @@ data class VaultWorkspace(
 data class VaultAnnotations(
     val bookmarks: Map<String, List<Bookmark>> = emptyMap(),
     val highlights: Map<String, List<Highlight>> = emptyMap()
+)
+
+@Serializable
+data class VaultThemes(
+    val themes: List<CustomTheme> = emptyList()
 )
 
 data class VaultEpubFile(

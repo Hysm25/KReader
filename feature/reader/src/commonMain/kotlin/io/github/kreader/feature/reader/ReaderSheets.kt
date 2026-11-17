@@ -59,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -85,11 +86,14 @@ import androidx.compose.ui.unit.sp
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CustomFont
+import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
+import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
+import io.github.kreader.core.model.toReaderTheme
 
 object ReaderThemePresets {
     val System = ReaderTheme(
@@ -601,10 +605,9 @@ fun ReaderSearchSheet(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.statusBars)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .imePadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 16.dp, top = 8.dp, bottom = 12.dp)
             ) {
                 // Drag handle
                 Box(
@@ -1004,6 +1007,9 @@ fun ReaderSettingsSheet(
     isScrollMode: Boolean,
     isApplyToThisBookOnly: Boolean = false,
     customFonts: List<CustomFont> = emptyList(),
+    customThemes: List<CustomTheme> = emptyList(),
+    keepScreenOn: Boolean = false,
+    orientationLock: OrientationLock = OrientationLock.AUTO,
     onThemeChange: (ReaderTheme) -> Unit,
     onTypographyChange: (ReaderTypography) -> Unit,
     onScrollModeChange: (Boolean) -> Unit,
@@ -1011,6 +1017,10 @@ fun ReaderSettingsSheet(
     onResetToDefaults: () -> Unit = {},
     onImportCustomFont: (CustomFont) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
+    onSaveCustomTheme: (CustomTheme) -> Unit = {},
+    onDeleteCustomTheme: (String) -> Unit = {},
+    onKeepScreenOnChange: (Boolean) -> Unit = {},
+    onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     if (!isOpen) return
@@ -1113,7 +1123,7 @@ fun ReaderSettingsSheet(
                     }
                 }
 
-                // Theme Presets: System, Light, Sepia, Dark, AMOLED, Custom
+                // Theme Presets: System, Light, Sepia, Dark, AMOLED, Saved Custom Themes, Custom
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "Theme",
@@ -1161,6 +1171,21 @@ fun ReaderSettingsSheet(
                             isSelected = theme.mode == ThemeMode.DARK && theme.backgroundColorHex.equals("#000000", ignoreCase = true),
                             onClick = { onThemeChange(ReaderThemePresets.Amoled) }
                         )
+                        for (ct in customThemes) {
+                            val ctBg = parseHexToColor(ct.backgroundColorHex)
+                            val ctText = parseHexToColor(ct.textColorHex)
+                            val isSelected = theme.mode == ThemeMode.CUSTOM &&
+                                theme.backgroundColorHex.equals(ct.backgroundColorHex, ignoreCase = true) &&
+                                theme.textColorHex.equals(ct.textColorHex, ignoreCase = true)
+                            CustomSavedThemeOption(
+                                name = ct.name,
+                                bgColor = ctBg,
+                                textColor = ctText,
+                                isSelected = isSelected,
+                                onClick = { onThemeChange(ct.toReaderTheme()) },
+                                onDelete = { onDeleteCustomTheme(ct.id) }
+                            )
+                        }
                         ThemeOption(
                             label = "Custom",
                             bgColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.backgroundColorHex) else Color(0xFF2E3440),
@@ -1186,7 +1211,8 @@ fun ReaderSettingsSheet(
                         Spacer(modifier = Modifier.height(6.dp))
                         CustomThemeEditor(
                             theme = theme,
-                            onThemeChange = onThemeChange
+                            onThemeChange = onThemeChange,
+                            onSaveTheme = onSaveCustomTheme
                         )
                     }
                 }
@@ -1214,6 +1240,60 @@ fun ReaderSettingsSheet(
                             label = { Text("Continuous Scroll") }
                         )
                     }
+                }
+
+                // Screen Orientation Lock
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Orientation",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = orientationLock == OrientationLock.AUTO,
+                            onClick = { onOrientationLockChange(OrientationLock.AUTO) },
+                            label = { Text("Auto") }
+                        )
+                        FilterChip(
+                            selected = orientationLock == OrientationLock.PORTRAIT,
+                            onClick = { onOrientationLockChange(OrientationLock.PORTRAIT) },
+                            label = { Text("Portrait") }
+                        )
+                        FilterChip(
+                            selected = orientationLock == OrientationLock.LANDSCAPE,
+                            onClick = { onOrientationLockChange(OrientationLock.LANDSCAPE) },
+                            label = { Text("Landscape") }
+                        )
+                    }
+                }
+
+                // Keep Screen On
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Keep Screen On",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Prevent display from sleeping while reading",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = keepScreenOn,
+                        onCheckedChange = onKeepScreenOnChange
+                    )
                 }
 
                 // Font Family: Default + User-imported Fonts (.ttf / .otf) + Import Button
@@ -1315,6 +1395,36 @@ fun ReaderSettingsSheet(
                     }
                 }
 
+                // Text Alignment: Default, Justify, Align Left
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Text Alignment",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = typography.textAlignment == ReaderTypography.TextAlignment.DEFAULT,
+                            onClick = { onTypographyChange(typography.copy(textAlignment = ReaderTypography.TextAlignment.DEFAULT)) },
+                            label = { Text("Default") }
+                        )
+                        FilterChip(
+                            selected = typography.textAlignment == ReaderTypography.TextAlignment.JUSTIFY,
+                            onClick = { onTypographyChange(typography.copy(textAlignment = ReaderTypography.TextAlignment.JUSTIFY)) },
+                            label = { Text("Justify") }
+                        )
+                        FilterChip(
+                            selected = typography.textAlignment == ReaderTypography.TextAlignment.START,
+                            onClick = { onTypographyChange(typography.copy(textAlignment = ReaderTypography.TextAlignment.START)) },
+                            label = { Text("Align Left") }
+                        )
+                    }
+                }
+
                 // Line Height Spacing (Tashkeel / Diacritics friendly >= 1.5)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -1323,7 +1433,7 @@ fun ReaderSettingsSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Line Height (تباعد الأسطر والتشكيل)",
+                            text = "Line Height",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1335,19 +1445,19 @@ fun ReaderSettingsSheet(
                         FilterChip(
                             selected = typography.lineHeightMultiplier <= 1.55f,
                             onClick = { onTypographyChange(typography.copy(lineHeightMultiplier = 1.5f)) },
-                            label = { Text("1.5x (عادي)") },
+                            label = { Text("1.5x (Normal)") },
                             modifier = Modifier.weight(1f)
                         )
                         FilterChip(
                             selected = typography.lineHeightMultiplier > 1.55f && typography.lineHeightMultiplier <= 1.85f,
                             onClick = { onTypographyChange(typography.copy(lineHeightMultiplier = 1.8f)) },
-                            label = { Text("1.8x (مريح)") },
+                            label = { Text("1.8x (Relaxed)") },
                             modifier = Modifier.weight(1f)
                         )
                         FilterChip(
                             selected = typography.lineHeightMultiplier > 1.85f,
                             onClick = { onTypographyChange(typography.copy(lineHeightMultiplier = 2.0f)) },
-                            label = { Text("2.0x (واسع)") },
+                            label = { Text("2.0x (Loose)") },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -1361,7 +1471,7 @@ fun ReaderSettingsSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Inter-Page Gap & Margins (المسافة بين الصفحات)",
+                            text = "Inter-Page Gap & Margins",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1398,7 +1508,7 @@ fun ReaderSettingsSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Vertical Margin (الهوامش العلوية والسفلية)",
+                            text = "Vertical Margin",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1452,11 +1562,13 @@ fun ReaderSettingsSheet(
 @Composable
 private fun CustomThemeEditor(
     theme: ReaderTheme,
-    onThemeChange: (ReaderTheme) -> Unit
+    onThemeChange: (ReaderTheme) -> Unit,
+    onSaveTheme: (CustomTheme) -> Unit = {}
 ) {
     var bgHex by remember(theme.backgroundColorHex) { mutableStateOf(theme.backgroundColorHex) }
     var textHex by remember(theme.textColorHex) { mutableStateOf(theme.textColorHex) }
     var accentHex by remember(theme.accentColorHex) { mutableStateOf(theme.accentColorHex) }
+    var themeName by remember { mutableStateOf("") }
 
     data class ThemePreset(val name: String, val bg: String, val text: String, val accent: String)
     val presets = listOf(
@@ -1698,6 +1810,97 @@ private fun CustomThemeEditor(
                     modifier = Modifier.weight(1f)
                 )
             }
+
+            // Save Custom Theme to Vault
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = themeName,
+                    onValueChange = { themeName = it },
+                    placeholder = { Text("Theme name...") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = {
+                        val name = themeName.trim().ifEmpty { "My Custom Theme" }
+                        val id = "theme_${name.lowercase().replace(' ', '_')}_${bgHex.removePrefix("#")}"
+                        onSaveTheme(
+                            CustomTheme(
+                                id = id,
+                                name = name,
+                                backgroundColorHex = bgHex,
+                                textColorHex = textHex,
+                                accentColorHex = accentHex
+                            )
+                        )
+                        themeName = ""
+                    }
+                ) {
+                    Icon(imageVector = Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Save Theme")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomSavedThemeOption(
+    name: String,
+    bgColor: Color,
+    textColor: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(bgColor)
+                .border(
+                    width = if (isSelected) 3.dp else 1.dp,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Aa",
+                color = textColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = name.take(7),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = "Delete $name",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .size(14.dp)
+                    .clickable(onClick = onDelete)
+            )
         }
     }
 }

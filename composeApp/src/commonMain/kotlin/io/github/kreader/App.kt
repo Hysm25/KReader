@@ -91,6 +91,7 @@ fun App() {
                 val effectivePreferences by bookRepository.observeEffectivePreferences(bookToRead.id).collectAsState(persistedPreferences)
                 val bookmarks by bookRepository.observeBookmarks(bookToRead.id).collectAsState(emptyList())
                 val highlights by bookRepository.observeHighlights(bookToRead.id).collectAsState(emptyList())
+                val customThemes by bookRepository.observeCustomThemes().collectAsState(emptyList())
 
                 var readerState by remember(bookToRead.id) {
                     val initialIsRtl = isRtlText(bookToRead.title) ||
@@ -105,6 +106,8 @@ fun App() {
                             typography = effectivePreferences.typography,
                             isScrollMode = effectivePreferences.isScrollMode,
                             pageLayout = effectivePreferences.pageLayout,
+                            keepScreenOn = effectivePreferences.keepScreenOn,
+                            orientationLock = effectivePreferences.orientationLock,
                             isRtl = initialIsRtl
                         )
                     )
@@ -115,13 +118,16 @@ fun App() {
                         theme = effectivePreferences.theme,
                         typography = effectivePreferences.typography,
                         isScrollMode = effectivePreferences.isScrollMode,
-                        pageLayout = effectivePreferences.pageLayout
+                        pageLayout = effectivePreferences.pageLayout,
+                        keepScreenOn = effectivePreferences.keepScreenOn,
+                        orientationLock = effectivePreferences.orientationLock
                     )
                 }
 
                 val currentUiState = readerState.copy(
                     bookmarks = bookmarks,
-                    highlights = highlights
+                    highlights = highlights,
+                    customThemes = customThemes
                 )
 
                 ReaderScreen(
@@ -310,6 +316,31 @@ fun App() {
                         readerState = readerState.copy(tocItems = toc)
                     },
                     customFonts = effectivePreferences.customFonts,
+                    customThemes = customThemes,
+                    onSaveCustomTheme = { newTheme ->
+                        scope.launch {
+                            bookRepository.saveCustomTheme(newTheme)
+                        }
+                    },
+                    onDeleteCustomTheme = { themeId ->
+                        scope.launch {
+                            bookRepository.deleteCustomTheme(themeId)
+                        }
+                    },
+                    onKeepScreenOnChange = { enabled ->
+                        readerState = readerState.copy(keepScreenOn = enabled)
+                        scope.launch {
+                            val updated = effectivePreferences.copy(keepScreenOn = enabled)
+                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                        }
+                    },
+                    onOrientationLockChange = { lock ->
+                        readerState = readerState.copy(orientationLock = lock)
+                        scope.launch {
+                            val updated = effectivePreferences.copy(orientationLock = lock)
+                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                        }
+                    },
                     onImportCustomFont = { font ->
                         scope.launch {
                             bookRepository.addCustomFont(font)
