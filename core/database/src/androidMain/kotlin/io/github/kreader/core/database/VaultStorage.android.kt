@@ -194,17 +194,6 @@ actual class VaultStorage(private val context: Context) {
             withContext(Dispatchers.IO) {
                 val kreaderDir = getOrCreateKReaderDir() ?: return@withContext
 
-                // Delete any stray duplicate files like "fileName (1).json"
-                val nameWithoutExt = fileName.substringBeforeLast(".")
-                val ext = fileName.substringAfterLast(".", "json")
-                val strayRegex = Regex("^" + Regex.escape(nameWithoutExt) + """( \(\d+\))\.""" + Regex.escape(ext) + "$")
-                for (f in kreaderDir.listFiles()) {
-                    val fn = f.name.orEmpty()
-                    if (strayRegex.matches(fn)) {
-                        runCatching { f.delete() }
-                    }
-                }
-
                 // Overwrite existing file or create once if absent
                 val file = kreaderDir.findFile(fileName) ?: kreaderDir.createFile("application/json", fileName) ?: return@withContext
                 runCatching {

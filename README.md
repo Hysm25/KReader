@@ -1,4 +1,4 @@
-# KReader
+# KReader Blueprint
 
 [![Android CI & Release](https://github.com/Hysm25/KReader/actions/workflows/android-dev.yml/badge.svg)](https://github.com/Hysm25/KReader/actions/workflows/android-dev.yml)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
@@ -6,9 +6,57 @@
 [![Readium](https://img.shields.io/badge/Readium_Kotlin_Toolkit-3.0.0-0284C7.svg)](https://readium.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**KReader** is a modern, local-first EPUB reader for Android and Desktop built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**.
+## System Overview
+
+**KReader** is a modern, local-first EPUB reader for Android (production) and Desktop (experimental preview) built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**.
 
 Built on an **Obsidian-style folder vault** philosophy, KReader allows you to open and manage your books directly inside any folder on your device or storage. Books remain in place—never duplicated into proprietary app databases or hidden sandboxes. All reading progress, preferences, and annotations are saved in clean, human-readable JSON files inside a portable `.kreader/` configuration directory.
+
+```
+KReader/
+├── composeApp/                 # Application entry points (Android MainActivity & Desktop main)
+├── core/
+│   ├── model/                  # Domain entities (Book, Locator, ReaderPreferences, ReaderTheme)
+│   ├── database/               # VaultStorage (.kreader JSON engine) & BookRepository
+│   └── engine-api/             # Reader engine contracts, navigation controller & key dispatcher
+├── engine/
+│   └── epub-adapter/           # Readium 3.0 integration, publication opener & locator mapping
+└── feature/
+    ├── library/                # Library screen, vault onboarding, book grid, metadata extraction
+    └── reader/                 # Reader screen, ReaderViewModel, Readium navigator host, typography sheets
+```
+
+---
+
+## Subdirectories & System Boundaries
+
+- **`composeApp`**: [./composeApp/README.md](./composeApp/README.md) - Application entry points (Android `MainActivity` and Desktop `main`), root Compose UI scaffolding (`App.kt`), and system lifecycle bridges.
+- **`core`**: [./core/README.md](./core/README.md) - Foundational domain entities (`model`), local-first `.kreader/` JSON vault persistence (`database`), and reader engine contracts (`engine-api`).
+- **`engine`**: [./engine/README.md](./engine/README.md) - Readium 3.0 EPUB publication engine adapter (Android production) and platform simulation stubs (`epub-adapter`).
+- **`feature`**: [./feature/README.md](./feature/README.md) - Presentation UI modules for book vault library browsing (`library`) and EPUB reader viewport controls (`reader`).
+
+---
+
+## Global Invariants
+
+- **`[VaultWorkspace]`**: All reading progression, last read timestamps, and locator pointers are indexed strictly by relative vault paths (`relativePath`), ensuring full vault portability across local file systems, SD cards, and cloud drives.
+- **`[Storage Access Framework]`**: Android vault operations preserve original files in-place without copying books to internal app sandbox storage; concurrent writes to `.kreader/*.json` configs are serialized via per-file `Mutex` locks to prevent duplicate `* (1).json` files.
+- **`[Reader Viewport Stability]`**: Reading layouts enforce single-column pagination (`ColumnCount.ONE`) and floating overlay toolbars to eliminate viewport resize reflow and multi-column text overlap during theme or margin adjustments.
+
+---
+
+## Global Side Effects
+
+- **`[Vault Directory Mutation]`**: Scans, creates, and writes configuration files (`workspace.json`, `appearance.json`, `annotations.json`, `themes.json`), cover images (`.kreader/covers/`), custom fonts (`.kreader/fonts/`), and exported notes (`<Book_Title>.md`) inside the user's selected vault directory.
+- **`[System Bars & Wake Locks]`**: Enters immersive sticky fullscreen mode, overrides window brightness, and locks screen timeout (`FLAG_KEEP_SCREEN_ON`) during active reader sessions on Android.
+
+---
+
+## System Verification
+
+- Run tests: `./gradlew test`
+- Build Android: `./gradlew :composeApp:assembleDebug --configuration-cache`
+- Run Desktop: `./gradlew :composeApp:run`
 
 ---
 
@@ -25,7 +73,7 @@ Built on an **Obsidian-style folder vault** philosophy, KReader allows you to op
 - **Concurrency & Atomic Storage**: Thread-safe operations protected by per-file `Mutex` locks with atomic overwrites, preventing corrupted or duplicate `* (1).json` files.
 
 ### 📖 High-Performance EPUB Engine (Readium 3.0)
-- **Readium Kotlin Toolkit 3.0**: Powered by `readium-shared`, `readium-streamer`, and `readium-navigator`.
+- **Readium Kotlin Toolkit 3.0**: Powered by `readium-shared`, `readium-streamer`, and `readium-navigator` on Android.
 - **Automatic Reading Direction (RTL / LTR)**: Detects reading direction automatically from EPUB metadata (`page-progression-direction="rtl"`, language tags, or Arabic script detection). The reader layout and bottom progress bar mirror automatically.
 - **Single-Page Column Stability**: Enforced single-column layout (`ColumnCount.ONE`) paired with post-layout realignment prevents multi-column text overlap glitches when customizing margins.
 - **Fixed Viewport (Zero Reflow)**: Floating overlay top and bottom bars ensure that toggling controls never resizes the reader container or reflows text.
@@ -57,33 +105,13 @@ Built on an **Obsidian-style folder vault** philosophy, KReader allows you to op
 |---|---|
 | **Language** | [Kotlin 2.1.0](https://kotlinlang.org) |
 | **UI Framework** | [Compose Multiplatform 1.7.1](https://www.jetbrains.com/lp/compose-multiplatform/) |
-| **EPUB Engine** | [Readium Kotlin Toolkit 3.0.0](https://readium.org) (`streamer`, `navigator`, `shared`) |
+| **EPUB Engine** | [Readium Kotlin Toolkit 3.0.0](https://readium.org) (`streamer`, `navigator`, `shared`) on Android |
 | **Design System** | Material Design 3 (Compose Material 3, Material Icons Extended) |
 | **Data Persistence** | `kotlinx.serialization.json` (Human-readable `.kreader` vault) |
 | **Concurrency** | `kotlinx.coroutines` |
 | **Date & Time** | `kotlinx.datetime` |
 | **File I/O** | Android DocumentFile (SAF), Okio |
-| **Target Platforms** | Android (minSdk 24, targetSdk 35) & Desktop (JVM 17) |
-
----
-
-## Project Architecture
-
-```
-KReader/
-├── composeApp/                 # Application entry points (Android MainActivity & Desktop main)
-├── core/
-│   ├── model/                  # Domain entities (Book, Locator, ReaderPreferences, ReaderTheme)
-│   ├── database/               # VaultStorage (.kreader JSON engine) & BookRepository
-│   └── engine-api/             # Reader engine contracts, navigation controller & key dispatcher
-├── engine/
-│   └── epub-adapter/           # Readium 3.0 integration, publication opener & locator mapping
-├── feature/
-│   ├── library/                # Library screen, vault onboarding, book grid, metadata extraction
-│   └── reader/                 # Reader screen, Readium navigator host, typography sheets, search
-├── gradle/                     # Version catalog (libs.versions.toml) and build configuration
-└── .github/workflows/          # Automated GitHub Actions CI and release automation
-```
+| **Target Platforms** | Android (minSdk 24, targetSdk 35; production) & Desktop (JVM 17; experimental preview) |
 
 ---
 
@@ -111,13 +139,16 @@ Using standard terminal or `fish` shell:
 # Check Gradle configuration and available tasks
 ./gradlew tasks
 
+# Run Unit Tests
+./gradlew test
+
 # Assemble Android Debug APKs (arm64-v8a, armeabi-v7a, x86_64)
 ./gradlew :composeApp:assembleDebug --configuration-cache
 
 # Assemble Android Release APKs
 ./gradlew :composeApp:assembleRelease --configuration-cache
 
-# Run Desktop Application (JVM)
+# Run Desktop Application (JVM - Experimental Preview)
 ./gradlew :composeApp:run
 ```
 

@@ -30,6 +30,9 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.okio)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
 

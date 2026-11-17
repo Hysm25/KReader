@@ -30,6 +30,9 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             api(libs.kotlinx.serialization.json)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         androidMain.dependencies {
             implementation(libs.androidx.documentfile)
         }
