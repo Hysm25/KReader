@@ -208,7 +208,6 @@ fun App() {
                     onDirectionDetected = { isRtl -> readerViewModel.onDirectionDetected(isRtl) },
                     onExportMarkdown = {
                         readerViewModel.exportMarkdown()
-                        null
                     }
                 )
             }

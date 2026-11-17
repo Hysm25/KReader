@@ -13,7 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private val coverBitmapCache = object : LruCache<String, Bitmap>(64) {
+// 24 MB cache for downsampled cover thumbnails (maxSize in KB matching sizeOf in KB)
+private val coverBitmapCache = object : LruCache<String, Bitmap>(24 * 1024) {
     override fun sizeOf(key: String, value: Bitmap): Int {
         return (value.byteCount / 1024).coerceAtLeast(1)
     }

@@ -21,7 +21,7 @@ expect fun EpubNavigatorHost(
     customFonts: List<CustomFont> = emptyList(),
     highlights: List<Highlight> = emptyList(),
     onHighlightClicked: (String) -> Unit = {},
-    onAddHighlight: (Locator, String) -> Unit = { _, _ -> },
+    onAddHighlight: (id: String, locator: Locator, colorHex: String) -> Unit = { _, _, _ -> },
     onAddNoteRequested: (Locator, String) -> Unit = { _, _ -> },
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,

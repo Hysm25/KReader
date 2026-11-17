@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -229,19 +230,19 @@ fun ReaderNavigationDrawer(
                         selected = currentTab == NavigationDrawerTab.CONTENTS,
                         onClick = { onTabSelected(NavigationDrawerTab.CONTENTS) },
                         icon = { Icon(Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null) },
-                        text = { Text("Contents (${tocItems.size})", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        text = { Text("Contents (${tocItems.size})", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                     Tab(
                         selected = currentTab == NavigationDrawerTab.BOOKMARKS,
                         onClick = { onTabSelected(NavigationDrawerTab.BOOKMARKS) },
                         icon = { Icon(Icons.Rounded.Bookmark, contentDescription = null) },
-                        text = { Text("Bookmarks (${bookmarks.size})", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        text = { Text("Bookmarks (${bookmarks.size})", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                     Tab(
                         selected = currentTab == NavigationDrawerTab.HIGHLIGHTS,
                         onClick = { onTabSelected(NavigationDrawerTab.HIGHLIGHTS) },
                         icon = { Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null) },
-                        text = { Text("Notes (${highlights.size})", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        text = { Text("Notes (${highlights.size})", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                 }
 
@@ -680,6 +681,19 @@ fun ReaderSearchSheet(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
+                            if (!isSearching) {
+                                IconButton(
+                                    onClick = onSearch,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Search,
+                                        contentDescription = "Run search",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -860,12 +874,15 @@ fun HighlightDetailDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Highlighted quote
-                Text(
-                    text = "\"${highlight.locator.text?.highlight ?: ""}\"",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis
-                )
+                val quote = (highlight.locator.text?.highlight ?: "").trim()
+                if (quote.isNotEmpty()) {
+                    Text(
+                        text = "\"$quote\"",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 // Color picker swatches
                 Row(
@@ -942,9 +959,10 @@ fun AddNoteDialog(
         title = { Text("Add Note") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (!selectedText.isNullOrBlank()) {
+                val quote = (selectedText ?: "").trim()
+                if (quote.isNotEmpty()) {
                     Text(
-                        text = "\"$selectedText\"",
+                        text = "\"$quote\"",
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
@@ -1940,8 +1958,9 @@ private fun CustomThemeEditor(
                         value = bgHex,
                         onValueChange = { newBg ->
                             bgHex = newBg
-                            if (newBg.startsWith("#") && (newBg.length == 7 || newBg.length == 9)) {
-                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = newBg, textColorHex = textHex, accentColorHex = accentHex))
+                            val validHex = normalizeHexColor(newBg)
+                            if (validHex != null) {
+                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = validHex, textColorHex = textHex, accentColorHex = accentHex))
                             }
                         },
                         singleLine = true,
@@ -1973,8 +1992,9 @@ private fun CustomThemeEditor(
                         value = textHex,
                         onValueChange = { newTxt ->
                             textHex = newTxt
-                            if (newTxt.startsWith("#") && (newTxt.length == 7 || newTxt.length == 9)) {
-                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = newTxt, accentColorHex = accentHex))
+                            val validHex = normalizeHexColor(newTxt)
+                            if (validHex != null) {
+                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = validHex, accentColorHex = accentHex))
                             }
                         },
                         singleLine = true,
@@ -2006,8 +2026,9 @@ private fun CustomThemeEditor(
                         value = accentHex,
                         onValueChange = { newAcc ->
                             accentHex = newAcc
-                            if (newAcc.startsWith("#") && (newAcc.length == 7 || newAcc.length == 9)) {
-                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = textHex, accentColorHex = newAcc))
+                            val validHex = normalizeHexColor(newAcc)
+                            if (validHex != null) {
+                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = textHex, accentColorHex = validHex))
                             }
                         },
                         singleLine = true,
@@ -2034,14 +2055,17 @@ private fun CustomThemeEditor(
                 Button(
                     onClick = {
                         val name = themeName.trim().ifEmpty { "My Custom Theme" }
-                        val id = "theme_${name.lowercase().replace(' ', '_')}_${bgHex.removePrefix("#")}"
+                        val finalBg = normalizeHexColor(bgHex) ?: bgHex
+                        val finalTxt = normalizeHexColor(textHex) ?: textHex
+                        val finalAcc = normalizeHexColor(accentHex) ?: accentHex
+                        val id = "theme_${name.lowercase().replace(' ', '_')}_${finalBg.removePrefix("#")}"
                         onSaveTheme(
                             CustomTheme(
                                 id = id,
                                 name = name,
-                                backgroundColorHex = bgHex,
-                                textColorHex = textHex,
-                                accentColorHex = accentHex
+                                backgroundColorHex = finalBg,
+                                textColorHex = finalTxt,
+                                accentColorHex = finalAcc
                             )
                         )
                         themeName = ""
@@ -2057,6 +2081,18 @@ private fun CustomThemeEditor(
     }
 }
 
+private fun normalizeHexColor(input: String): String? {
+    val clean = input.trim()
+    val withHash = if (clean.startsWith("#")) clean else "#$clean"
+    if (withHash.length == 7 || withHash.length == 9) {
+        val hexPart = withHash.substring(1)
+        if (hexPart.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
+            return withHash
+        }
+    }
+    return null
+}
+
 @Composable
 private fun CustomSavedThemeOption(
     name: String,
@@ -2068,8 +2104,7 @@ private fun CustomSavedThemeOption(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.clickable(onClick = onClick)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Box(
             modifier = Modifier
@@ -2080,7 +2115,8 @@ private fun CustomSavedThemeOption(
                     width = if (isSelected) 3.dp else 1.dp,
                     color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
                     shape = CircleShape
-                ),
+                )
+                .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -2092,23 +2128,33 @@ private fun CustomSavedThemeOption(
         }
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.widthIn(max = 64.dp)
         ) {
             Text(
-                text = name.take(7),
+                text = name,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Icon(
-                imageVector = Icons.Rounded.Close,
-                contentDescription = "Delete $name",
-                tint = MaterialTheme.colorScheme.error,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .size(14.dp)
-                    .clickable(onClick = onDelete)
+                    .weight(1f, fill = false)
+                    .clickable(onClick = onClick)
             )
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onDelete),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Delete $name",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
         }
     }
 }

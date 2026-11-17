@@ -179,18 +179,28 @@ class ReaderViewModel(
     }
 
     fun deleteBookmark(bookmarkId: String) {
+        _uiState.update { current ->
+            current.copy(bookmarks = current.bookmarks.filterNot { it.id == bookmarkId })
+        }
         scope.launch {
             bookRepository.deleteBookmark(bookmarkId)
         }
     }
 
     fun saveHighlight(highlight: Highlight) {
+        _uiState.update { current ->
+            val updated = current.highlights.filterNot { it.id == highlight.id } + highlight
+            current.copy(highlights = updated)
+        }
         scope.launch {
             bookRepository.saveHighlight(highlight)
         }
     }
 
     fun deleteHighlight(highlightId: String) {
+        _uiState.update { current ->
+            current.copy(highlights = current.highlights.filterNot { it.id == highlightId })
+        }
         scope.launch {
             bookRepository.deleteHighlight(highlightId)
         }
@@ -201,18 +211,26 @@ class ReaderViewModel(
     }
 
     fun saveHighlightDetail(id: String, note: String, colorHex: String) {
-        scope.launch {
-            val existing = _uiState.value.highlights.find { it.id == id }
-            if (existing != null) {
-                val updated = existing.copy(
-                    annotation = note.ifBlank { null },
-                    colorHex = colorHex,
-                    modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
+        val existing = _uiState.value.highlights.find { it.id == id }
+        if (existing != null) {
+            val updated = existing.copy(
+                annotation = note.ifBlank { null },
+                colorHex = colorHex,
+                modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
+            )
+            _uiState.update { current ->
+                val updatedHighlights = current.highlights.map { if (it.id == id) updated else it }
+                current.copy(
+                    highlights = updatedHighlights,
+                    selectedHighlightForDetail = null
                 )
+            }
+            scope.launch {
                 bookRepository.saveHighlight(updated)
             }
+        } else {
+            _uiState.update { it.copy(selectedHighlightForDetail = null) }
         }
-        _uiState.update { it.copy(selectedHighlightForDetail = null) }
     }
 
     fun openAddNoteDialog(locator: Locator, selectedText: String) {
@@ -243,14 +261,16 @@ class ReaderViewModel(
             createdTimestamp = Clock.System.now().toEpochMilliseconds(),
             modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
         )
-        scope.launch {
-            bookRepository.saveHighlight(newHighlight)
-        }
-        _uiState.update {
-            it.copy(
+        _uiState.update { current ->
+            val updated = current.highlights.filterNot { it.id == newHighlight.id } + newHighlight
+            current.copy(
+                highlights = updated,
                 pendingNoteLocator = null,
                 pendingNoteText = null
             )
+        }
+        scope.launch {
+            bookRepository.saveHighlight(newHighlight)
         }
     }
 
@@ -344,10 +364,8 @@ class ReaderViewModel(
         }
     }
 
-    fun exportMarkdown() {
-        scope.launch {
-            bookRepository.exportBookToMarkdown(book.id)
-        }
+    suspend fun exportMarkdown(): String? {
+        return bookRepository.exportBookToMarkdown(book.id)
     }
 
     val customFonts: List<CustomFont>

@@ -1,5 +1,6 @@
 package io.github.kreader.engine.epub
 
+import android.net.Uri
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Locator
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -32,7 +33,13 @@ fun org.readium.r2.shared.publication.Locator.toDomain(): Locator {
 
 @OptIn(ExperimentalReadiumApi::class)
 fun Locator.toReadium(): org.readium.r2.shared.publication.Locator {
-    val parsedUrl = Url(href) ?: Url.fromDecodedPath(href) ?: Url("#")!!
+    val parsedUrl = Url(href)
+        ?: Url.fromDecodedPath(href)
+        ?: runCatching {
+            val encoded = Uri.encode(href, "/#?=&;:@+$")
+            Url(encoded)
+        }.getOrNull()
+        ?: Url("#")!!
     val parsedMediaType = MediaType(type) ?: MediaType.BINARY
 
     return org.readium.r2.shared.publication.Locator(

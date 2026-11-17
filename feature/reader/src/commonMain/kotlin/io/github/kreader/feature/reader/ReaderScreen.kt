@@ -212,9 +212,9 @@ fun ReaderScreen(
                             onHighlightClicked(h)
                         }
                     },
-                    onAddHighlight = { locator, colorHex ->
+                    onAddHighlight = { id, locator, colorHex ->
                         val newHighlight = Highlight(
-                            id = "hl_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
+                            id = id,
                             bookId = book.id,
                             locator = locator,
                             colorHex = colorHex,

@@ -1,5 +1,7 @@
 package io.github.kreader.feature.reader
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
@@ -82,7 +84,7 @@ actual fun EpubNavigatorHost(
     customFonts: List<CustomFont>,
     highlights: List<Highlight>,
     onHighlightClicked: (String) -> Unit,
-    onAddHighlight: (Locator, String) -> Unit,
+    onAddHighlight: (id: String, locator: Locator, colorHex: String) -> Unit,
     onAddNoteRequested: (Locator, String) -> Unit,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
@@ -150,6 +152,13 @@ actual fun EpubNavigatorHost(
                 isLoading = false
             }
         )
+    }
+
+    // Safely release Readium Publication resources on disposal or book switch
+    DisposableEffect(publication) {
+        onDispose {
+            publication?.close()
+        }
     }
 
     // 2. Build preferences (automatic reading direction + custom font support + system dark mode)
@@ -380,7 +389,7 @@ actual fun EpubNavigatorHost(
                 SelectionActionModeCallback(
                     scope = scope,
                     fragmentProvider = { currentFragment },
-                    onHighlight = { loc, color -> currentOnAddHighlight(loc, color) },
+                    onHighlight = { id, loc, color -> currentOnAddHighlight(id, loc, color) },
                     onAddNote = { loc, text -> currentOnAddNoteRequested(loc, text) },
                     onImmediateDecorate = { deco ->
                         val frag = currentFragment
@@ -720,12 +729,13 @@ private fun findWebViews(view: View): List<WebView> {
 private class SelectionActionModeCallback(
     private val scope: CoroutineScope,
     private val fragmentProvider: () -> EpubNavigatorFragment?,
-    private val onHighlight: (locator: Locator, colorHex: String) -> Unit,
+    private val onHighlight: (id: String, locator: Locator, colorHex: String) -> Unit,
     private val onAddNote: (locator: Locator, selectedText: String) -> Unit,
     private val onImmediateDecorate: (Decoration) -> Unit
 ) : ActionMode.Callback {
 
     companion object {
+        const val MENU_COPY = 1000
         const val MENU_YELLOW = 1001
         const val MENU_GREEN = 1002
         const val MENU_BLUE = 1003
@@ -734,11 +744,12 @@ private class SelectionActionModeCallback(
     }
 
     override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-        menu?.add(0, MENU_YELLOW, 0, "🟡 Yellow")
-        menu?.add(0, MENU_GREEN, 1, "🟢 Green")
-        menu?.add(0, MENU_BLUE, 2, "🔵 Blue")
-        menu?.add(0, MENU_PINK, 3, "🔴 Pink")
-        menu?.add(0, MENU_NOTE, 4, "📝 Note")
+        menu?.add(0, MENU_COPY, 0, "📋 Copy")
+        menu?.add(0, MENU_YELLOW, 1, "🟡 Yellow")
+        menu?.add(0, MENU_GREEN, 2, "🟢 Green")
+        menu?.add(0, MENU_BLUE, 3, "🔵 Blue")
+        menu?.add(0, MENU_PINK, 4, "🔴 Pink")
+        menu?.add(0, MENU_NOTE, 5, "📝 Note")
         return true
     }
 
@@ -747,6 +758,21 @@ private class SelectionActionModeCallback(
     override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
         val fragment = fragmentProvider() ?: return false
         if (!fragment.isAdded || fragment.context == null) return false
+
+        if (item?.itemId == MENU_COPY) {
+            scope.launch {
+                val selection = fragment.currentSelection()
+                val text = selection?.locator?.text?.highlight ?: ""
+                if (text.isNotEmpty()) {
+                    val clipboard = fragment.requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    val clip = ClipData.newPlainText("KReader Selection", text)
+                    clipboard?.setPrimaryClip(clip)
+                }
+                fragment.clearSelection()
+                mode?.finish()
+            }
+            return true
+        }
 
         val colorHex = when (item?.itemId) {
             MENU_YELLOW -> "#FFF59D"
@@ -766,7 +792,8 @@ private class SelectionActionModeCallback(
                     if (isNote) {
                         onAddNote(locator, text)
                     } else if (colorHex != null) {
-                        onHighlight(locator, colorHex)
+                        val highlightId = "hl_${System.currentTimeMillis()}_${(1000..9999).random()}"
+                        onHighlight(highlightId, locator, colorHex)
                         val baseColor = try {
                             android.graphics.Color.parseColor(colorHex)
                         } catch (_: Exception) {
@@ -779,7 +806,7 @@ private class SelectionActionModeCallback(
                             android.graphics.Color.blue(baseColor)
                         )
                         val deco = Decoration(
-                            id = "hl_${System.currentTimeMillis()}",
+                            id = highlightId,
                             locator = selection.locator,
                             style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
                         )

@@ -32,7 +32,7 @@ actual fun EpubNavigatorHost(
     customFonts: List<CustomFont>,
     highlights: List<Highlight>,
     onHighlightClicked: (String) -> Unit,
-    onAddHighlight: (Locator, String) -> Unit,
+    onAddHighlight: (id: String, locator: Locator, colorHex: String) -> Unit,
     onAddNoteRequested: (Locator, String) -> Unit,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
