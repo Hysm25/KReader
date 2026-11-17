@@ -208,14 +208,14 @@ actual class VaultStorage {
             java.util.zip.ZipFile(file).use { zip ->
                 val containerEntry = zip.getEntry("META-INF/container.xml")
                     ?: zip.entries().asSequence().firstOrNull { it.name.equals("META-INF/container.xml", ignoreCase = true) }
-                    ?: return null
+                    ?: return@use null
                 val containerXml = zip.getInputStream(containerEntry).bufferedReader().readText()
                 val opfPath = Regex("""full-path=["']([^"']+)["']""").find(containerXml)?.groupValues?.get(1) ?: "OEBPS/content.opf"
                 val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
 
                 val opfEntry = zip.getEntry(opfPath)
                     ?: zip.entries().asSequence().firstOrNull { it.name.equals(opfPath, ignoreCase = true) }
-                    ?: return null
+                    ?: return@use null
                 val opfXml = zip.getInputStream(opfEntry).bufferedReader().readText()
 
                 val manifestMap = mutableMapOf<String, String>()
