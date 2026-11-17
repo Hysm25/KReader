@@ -154,13 +154,6 @@ actual fun EpubNavigatorHost(
         )
     }
 
-    // Safely release Readium Publication resources on disposal or book switch
-    DisposableEffect(publication) {
-        onDispose {
-            publication?.close()
-        }
-    }
-
     // 2. Build preferences (automatic reading direction + custom font support + system dark mode)
     val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val effectiveRtl = detectedRtl == true
