@@ -12,3 +12,8 @@ actual fun KeepScreenOn(enabled: Boolean) {
 actual fun ManageOrientation(orientationLock: OrientationLock) {
     // No-op on native platforms
 }
+
+@Composable
+actual fun ManageBrightness(brightness: Float) {
+    // No-op on native platforms
+}

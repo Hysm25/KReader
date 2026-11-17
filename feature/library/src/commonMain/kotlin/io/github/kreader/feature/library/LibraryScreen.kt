@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -75,6 +76,7 @@ fun LibraryScreen(
     onSelectVaultFolder: (String) -> Unit = {},
     onRefreshVault: () -> Unit = {},
     onChangeVaultFolder: () -> Unit = {},
+    onOpenGlobalSettings: () -> Unit = {},
     onDeleteBook: (Book) -> Unit,
     onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
     onResetBookProgress: (Book) -> Unit = {},
@@ -265,6 +267,14 @@ fun LibraryScreen(
                             Icon(
                                 imageVector = Icons.Rounded.FolderOpen,
                                 contentDescription = "Change Folder",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(onClick = onOpenGlobalSettings) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = "Global Settings",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }

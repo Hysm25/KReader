@@ -48,7 +48,9 @@ import io.github.kreader.engine.epub.toDomain
 import io.github.kreader.engine.epub.toReadium
 import io.github.kreader.engine.epub.toTocItem
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.readium.r2.navigator.DecorableNavigator
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
@@ -112,29 +114,33 @@ actual fun EpubNavigatorHost(
 
     val opener = remember(context) { ReadiumEpubOpener(context.applicationContext) }
 
-    // 1. Open publication and auto-detect reading direction
+    // 1. Open publication and auto-detect reading direction (backgrounded on IO to prevent UI stutters)
     LaunchedEffect(book.id) {
         isLoading = true
         errorMessage = null
         isNavigatorReady = false
         currentFragment = null
-        opener.open(book.source, book.id).fold(
+        withContext(Dispatchers.IO) {
+            opener.open(book.source, book.id)
+        }.fold(
             onSuccess = { pub ->
                 publication = pub
-                val readingProg = pub.metadata.readingProgression
-                val hasRtlProgression = readingProg == org.readium.r2.shared.publication.ReadingProgression.RTL
-                val hasRtlLanguage = pub.metadata.languages.any { isRtlLanguage(it) }
-                val hasRtlText = isRtlText(pub.metadata.title) ||
-                    isRtlText(book.title) ||
-                    isRtlText(book.author.orEmpty()) ||
-                    isRtlText(book.description.orEmpty()) ||
-                    pub.tableOfContents.any { isRtlText(it.title.orEmpty()) }
+                val (isPubRtl, toc) = withContext(Dispatchers.Default) {
+                    val readingProg = pub.metadata.readingProgression
+                    val hasRtlProgression = readingProg == org.readium.r2.shared.publication.ReadingProgression.RTL
+                    val hasRtlLanguage = pub.metadata.languages.any { isRtlLanguage(it) }
+                    val hasRtlText = isRtlText(pub.metadata.title) ||
+                        isRtlText(book.title) ||
+                        isRtlText(book.author.orEmpty()) ||
+                        isRtlText(book.description.orEmpty()) ||
+                        pub.tableOfContents.any { isRtlText(it.title.orEmpty()) }
 
-                val isPubRtl = hasRtlProgression || hasRtlLanguage || hasRtlText
+                    val rtl = hasRtlProgression || hasRtlLanguage || hasRtlText
+                    val items = pub.tableOfContents.map { it.toTocItem(pub) }
+                    rtl to items
+                }
                 detectedRtl = isPubRtl
                 currentOnDirectionDetected(isPubRtl)
-
-                val toc = pub.tableOfContents.map { it.toTocItem(pub) }
                 currentOnTableOfContentsLoaded(toc)
                 isLoading = false
             },
@@ -479,26 +485,24 @@ actual fun EpubNavigatorHost(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
-                    }
-                },
-                update = { view ->
-                    var lastW = -1
-                    var lastH = -1
-                    view.doOnLayout {
-                        if (view.width > 0 && view.height > 0 && (view.width != lastW || view.height != lastH)) {
-                            val isFirstLayout = lastW == -1
-                            lastW = view.width
-                            lastH = view.height
-                            if (isFirstLayout) {
-                                runCatching {
-                                    val fm = fragmentActivity.supportFragmentManager
-                                    val frag = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
-                                    if (frag != null && frag.isAdded && frag.context != null) {
-                                        frag.view?.post {
-                                            runCatching {
-                                                val loc = frag.currentLocator.value
-                                                frag.go(loc, animated = false)
-                                                frag.view?.requestLayout()
+                        var lastW = -1
+                        var lastH = -1
+                        doOnLayout { view ->
+                            if (view.width > 0 && view.height > 0 && (view.width != lastW || view.height != lastH)) {
+                                val isFirstLayout = lastW == -1
+                                lastW = view.width
+                                lastH = view.height
+                                if (isFirstLayout) {
+                                    runCatching {
+                                        val fm = fragmentActivity.supportFragmentManager
+                                        val frag = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
+                                        if (frag != null && frag.isAdded && frag.context != null) {
+                                            frag.view?.post {
+                                                runCatching {
+                                                    val loc = frag.currentLocator.value
+                                                    frag.go(loc, animated = false)
+                                                    frag.view?.requestLayout()
+                                                }
                                             }
                                         }
                                     }
@@ -506,7 +510,8 @@ actual fun EpubNavigatorHost(
                             }
                         }
                     }
-
+                },
+                update = { view ->
                     runCatching {
                         val fm = fragmentActivity.supportFragmentManager
                         if (fm.isDestroyed || fragmentActivity.isFinishing) return@runCatching
@@ -539,7 +544,7 @@ actual fun EpubNavigatorHost(
                 modifier = modifier.fillMaxSize()
             )
 
-            // Render Highlights as Decorations (guarded by isNavigatorReady & isAdded with subtle ~0.28f pastel alpha)
+            // Render Highlights as Decorations (guarded by isNavigatorReady & isAdded with subtle ~0.30f pastel alpha, strictly Highlight)
             LaunchedEffect(currentFragment, highlights, isNavigatorReady) {
                 val frag = currentFragment ?: return@LaunchedEffect
                 if (isNavigatorReady && frag.isAdded && frag.context != null) {
@@ -550,9 +555,9 @@ actual fun EpubNavigatorHost(
                             } catch (_: Exception) {
                                 android.graphics.Color.YELLOW
                             }
-                            // Apply soft pastel transparency (~0.28f / 71 alpha int)
+                            // Apply soft translucent pastel transparency (~0.30f / 77 alpha int)
                             val tintColor = android.graphics.Color.argb(
-                                71,
+                                77,
                                 android.graphics.Color.red(baseColor),
                                 android.graphics.Color.green(baseColor),
                                 android.graphics.Color.blue(baseColor)
@@ -560,7 +565,7 @@ actual fun EpubNavigatorHost(
                             Decoration(
                                 id = h.id,
                                 locator = h.locator.toReadium(),
-                                style = Decoration.Style.Highlight(tint = tintColor, isActive = true)
+                                style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
                             )
                         }
                         frag.applyDecorations(decorations, group = "highlights")
@@ -605,29 +610,32 @@ private val fontBase64Cache = java.util.concurrent.ConcurrentHashMap<String, Pai
 
 private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont) {
     runCatching {
-        val file = File(font.path)
-        if (!file.exists()) return
-        val (format, base64) = fontBase64Cache.getOrPut(font.path) {
-            val fontBytes = file.readBytes()
-            val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
-            val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
-            fmt to b64
-        }
-        val js = """
-            (function() {
-                var el = document.getElementById('kreader-custom-font');
-                if (!el) {
-                    el = document.createElement('style');
-                    el.id = 'kreader-custom-font';
-                    (document.head || document.documentElement).appendChild(el);
-                }
-                el.textContent = '@font-face { font-family: "${font.name}"; src: url("data:font/$format;charset=utf-8;base64,$base64"); } * { font-family: "${font.name}", sans-serif !important; }';
-            })();
-        """.trimIndent()
-        frag.evaluateJavascript(js)
+        val cssJs = withContext(Dispatchers.IO) {
+            val file = File(font.path)
+            if (!file.exists()) return@withContext null
+            val (format, base64) = fontBase64Cache.getOrPut(font.path) {
+                val fontBytes = file.readBytes()
+                val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
+                val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+                fmt to b64
+            }
+            val contentSelectors = "body, p, div, span, h1, h2, h3, h4, h5, h6, li, blockquote, em, strong"
+            """
+                (function() {
+                    var el = document.getElementById('kreader-custom-font');
+                    if (!el) {
+                        el = document.createElement('style');
+                        el.id = 'kreader-custom-font';
+                        (document.head || document.documentElement).appendChild(el);
+                    }
+                    el.textContent = '@font-face { font-family: "${font.name}"; src: url("data:font/$format;charset=utf-8;base64,$base64"); } $contentSelectors { font-family: "${font.name}", sans-serif !important; }';
+                })();
+            """.trimIndent()
+        } ?: return
+        frag.evaluateJavascript(cssJs)
         frag.view?.let { root ->
             findWebViews(root).forEach { wv ->
-                wv.evaluateJavascript(js, null)
+                wv.evaluateJavascript(cssJs, null)
             }
         }
     }
@@ -714,8 +722,8 @@ private class SelectionActionModeCallback(
                     }
                     fragment.clearSelection()
                 }
+                mode?.finish()
             }
-            mode?.finish()
             return true
         }
         return false

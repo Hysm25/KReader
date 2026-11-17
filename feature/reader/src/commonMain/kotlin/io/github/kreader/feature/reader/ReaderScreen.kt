@@ -78,7 +78,7 @@ fun ReaderScreen(
     onThemeChange: (ReaderTheme) -> Unit = {},
     onTypographyChange: (ReaderTypography) -> Unit = {},
     onScrollModeChange: (Boolean) -> Unit = {},
-    onScopeChange: (Boolean) -> Unit = {},
+    onBrightnessChange: (Float) -> Unit = {},
     onResetToDefaults: () -> Unit = {},
     onProgressChanged: (progression: Float, locator: Locator) -> Unit = { _, _ -> },
     onTableOfContentsLoaded: (List<TocItem>) -> Unit = {},
@@ -144,6 +144,7 @@ fun ReaderScreen(
     ManageSystemBars(isControlsVisible = state.isControlsVisible, theme = state.theme)
     KeepScreenOn(enabled = state.keepScreenOn)
     ManageOrientation(orientationLock = state.orientationLock)
+    ManageBrightness(brightness = state.brightness)
 
     // Hardware volume button navigation
     DisposableEffect(state.book?.id, state.isRtl) {
@@ -374,7 +375,7 @@ fun ReaderScreen(
                 theme = state.theme,
                 typography = state.typography,
                 isScrollMode = state.isScrollMode,
-                isApplyToThisBookOnly = state.isApplyToThisBookOnly,
+                brightness = state.brightness,
                 customFonts = customFonts,
                 customThemes = customThemes,
                 keepScreenOn = state.keepScreenOn,
@@ -382,7 +383,7 @@ fun ReaderScreen(
                 onThemeChange = onThemeChange,
                 onTypographyChange = onTypographyChange,
                 onScrollModeChange = onScrollModeChange,
-                onScopeChange = onScopeChange,
+                onBrightnessChange = onBrightnessChange,
                 onResetToDefaults = onResetToDefaults,
                 onImportCustomFont = onImportCustomFont,
                 onDeleteCustomFont = onDeleteCustomFont,

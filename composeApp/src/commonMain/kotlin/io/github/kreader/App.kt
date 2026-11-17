@@ -28,6 +28,7 @@ import io.github.kreader.feature.library.repository.rememberBookRepository
 import io.github.kreader.feature.reader.ManageSystemBars
 import io.github.kreader.feature.reader.NavigationDrawerTab
 import io.github.kreader.feature.reader.ReaderScreen
+import io.github.kreader.feature.reader.ReaderSettingsSheet
 import io.github.kreader.feature.reader.ReaderUiState
 import io.github.kreader.feature.reader.getReaderColorScheme
 import kotlin.math.abs
@@ -74,18 +75,104 @@ fun App() {
         ) {
             val bookToRead = selectedBook
             if (bookToRead == null) {
+                var showGlobalSettings by remember { mutableStateOf(false) }
+                val customThemes by bookRepository.observeCustomThemes().collectAsState(emptyList())
+
                 LibraryScreen(
                     state = libraryUiState,
                     onBookClick = { book -> selectedBook = book },
                     onSelectVaultFolder = { uriOrPath -> libraryViewModel.setVault(uriOrPath) },
                     onRefreshVault = { libraryViewModel.refreshVault() },
                     onChangeVaultFolder = { /* handled inside LibraryScreen via folderPickerLauncher */ },
+                    onOpenGlobalSettings = { showGlobalSettings = true },
                     onDeleteBook = { book -> libraryViewModel.deleteBook(book) },
                     onDeleteBooks = { books -> libraryViewModel.deleteBooks(books) },
                     onResetBookProgress = { book -> libraryViewModel.resetBookProgress(book) },
                     onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
                     onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) },
                     onExportBookToMarkdown = { book -> bookRepository.exportBookToMarkdown(book.id) }
+                )
+
+                ReaderSettingsSheet(
+                    isOpen = showGlobalSettings,
+                    title = "Global Reading Settings",
+                    isGlobal = true,
+                    theme = persistedPreferences.theme,
+                    typography = persistedPreferences.typography,
+                    isScrollMode = persistedPreferences.isScrollMode,
+                    brightness = persistedPreferences.brightness,
+                    customFonts = persistedPreferences.customFonts,
+                    customThemes = customThemes,
+                    keepScreenOn = persistedPreferences.keepScreenOn,
+                    orientationLock = persistedPreferences.orientationLock,
+                    onThemeChange = { newTheme ->
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(theme = newTheme))
+                        }
+                    },
+                    onTypographyChange = { newTypo ->
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = newTypo))
+                        }
+                    },
+                    onScrollModeChange = { isScroll ->
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(isScrollMode = isScroll))
+                        }
+                    },
+                    onBrightnessChange = { b ->
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(brightness = b))
+                        }
+                    },
+                    onKeepScreenOnChange = { enabled ->
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(keepScreenOn = enabled))
+                        }
+                    },
+                    onOrientationLockChange = { lock ->
+                        scope.launch {
+                            bookRepository.saveReaderPreferences(persistedPreferences.copy(orientationLock = lock))
+                        }
+                    },
+                    onResetToDefaults = {
+                        scope.launch {
+                            bookRepository.resetGlobalPreferences()
+                        }
+                    },
+                    onImportCustomFont = { font ->
+                        scope.launch {
+                            bookRepository.addCustomFont(font)
+                            bookRepository.saveReaderPreferences(
+                                persistedPreferences.copy(
+                                    typography = persistedPreferences.typography.copy(fontFamily = font.name)
+                                )
+                            )
+                        }
+                    },
+                    onDeleteCustomFont = { fontName ->
+                        scope.launch {
+                            bookRepository.deleteCustomFont(fontName)
+                            if (persistedPreferences.typography.fontFamily.equals(fontName, ignoreCase = true)) {
+                                bookRepository.saveReaderPreferences(
+                                    persistedPreferences.copy(
+                                        typography = persistedPreferences.typography.copy(fontFamily = "Default")
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    onSaveCustomTheme = { newTheme ->
+                        scope.launch {
+                            bookRepository.saveCustomTheme(newTheme)
+                        }
+                    },
+                    onDeleteCustomTheme = { themeId ->
+                        scope.launch {
+                            bookRepository.deleteCustomTheme(themeId)
+                        }
+                    },
+                    onDismiss = { showGlobalSettings = false }
                 )
             } else {
                 val effectivePreferences by bookRepository.observeEffectivePreferences(bookToRead.id).collectAsState(persistedPreferences)
@@ -106,6 +193,7 @@ fun App() {
                             typography = effectivePreferences.typography,
                             isScrollMode = effectivePreferences.isScrollMode,
                             pageLayout = effectivePreferences.pageLayout,
+                            brightness = effectivePreferences.brightness,
                             keepScreenOn = effectivePreferences.keepScreenOn,
                             orientationLock = effectivePreferences.orientationLock,
                             isRtl = initialIsRtl
@@ -119,6 +207,7 @@ fun App() {
                         typography = effectivePreferences.typography,
                         isScrollMode = effectivePreferences.isScrollMode,
                         pageLayout = effectivePreferences.pageLayout,
+                        brightness = effectivePreferences.brightness,
                         keepScreenOn = effectivePreferences.keepScreenOn,
                         orientationLock = effectivePreferences.orientationLock
                     )
@@ -277,25 +366,29 @@ fun App() {
                         readerState = readerState.copy(theme = newTheme)
                         scope.launch {
                             val updated = effectivePreferences.copy(theme = newTheme)
-                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                         }
                     },
                     onTypographyChange = { newTypography ->
                         readerState = readerState.copy(typography = newTypography)
                         scope.launch {
                             val updated = effectivePreferences.copy(typography = newTypography)
-                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                         }
                     },
                     onScrollModeChange = { isScroll ->
                         readerState = readerState.copy(isScrollMode = isScroll)
                         scope.launch {
                             val updated = effectivePreferences.copy(isScrollMode = isScroll)
-                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                         }
                     },
-                    onScopeChange = { isThisBookOnly ->
-                        readerState = readerState.copy(isApplyToThisBookOnly = isThisBookOnly)
+                    onBrightnessChange = { b ->
+                        readerState = readerState.copy(brightness = b)
+                        scope.launch {
+                            val updated = effectivePreferences.copy(brightness = b)
+                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
+                        }
                     },
                     onResetToDefaults = {
                         scope.launch {
@@ -331,14 +424,14 @@ fun App() {
                         readerState = readerState.copy(keepScreenOn = enabled)
                         scope.launch {
                             val updated = effectivePreferences.copy(keepScreenOn = enabled)
-                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                         }
                     },
                     onOrientationLockChange = { lock ->
                         readerState = readerState.copy(orientationLock = lock)
                         scope.launch {
                             val updated = effectivePreferences.copy(orientationLock = lock)
-                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                         }
                     },
                     onImportCustomFont = { font ->
@@ -347,7 +440,7 @@ fun App() {
                             val updatedTypography = readerState.typography.copy(fontFamily = font.name)
                             readerState = readerState.copy(typography = updatedTypography)
                             val updated = effectivePreferences.copy(typography = updatedTypography)
-                            bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                            bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                         }
                     },
                     onDeleteCustomFont = { fontName ->
@@ -357,7 +450,7 @@ fun App() {
                                 val updatedTypography = readerState.typography.copy(fontFamily = "Default")
                                 readerState = readerState.copy(typography = updatedTypography)
                                 val updated = effectivePreferences.copy(typography = updatedTypography)
-                                bookRepository.savePreferences(bookToRead.id, updated, readerState.isApplyToThisBookOnly)
+                                bookRepository.savePreferences(bookToRead.id, updated, applyToThisBookOnly = true)
                             }
                         }
                     },

@@ -54,8 +54,9 @@ interface BookRepository {
     suspend fun saveReaderPreferences(preferences: ReaderPreferences)
     fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences>
     suspend fun getEffectivePreferences(bookId: String): ReaderPreferences
-    suspend fun savePreferences(bookId: String, preferences: ReaderPreferences, applyToThisBookOnly: Boolean)
+    suspend fun savePreferences(bookId: String, preferences: ReaderPreferences, applyToThisBookOnly: Boolean = true)
     suspend fun resetPreferences(bookId: String)
+    suspend fun resetGlobalPreferences()
     suspend fun addCustomFont(font: CustomFont)
     suspend fun deleteCustomFont(fontName: String)
     fun observeCustomThemes(): Flow<List<CustomTheme>>
@@ -414,7 +415,6 @@ class JsonVaultBookRepository(
     }
 
     override suspend fun resetPreferences(bookId: String): Unit = withContext(ioDispatcher) {
-        val defaultPrefs = ReaderPreferences()
         val currentWorkspace = _workspace.value
         val updatedBooks = currentWorkspace.books.toMutableMap()
         val existingRecord = updatedBooks[bookId]
@@ -424,6 +424,10 @@ class JsonVaultBookRepository(
             _workspace.value = newWorkspace
             vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
         }
+    }
+
+    override suspend fun resetGlobalPreferences(): Unit = withContext(ioDispatcher) {
+        val defaultPrefs = ReaderPreferences()
         _preferences.value = defaultPrefs
         vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(defaultPrefs))
     }

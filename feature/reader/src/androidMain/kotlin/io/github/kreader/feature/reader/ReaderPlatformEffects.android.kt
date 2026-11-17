@@ -44,6 +44,27 @@ actual fun ManageOrientation(orientationLock: OrientationLock) {
     }
 }
 
+@Composable
+actual fun ManageBrightness(brightness: Float) {
+    val context = LocalContext.current
+    DisposableEffect(brightness, context) {
+        val activity = context.findActivity()
+        if (activity != null) {
+            val window = activity.window
+            val lp = window.attributes
+            val prevBrightness = lp.screenBrightness
+            lp.screenBrightness = brightness.coerceIn(0.05f, 1.0f)
+            window.attributes = lp
+            onDispose {
+                lp.screenBrightness = prevBrightness
+                window.attributes = lp
+            }
+        } else {
+            onDispose {}
+        }
+    }
+}
+
 private fun Context.findActivity(): Activity? {
     var ctx: Context? = this
     while (ctx is ContextWrapper) {

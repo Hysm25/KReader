@@ -38,12 +38,16 @@ import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BrightnessMedium
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -998,6 +1002,67 @@ fun AddNoteDialog(
     )
 }
 
+enum class ReaderSettingsTab {
+    THEME,
+    TYPOGRAPHY,
+    LAYOUT
+}
+
+@Composable
+fun <T> SegmentedButtonGroup(
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            options.forEach { (value, label) ->
+                val isSelected = value == selected
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(9.dp))
+                        .clickable { onSelect(value) },
+                    shape = RoundedCornerShape(9.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    tonalElevation = if (isSelected) 2.dp else 0.dp
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderSettingsSheet(
@@ -1005,7 +1070,9 @@ fun ReaderSettingsSheet(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
-    isApplyToThisBookOnly: Boolean = false,
+    title: String = "Reading Settings",
+    isGlobal: Boolean = false,
+    brightness: Float = 1.0f,
     customFonts: List<CustomFont> = emptyList(),
     customThemes: List<CustomTheme> = emptyList(),
     keepScreenOn: Boolean = false,
@@ -1013,7 +1080,7 @@ fun ReaderSettingsSheet(
     onThemeChange: (ReaderTheme) -> Unit,
     onTypographyChange: (ReaderTypography) -> Unit,
     onScrollModeChange: (Boolean) -> Unit,
-    onScopeChange: (Boolean) -> Unit = {},
+    onBrightnessChange: (Float) -> Unit = {},
     onResetToDefaults: () -> Unit = {},
     onImportCustomFont: (CustomFont) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
@@ -1031,8 +1098,10 @@ fun ReaderSettingsSheet(
 
     val interactionSource = remember { MutableInteractionSource() }
 
+    var selectedTab by remember { mutableStateOf(ReaderSettingsTab.THEME) }
     var tempHorizontalPadding by remember(typography.paddingHorizontal) { mutableStateOf(typography.paddingHorizontal.toFloat()) }
     var tempVerticalPadding by remember(typography.paddingVertical) { mutableStateOf(typography.paddingVertical.toFloat()) }
+    var tempBrightness by remember(brightness) { mutableStateOf(brightness) }
 
     Box(
         modifier = Modifier
@@ -1047,7 +1116,9 @@ fun ReaderSettingsSheet(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.82f)
                 .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.statusBars)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
@@ -1059,500 +1130,636 @@ fun ReaderSettingsSheet(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Drag handle
-                Box(
+                // Drag handle & Header
+                Column(
                     modifier = Modifier
-                        .width(36.dp)
-                        .height(4.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.outlineVariant)
-                        .align(Alignment.CenterHorizontally)
-                )
-
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "Reading Settings",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close settings"
-                        )
-                    }
-                }
-
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                    thickness = 0.5.dp
-                )
-
-                // Scope Selector: Apply to This Book vs All Books
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Apply Settings To",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = isApplyToThisBookOnly,
-                            onClick = { onScopeChange(true) },
-                            label = { Text("This Book") }
-                        )
-                        FilterChip(
-                            selected = !isApplyToThisBookOnly,
-                            onClick = { onScopeChange(false) },
-                            label = { Text("All Books") }
-                        )
-                    }
-                }
-
-                // Theme Presets: System, Light, Sepia, Dark, AMOLED, Saved Custom Themes, Custom
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Theme",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        ThemeOption(
-                            label = "System",
-                            bgColor = MaterialTheme.colorScheme.surfaceVariant,
-                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            isSelected = theme.mode == ThemeMode.SYSTEM,
-                            onClick = { onThemeChange(ReaderThemePresets.System) }
-                        )
-                        ThemeOption(
-                            label = "Light",
-                            bgColor = Color(0xFFFFFFFF),
-                            textColor = Color(0xFF1A1A1A),
-                            isSelected = theme.mode == ThemeMode.LIGHT,
-                            onClick = { onThemeChange(ReaderThemePresets.Light) }
-                        )
-                        ThemeOption(
-                            label = "Sepia",
-                            bgColor = Color(0xFFFBF0D9),
-                            textColor = Color(0xFF3B2F2F),
-                            isSelected = theme.mode == ThemeMode.SEPIA,
-                            onClick = { onThemeChange(ReaderThemePresets.Sepia) }
-                        )
-                        ThemeOption(
-                            label = "Dark",
-                            bgColor = Color(0xFF121212),
-                            textColor = Color(0xFFE6E6E6),
-                            isSelected = theme.mode == ThemeMode.DARK && !theme.backgroundColorHex.equals("#000000", ignoreCase = true),
-                            onClick = { onThemeChange(ReaderThemePresets.Dark) }
-                        )
-                        ThemeOption(
-                            label = "AMOLED",
-                            bgColor = Color(0xFF000000),
-                            textColor = Color(0xFFDCDCDC),
-                            isSelected = theme.mode == ThemeMode.DARK && theme.backgroundColorHex.equals("#000000", ignoreCase = true),
-                            onClick = { onThemeChange(ReaderThemePresets.Amoled) }
-                        )
-                        for (ct in customThemes) {
-                            val ctBg = parseHexToColor(ct.backgroundColorHex)
-                            val ctText = parseHexToColor(ct.textColorHex)
-                            val isSelected = theme.mode == ThemeMode.CUSTOM &&
-                                theme.backgroundColorHex.equals(ct.backgroundColorHex, ignoreCase = true) &&
-                                theme.textColorHex.equals(ct.textColorHex, ignoreCase = true)
-                            CustomSavedThemeOption(
-                                name = ct.name,
-                                bgColor = ctBg,
-                                textColor = ctText,
-                                isSelected = isSelected,
-                                onClick = { onThemeChange(ct.toReaderTheme()) },
-                                onDelete = { onDeleteCustomTheme(ct.id) }
-                            )
-                        }
-                        ThemeOption(
-                            label = "Custom",
-                            bgColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.backgroundColorHex) else Color(0xFF2E3440),
-                            textColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.textColorHex) else Color(0xFFECEFF4),
-                            isSelected = theme.mode == ThemeMode.CUSTOM,
-                            onClick = {
-                                val currentBg = if (theme.mode == ThemeMode.CUSTOM) theme.backgroundColorHex else "#2E3440"
-                                val currentText = if (theme.mode == ThemeMode.CUSTOM) theme.textColorHex else "#ECEFF4"
-                                val currentAccent = if (theme.mode == ThemeMode.CUSTOM) theme.accentColorHex else "#88C0D0"
-                                onThemeChange(
-                                    ReaderTheme(
-                                        mode = ThemeMode.CUSTOM,
-                                        backgroundColorHex = currentBg,
-                                        textColorHex = currentText,
-                                        accentColorHex = currentAccent
-                                    )
-                                )
-                            }
-                        )
-                    }
-
-                    if (theme.mode == ThemeMode.CUSTOM) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        CustomThemeEditor(
-                            theme = theme,
-                            onThemeChange = onThemeChange,
-                            onSaveTheme = onSaveCustomTheme
-                        )
-                    }
-                }
-
-                // Reading Mode: Paginated vs Scroll
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Mode",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                            .width(36.dp)
+                            .height(4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                            .align(Alignment.CenterHorizontally)
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = !isScrollMode,
-                            onClick = { onScrollModeChange(false) },
-                            label = { Text("Paginated") }
-                        )
-                        FilterChip(
-                            selected = isScrollMode,
-                            onClick = { onScrollModeChange(true) },
-                            label = { Text("Continuous Scroll") }
-                        )
-                    }
-                }
 
-                // Screen Orientation Lock
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Orientation",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = orientationLock == OrientationLock.AUTO,
-                            onClick = { onOrientationLockChange(OrientationLock.AUTO) },
-                            label = { Text("Auto") }
-                        )
-                        FilterChip(
-                            selected = orientationLock == OrientationLock.PORTRAIT,
-                            onClick = { onOrientationLockChange(OrientationLock.PORTRAIT) },
-                            label = { Text("Portrait") }
-                        )
-                        FilterChip(
-                            selected = orientationLock == OrientationLock.LANDSCAPE,
-                            onClick = { onOrientationLockChange(OrientationLock.LANDSCAPE) },
-                            label = { Text("Landscape") }
-                        )
-                    }
-                }
-
-                // Keep Screen On
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Keep Screen On",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Prevent display from sleeping while reading",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = keepScreenOn,
-                        onCheckedChange = onKeepScreenOnChange
-                    )
-                }
-
-                // Font Family: Default + User-imported Fonts (.ttf / .otf) + Import Button
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Font Family",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
-                        TextButton(
-                            onClick = { fontPickerLauncher() }
-                        ) {
+                        IconButton(onClick = onDismiss) {
                             Icon(
-                                imageVector = Icons.Rounded.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Close settings"
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Import Font", style = MaterialTheme.typography.labelMedium)
                         }
                     }
+                }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FilterChip(
-                            selected = typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true),
-                            onClick = { onTypographyChange(typography.copy(fontFamily = "Default")) },
-                            label = { Text("Default") }
+                // 3 Material 3 Tabs
+                TabRow(
+                    selectedTabIndex = selectedTab.ordinal,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    divider = {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            thickness = 0.5.dp
                         )
-                        for (font in customFonts) {
-                            FilterChip(
-                                selected = typography.fontFamily.equals(font.name, ignoreCase = true),
-                                onClick = { onTypographyChange(typography.copy(fontFamily = font.name)) },
-                                label = { Text(font.name) },
-                                trailingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = "Delete ${font.name}",
+                    }
+                ) {
+                    Tab(
+                        selected = selectedTab == ReaderSettingsTab.THEME,
+                        onClick = { selectedTab = ReaderSettingsTab.THEME },
+                        icon = { Icon(Icons.Rounded.Palette, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        text = { Text("Theme") }
+                    )
+                    Tab(
+                        selected = selectedTab == ReaderSettingsTab.TYPOGRAPHY,
+                        onClick = { selectedTab = ReaderSettingsTab.TYPOGRAPHY },
+                        icon = { Icon(Icons.Rounded.TextFields, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        text = { Text("Typography") }
+                    )
+                    Tab(
+                        selected = selectedTab == ReaderSettingsTab.LAYOUT,
+                        onClick = { selectedTab = ReaderSettingsTab.LAYOUT },
+                        icon = { Icon(Icons.Rounded.Layers, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        text = { Text("Layout") }
+                    )
+                }
+
+                // Scrollable tab content
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    when (selectedTab) {
+                        ReaderSettingsTab.THEME -> {
+                            // 1. Theme Presets Card
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = "Theme Preset",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Row(
                                         modifier = Modifier
-                                            .size(16.dp)
-                                            .clickable { onDeleteCustomFont(font.name) }
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                    ) {
+                                        ThemeOption(
+                                            label = "System",
+                                            bgColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            isSelected = theme.mode == ThemeMode.SYSTEM,
+                                            onClick = { onThemeChange(ReaderThemePresets.System) }
+                                        )
+                                        ThemeOption(
+                                            label = "Light",
+                                            bgColor = Color(0xFFFFFFFF),
+                                            textColor = Color(0xFF1A1A1A),
+                                            isSelected = theme.mode == ThemeMode.LIGHT,
+                                            onClick = { onThemeChange(ReaderThemePresets.Light) }
+                                        )
+                                        ThemeOption(
+                                            label = "Sepia",
+                                            bgColor = Color(0xFFFBF0D9),
+                                            textColor = Color(0xFF3B2F2F),
+                                            isSelected = theme.mode == ThemeMode.SEPIA,
+                                            onClick = { onThemeChange(ReaderThemePresets.Sepia) }
+                                        )
+                                        ThemeOption(
+                                            label = "Dark",
+                                            bgColor = Color(0xFF121212),
+                                            textColor = Color(0xFFE6E6E6),
+                                            isSelected = theme.mode == ThemeMode.DARK && !theme.backgroundColorHex.equals("#000000", ignoreCase = true),
+                                            onClick = { onThemeChange(ReaderThemePresets.Dark) }
+                                        )
+                                        ThemeOption(
+                                            label = "AMOLED",
+                                            bgColor = Color(0xFF000000),
+                                            textColor = Color(0xFFDCDCDC),
+                                            isSelected = theme.mode == ThemeMode.DARK && theme.backgroundColorHex.equals("#000000", ignoreCase = true),
+                                            onClick = { onThemeChange(ReaderThemePresets.Amoled) }
+                                        )
+                                        for (ct in customThemes) {
+                                            val ctBg = parseHexToColor(ct.backgroundColorHex)
+                                            val ctText = parseHexToColor(ct.textColorHex)
+                                            val isSelected = theme.mode == ThemeMode.CUSTOM &&
+                                                theme.backgroundColorHex.equals(ct.backgroundColorHex, ignoreCase = true) &&
+                                                theme.textColorHex.equals(ct.textColorHex, ignoreCase = true)
+                                            CustomSavedThemeOption(
+                                                name = ct.name,
+                                                bgColor = ctBg,
+                                                textColor = ctText,
+                                                isSelected = isSelected,
+                                                onClick = { onThemeChange(ct.toReaderTheme()) },
+                                                onDelete = { onDeleteCustomTheme(ct.id) }
+                                            )
+                                        }
+                                        ThemeOption(
+                                            label = "+ Custom",
+                                            bgColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.backgroundColorHex) else Color(0xFF2E3440),
+                                            textColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.textColorHex) else Color(0xFFECEFF4),
+                                            isSelected = theme.mode == ThemeMode.CUSTOM,
+                                            onClick = {
+                                                val currentBg = if (theme.mode == ThemeMode.CUSTOM) theme.backgroundColorHex else "#2E3440"
+                                                val currentText = if (theme.mode == ThemeMode.CUSTOM) theme.textColorHex else "#ECEFF4"
+                                                val currentAccent = if (theme.mode == ThemeMode.CUSTOM) theme.accentColorHex else "#88C0D0"
+                                                onThemeChange(
+                                                    ReaderTheme(
+                                                        mode = ThemeMode.CUSTOM,
+                                                        backgroundColorHex = currentBg,
+                                                        textColorHex = currentText,
+                                                        accentColorHex = currentAccent
+                                                    )
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    if (theme.mode == ThemeMode.CUSTOM) {
+                                        HorizontalDivider(
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+                                        CustomThemeEditor(
+                                            theme = theme,
+                                            onThemeChange = onThemeChange,
+                                            onSaveTheme = onSaveCustomTheme
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 2. Display Brightness Card
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.BrightnessMedium,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = "Screen Brightness",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        ) {
+                                            Text(
+                                                text = "${(tempBrightness * 100).toInt()}%",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Slider(
+                                        value = tempBrightness,
+                                        onValueChange = {
+                                            tempBrightness = it
+                                            onBrightnessChange(it)
+                                        },
+                                        valueRange = 0.05f..1.0f,
+                                        modifier = Modifier.fillMaxWidth()
                                     )
                                 }
-                            )
-                        }
-                    }
-                }
-
-                // Font Size adjustment
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Font Size",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        IconButton(
-                            onClick = {
-                                val newSize = (typography.fontSizeSp - 2f).coerceAtLeast(12f)
-                                onTypographyChange(typography.copy(fontSizeSp = newSize))
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Remove,
-                                contentDescription = "Decrease font size"
-                            )
-                        }
-                        Text(
-                            text = "${typography.fontSizeSp.toInt()} sp",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        IconButton(
-                            onClick = {
-                                val newSize = (typography.fontSizeSp + 2f).coerceAtMost(36f)
-                                onTypographyChange(typography.copy(fontSizeSp = newSize))
+
+                            // 3. Keep Screen On Card
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Keep Screen On",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Prevent display from sleeping while reading",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = keepScreenOn,
+                                        onCheckedChange = onKeepScreenOnChange
+                                    )
+                                }
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Add,
-                                contentDescription = "Increase font size"
-                            )
+                        }
+
+                        ReaderSettingsTab.TYPOGRAPHY -> {
+                            // 1. Font Family Card
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Font Family",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        TextButton(onClick = { fontPickerLauncher() }) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Add,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Import Font", style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        FilterChip(
+                                            selected = typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true),
+                                            onClick = { onTypographyChange(typography.copy(fontFamily = "Default")) },
+                                            label = { Text("Default") }
+                                        )
+                                        for (font in customFonts) {
+                                            FilterChip(
+                                                selected = typography.fontFamily.equals(font.name, ignoreCase = true),
+                                                onClick = { onTypographyChange(typography.copy(fontFamily = font.name)) },
+                                                label = { Text(font.name) },
+                                                trailingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Close,
+                                                        contentDescription = "Delete ${font.name}",
+                                                        modifier = Modifier
+                                                            .size(16.dp)
+                                                            .clickable { onDeleteCustomFont(font.name) }
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2. Font Size Card
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Font Size",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                val newSize = (typography.fontSizeSp - 2f).coerceAtLeast(12f)
+                                                onTypographyChange(typography.copy(fontSizeSp = newSize))
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Remove,
+                                                contentDescription = "Decrease font size"
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        ) {
+                                            Text(
+                                                text = "${typography.fontSizeSp.toInt()} sp",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                val newSize = (typography.fontSizeSp + 2f).coerceAtMost(36f)
+                                                onTypographyChange(typography.copy(fontSizeSp = newSize))
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Add,
+                                                contentDescription = "Increase font size"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Line Height Card (Segmented)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Line Height",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    val currentLineHeightCategory = when {
+                                        typography.lineHeightMultiplier < 1.55f -> 1.4f
+                                        typography.lineHeightMultiplier <= 1.85f -> 1.7f
+                                        else -> 2.0f
+                                    }
+                                    SegmentedButtonGroup(
+                                        options = listOf(
+                                            1.4f to "1.4x",
+                                            1.7f to "1.7x",
+                                            2.0f to "2.0x"
+                                        ),
+                                        selected = currentLineHeightCategory,
+                                        onSelect = { onTypographyChange(typography.copy(lineHeightMultiplier = it)) }
+                                    )
+                                }
+                            }
+
+                            // 4. Text Alignment Card (Segmented)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Text Alignment",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    SegmentedButtonGroup(
+                                        options = listOf(
+                                            ReaderTypography.TextAlignment.DEFAULT to "Auto",
+                                            ReaderTypography.TextAlignment.JUSTIFY to "Justify",
+                                            ReaderTypography.TextAlignment.START to "Left"
+                                        ),
+                                        selected = typography.textAlignment,
+                                        onSelect = { onTypographyChange(typography.copy(textAlignment = it)) }
+                                    )
+                                }
+                            }
+                        }
+
+                        ReaderSettingsTab.LAYOUT -> {
+                            // 1. Reading Mode Card (Segmented)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Reading Mode",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    SegmentedButtonGroup(
+                                        options = listOf(
+                                            false to "Paginated",
+                                            true to "Scroll"
+                                        ),
+                                        selected = isScrollMode,
+                                        onSelect = { onScrollModeChange(it) }
+                                    )
+                                }
+                            }
+
+                            // 2. Orientation Lock Card (Segmented)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Orientation",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    SegmentedButtonGroup(
+                                        options = listOf(
+                                            OrientationLock.AUTO to "Auto",
+                                            OrientationLock.PORTRAIT to "Portrait",
+                                            OrientationLock.LANDSCAPE to "Landscape"
+                                        ),
+                                        selected = orientationLock,
+                                        onSelect = { onOrientationLockChange(it) }
+                                    )
+                                }
+                            }
+
+                            // 3. Margins Card
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = "Page Margins",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    // Horizontal Page Margin
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Horizontal Margin",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                            ) {
+                                                Text(
+                                                    text = "${tempHorizontalPadding.toInt()} dp",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        Slider(
+                                            value = tempHorizontalPadding,
+                                            onValueChange = { tempHorizontalPadding = it },
+                                            onValueChangeFinished = {
+                                                onTypographyChange(typography.copy(paddingHorizontal = tempHorizontalPadding.toInt()))
+                                            },
+                                            valueRange = 0f..48f,
+                                            steps = 11,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+
+                                    // Vertical Page Margin
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Vertical Margin",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                            ) {
+                                                Text(
+                                                    text = "${tempVerticalPadding.toInt()} dp",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        Slider(
+                                            value = tempVerticalPadding,
+                                            onValueChange = { tempVerticalPadding = it },
+                                            onValueChangeFinished = {
+                                                onTypographyChange(typography.copy(paddingVertical = tempVerticalPadding.toInt()))
+                                            },
+                                            valueRange = 0f..32f,
+                                            steps = 7,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 4. Reset Defaults Card
+                            OutlinedButton(
+                                onClick = onResetToDefaults,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (isGlobal) "Reset to Factory Defaults" else "Reset to Global Defaults")
+                            }
                         }
                     }
-                }
-
-                // Text Alignment: Default, Justify, Align Left
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Text Alignment",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = typography.textAlignment == ReaderTypography.TextAlignment.DEFAULT,
-                            onClick = { onTypographyChange(typography.copy(textAlignment = ReaderTypography.TextAlignment.DEFAULT)) },
-                            label = { Text("Default") }
-                        )
-                        FilterChip(
-                            selected = typography.textAlignment == ReaderTypography.TextAlignment.JUSTIFY,
-                            onClick = { onTypographyChange(typography.copy(textAlignment = ReaderTypography.TextAlignment.JUSTIFY)) },
-                            label = { Text("Justify") }
-                        )
-                        FilterChip(
-                            selected = typography.textAlignment == ReaderTypography.TextAlignment.START,
-                            onClick = { onTypographyChange(typography.copy(textAlignment = ReaderTypography.TextAlignment.START)) },
-                            label = { Text("Align Left") }
-                        )
-                    }
-                }
-
-                // Line Height Spacing (Tashkeel / Diacritics friendly >= 1.5)
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Line Height",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FilterChip(
-                            selected = typography.lineHeightMultiplier <= 1.55f,
-                            onClick = { onTypographyChange(typography.copy(lineHeightMultiplier = 1.5f)) },
-                            label = { Text("1.5x (Normal)") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = typography.lineHeightMultiplier > 1.55f && typography.lineHeightMultiplier <= 1.85f,
-                            onClick = { onTypographyChange(typography.copy(lineHeightMultiplier = 1.8f)) },
-                            label = { Text("1.8x (Relaxed)") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = typography.lineHeightMultiplier > 1.85f,
-                            onClick = { onTypographyChange(typography.copy(lineHeightMultiplier = 2.0f)) },
-                            label = { Text("2.0x (Loose)") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                // Horizontal Page Margin / Padding Slider
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Inter-Page Gap & Margins",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ) {
-                            Text(
-                                text = "${tempHorizontalPadding.toInt()} dp",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                    Slider(
-                        value = tempHorizontalPadding,
-                        onValueChange = { tempHorizontalPadding = it },
-                        onValueChangeFinished = {
-                            onTypographyChange(typography.copy(paddingHorizontal = tempHorizontalPadding.toInt()))
-                        },
-                        valueRange = 0f..48f,
-                        steps = 11,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                // Vertical Page Margin / Padding Slider
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Vertical Margin",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ) {
-                            Text(
-                                text = "${tempVerticalPadding.toInt()} dp",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                    Slider(
-                        value = tempVerticalPadding,
-                        onValueChange = { tempVerticalPadding = it },
-                        onValueChangeFinished = {
-                            onTypographyChange(typography.copy(paddingVertical = tempVerticalPadding.toInt()))
-                        },
-                        valueRange = 0f..32f,
-                        steps = 7,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                    thickness = 0.5.dp
-                )
-
-                OutlinedButton(
-                    onClick = onResetToDefaults,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Reset to Defaults")
                 }
             }
         }
