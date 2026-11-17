@@ -24,8 +24,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -145,10 +149,10 @@ fun ReaderScreen(
     ManageOrientation(orientationLock = state.orientationLock)
 
     // Live UI progress tracking: updates synchronously on every single page turn with zero debounce
-    var liveProgression by remember(state.book?.id) {
+    var liveProgression: Float by remember(state.book?.id) {
         mutableStateOf(state.totalProgression.takeIf { it > 0f } ?: (state.book?.totalProgression ?: 0f))
     }
-    var liveLocator by remember(state.book?.id) {
+    var liveLocator: Locator? by remember(state.book?.id) {
         mutableStateOf(state.currentLocator ?: state.book?.lastLocator)
     }
 
