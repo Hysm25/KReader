@@ -32,6 +32,14 @@ sha256sums=(
     'SKIP'
 )
 
+prepare() {
+    # If JARs are staged in $startdir/lib, ensure they are also in $srcdir/lib
+    if [ -d "$startdir/lib" ] && [ -n "$(find "$startdir/lib" -name '*.jar' 2>/dev/null | head -n 1)" ]; then
+        mkdir -p "$srcdir/lib"
+        cp -a "$startdir/lib/"* "$srcdir/lib/"
+    fi
+}
+
 package() {
     # 1. Install binary launcher script
     install -Dm755 "$srcdir/kreader.sh" "$pkgdir/usr/bin/kreader"
@@ -45,11 +53,26 @@ package() {
     # 4. Install application JAR libraries into /usr/lib/kreader/lib
     install -dm755 "$pkgdir/usr/lib/kreader/lib"
 
-    if [ -d "$srcdir/lib" ]; then
-        cp -a "$srcdir/lib/"* "$pkgdir/usr/lib/kreader/lib/"
-    elif [ -d "$srcdir/kreader-dist/lib" ]; then
-        cp -a "$srcdir/kreader-dist/lib/"* "$pkgdir/usr/lib/kreader/lib/"
-    elif [ -d "$srcdir/../composeApp/build/compose/binaries/main/app/kreader/lib" ]; then
-        cp -a "$srcdir/../composeApp/build/compose/binaries/main/app/kreader/lib/"* "$pkgdir/usr/lib/kreader/lib/"
+    local jar_source=""
+    if [ -d "$srcdir/lib" ] && [ -n "$(find "$srcdir/lib" -name '*.jar' 2>/dev/null | head -n 1)" ]; then
+        jar_source="$srcdir/lib"
+    elif [ -d "$startdir/lib" ] && [ -n "$(find "$startdir/lib" -name '*.jar' 2>/dev/null | head -n 1)" ]; then
+        jar_source="$startdir/lib"
+    fi
+
+    if [ -z "$jar_source" ]; then
+        echo "ERROR: Application JARs not found in $srcdir/lib or $startdir/lib!" >&2
+        exit 1
+    fi
+
+    echo "==> Installing JAR libraries from $jar_source to /usr/lib/kreader/lib/..."
+    cp -a "$jar_source/"*.jar "$pkgdir/usr/lib/kreader/lib/"
+
+    local installed_count
+    installed_count=$(find "$pkgdir/usr/lib/kreader/lib" -name '*.jar' | wc -l)
+    echo "==> Successfully installed $installed_count JAR libraries."
+    if [ "$installed_count" -eq 0 ]; then
+        echo "ERROR: No JAR libraries were installed into /usr/lib/kreader/lib!" >&2
+        exit 1
     fi
 }

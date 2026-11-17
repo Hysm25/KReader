@@ -63,15 +63,25 @@ if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
 fi
 
 # 6. Locate Classpath
-CLASSPATH="$APP_DIR/lib/*"
-if [ ! -d "$APP_DIR/lib" ]; then
+CLASSPATH=""
+if [ -d "$APP_DIR/lib" ]; then
+    CLASSPATH="$APP_DIR/lib/*"
+fi
+if [ -d "$APP_DIR" ]; then
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$APP_DIR/*"
+fi
+
+if [ -z "$CLASSPATH" ] || [ -z "$(find -L "$APP_DIR" -name '*.jar' 2>/dev/null | head -n 1)" ]; then
     # Fallback to local execution directory if running from unpacked build
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -d "$SCRIPT_DIR/../lib" ]; then
         CLASSPATH="$SCRIPT_DIR/../lib/*"
+    elif [ -d "$SCRIPT_DIR/lib" ]; then
+        CLASSPATH="$SCRIPT_DIR/lib/*"
     fi
 fi
 
 # 7. Launch KReader
 log_diagnostic "Starting KReader with Java $JAVA_MAJOR_VER..."
+log_diagnostic "Classpath: $CLASSPATH"
 exec java "${JVM_OPTS[@]}" -cp "$CLASSPATH" io.github.kreader.MainKt "$@" 2> >(tee -a "$STARTUP_LOG" >&2)

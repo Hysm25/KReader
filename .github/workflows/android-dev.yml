@@ -98,6 +98,36 @@ jobs:
               sha256sum *.pkg.tar.zst > SHA256SUMS
             "
 
+      - name: Verify Arch Linux Package Contents
+        run: |
+          echo "==> Inspecting generated Arch Linux package..."
+          PKG_FILE=$(ls packaging/arch/build/*.pkg.tar.zst 2>/dev/null | head -n 1)
+          if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
+            echo "ERROR: Package file not found in packaging/arch/build/" >&2
+            exit 1
+          fi
+
+          echo "Package: $PKG_FILE"
+          ls -lh "$PKG_FILE"
+
+          echo "==> Package contents sample:"
+          tar -tf "$PKG_FILE" | head -n 25
+          echo "..."
+          tar -tf "$PKG_FILE" | tail -n 10
+
+          JAR_COUNT=$(tar -tf "$PKG_FILE" | grep -c "\.jar$" || true)
+          echo "Total JAR files in package: $JAR_COUNT"
+
+          if [ "$JAR_COUNT" -eq 0 ]; then
+            echo "ERROR: Arch Linux package contains 0 JAR files! Build failed." >&2
+            exit 1
+          fi
+
+          tar -tf "$PKG_FILE" | grep "usr/bin/kreader" || (echo "ERROR: usr/bin/kreader missing!" >&2 && exit 1)
+          tar -tf "$PKG_FILE" | grep "usr/share/applications/kreader.desktop" || (echo "ERROR: kreader.desktop missing!" >&2 && exit 1)
+          tar -tf "$PKG_FILE" | grep "usr/share/icons/hicolor/scalable/apps/kreader.svg" || (echo "ERROR: kreader.svg missing!" >&2 && exit 1)
+          echo "==> Package verification successful ($JAR_COUNT JARs present)!"
+
       - name: Upload arm64-v8a Release APK
         uses: actions/upload-artifact@v4
         with:
