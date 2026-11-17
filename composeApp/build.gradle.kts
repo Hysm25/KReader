@@ -99,7 +99,24 @@ android {
                 keyPassword = System.getenv("KEY_PASSWORD")
             } else {
                 // Fallback to debug keystore signing so release APKs can always be installed directly
-                initWith(signingConfigs.getByName("debug"))
+                val debugConfig = signingConfigs.getByName("debug")
+                initWith(debugConfig)
+                val targetFile = debugConfig.storeFile
+                if (targetFile != null && !targetFile.exists()) {
+                    runCatching {
+                        targetFile.parentFile?.mkdirs()
+                        val pb = ProcessBuilder(
+                            "keytool", "-genkeypair", "-v",
+                            "-keystore", targetFile.absolutePath,
+                            "-alias", debugConfig.keyAlias ?: "androiddebugkey",
+                            "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
+                            "-storepass", debugConfig.storePassword ?: "android",
+                            "-keypass", debugConfig.keyPassword ?: "android",
+                            "-dname", "CN=Android Debug,O=Android,C=US"
+                        )
+                        pb.start().waitFor()
+                    }
+                }
             }
         }
     }
