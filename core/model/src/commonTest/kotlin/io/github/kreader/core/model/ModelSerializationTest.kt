@@ -54,7 +54,9 @@ class ModelSerializationTest {
             locations = Locator.Locations(
                 progression = 0.42f,
                 position = 12,
-                totalProgression = 0.15f
+                totalProgression = 0.15f,
+                fragments = listOf("point(12)"),
+                otherLocations = mapOf("cssSelector" to "p:nth-of-type(3)")
             ),
             text = Locator.LocatorText(
                 highlight = "Important quoted sentence"
@@ -68,6 +70,7 @@ class ModelSerializationTest {
         assertEquals(locator.title, deserialized.title)
         assertEquals(0.42f, deserialized.locations.progression)
         assertEquals("Important quoted sentence", deserialized.text?.highlight)
+        assertEquals("p:nth-of-type(3)", deserialized.locations.otherLocations["cssSelector"])
     }
 
     @Test

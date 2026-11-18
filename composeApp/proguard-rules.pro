@@ -1,8 +1,13 @@
 # ProGuard / R8 Rules for KReader
 
 # 1. Readium 3.0 Engine
--keep class org.readium.r2.** { *; }
--dontwarn org.readium.r2.**
+-keep class org.readium.** { *; }
+-dontwarn org.readium.**
+
+# 2. JavaScript Interface Bridge
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
 # 2. SQLDelight Database
 -keep class app.cash.sqldelight.** { *; }

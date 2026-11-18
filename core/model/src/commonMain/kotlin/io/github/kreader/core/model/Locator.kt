@@ -19,7 +19,8 @@ data class Locator(
         val progression: Float? = null,
         val position: Int? = null,
         val totalProgression: Float? = null,
-        val fragments: List<String> = emptyList()
+        val fragments: List<String> = emptyList(),
+        val otherLocations: Map<String, String> = emptyMap()
     )
 
     @Serializable

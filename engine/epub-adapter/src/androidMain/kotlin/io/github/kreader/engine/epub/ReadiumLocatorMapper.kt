@@ -19,7 +19,10 @@ fun org.readium.r2.shared.publication.Locator.toDomain(): Locator {
             progression = locations.progression?.toFloat(),
             position = locations.position,
             totalProgression = locations.totalProgression?.toFloat(),
-            fragments = locations.fragments
+            fragments = locations.fragments,
+            otherLocations = locations.otherLocations.mapNotNull { (k, v) ->
+                if (v != null) k to v.toString() else null
+            }.toMap()
         ),
         text = text.let {
             Locator.LocatorText(
@@ -47,10 +50,11 @@ fun Locator.toReadium(): org.readium.r2.shared.publication.Locator {
         mediaType = parsedMediaType,
         title = title,
         locations = org.readium.r2.shared.publication.Locator.Locations(
+            fragments = locations.fragments,
             progression = locations.progression?.toDouble(),
             position = locations.position,
             totalProgression = locations.totalProgression?.toDouble(),
-            fragments = locations.fragments
+            otherLocations = locations.otherLocations
         ),
         text = text?.let {
             org.readium.r2.shared.publication.Locator.Text(
