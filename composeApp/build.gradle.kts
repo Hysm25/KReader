@@ -52,6 +52,8 @@ kotlin {
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.currentOs)
+                implementation(compose.desktop.linux_x64)
+                implementation(libs.skiko.awt.runtime.linux.x64)
                 implementation(libs.kotlinx.coroutines.swing)
             }
         }

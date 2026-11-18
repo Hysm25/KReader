@@ -65,8 +65,8 @@ package() {
         exit 1
     fi
 
-    echo "==> Installing JAR libraries from $jar_source to /usr/lib/kreader/lib/..."
-    cp -a "$jar_source/"*.jar "$pkgdir/usr/lib/kreader/lib/"
+    echo "==> Installing libraries and native binaries from $jar_source to /usr/lib/kreader/lib/..."
+    cp -a "$jar_source/"* "$pkgdir/usr/lib/kreader/lib/"
 
     local installed_count
     installed_count=$(find "$pkgdir/usr/lib/kreader/lib" -name '*.jar' | wc -l)

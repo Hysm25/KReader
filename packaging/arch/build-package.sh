@@ -15,7 +15,7 @@ cp "$SCRIPT_DIR/kreader.sh" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/kreader.desktop" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/kreader.svg" "$BUILD_DIR/"
 
-echo "==> Locating compiled JARs from Gradle build..."
+echo "==> Locating compiled JARs and native libraries from Gradle build..."
 JAR_COUNT=0
 
 # Check Compose Desktop output locations:
@@ -26,24 +26,22 @@ SEARCH_DIRS=(
     "$ROOT_DIR/composeApp/build/compose/binaries/main/app/kreader/lib"
     "$ROOT_DIR/composeApp/build/compose/binaries/main/app"
     "$ROOT_DIR/composeApp/build/compose/binaries/main"
+    "$ROOT_DIR/composeApp/build/libs"
 )
 
 for dir in "${SEARCH_DIRS[@]}"; do
     if [ -d "$dir" ]; then
-        echo "--> Checking directory: $dir"
-        find "$dir" -maxdepth 2 -type f -name "*.jar" ! -path "*/runtime/*" -exec cp -v {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
-        JAR_COUNT=$(find "$BUILD_DIR/lib" -type f -name "*.jar" | wc -l)
-        if [ "$JAR_COUNT" -gt 0 ]; then
-            echo "--> Found and copied $JAR_COUNT JARs from $dir"
-            break
-        fi
+        echo "--> Scanning directory: $dir"
+        find "$dir" -maxdepth 2 -type f -name "*.jar" ! -path "*/runtime/*" -exec cp -f {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
     fi
 done
+
+JAR_COUNT=$(find "$BUILD_DIR/lib" -type f -name "*.jar" | wc -l)
 
 # Fallback: search anywhere in composeApp/build for .jar files if still 0
 if [ "$JAR_COUNT" -eq 0 ]; then
     echo "--> Performing broader search under $ROOT_DIR/composeApp/build..."
-    find "$ROOT_DIR/composeApp/build" -type f -name "*.jar" ! -path "*/runtime/*" ! -path "*/tmp/*" ! -path "*/transformed/*" -exec cp -v {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
+    find "$ROOT_DIR/composeApp/build" -type f -name "*.jar" ! -path "*/runtime/*" ! -path "*/tmp/*" ! -path "*/transformed/*" -exec cp -f {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
     JAR_COUNT=$(find "$BUILD_DIR/lib" -type f -name "*.jar" | wc -l)
 fi
 
@@ -52,6 +50,36 @@ if [ "$JAR_COUNT" -eq 0 ]; then
     echo "ERROR: No JAR libraries found under $ROOT_DIR/composeApp/build." >&2
     echo "Ensure './gradlew :composeApp:createDistributable' was executed first." >&2
     exit 1
+fi
+
+# Copy any standalone native .so libraries from Compose build
+echo "==> Scanning for native libraries (*.so)..."
+find "$ROOT_DIR/composeApp/build" -type f -name "*.so" ! -path "*/runtime/*" ! -path "*/tmp/*" -exec cp -f -v {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
+
+# If Skiko native runtime JAR is present, unpack native binaries so they are available standalone
+SKIKO_JAR=$(find "$BUILD_DIR/lib" -name "*skiko-awt-runtime-linux-x64*.jar" 2>/dev/null | head -n 1)
+if [ -z "$SKIKO_JAR" ]; then
+    SKIKO_JAR=$(find "$ROOT_DIR/composeApp/build" -name "*skiko-awt-runtime-linux-x64*.jar" 2>/dev/null | head -n 1)
+    if [ -n "$SKIKO_JAR" ] && [ -f "$SKIKO_JAR" ]; then
+        echo "--> Found Skiko JAR in build tree: $SKIKO_JAR"
+        cp -f "$SKIKO_JAR" "$BUILD_DIR/lib/"
+    fi
+fi
+
+if [ -n "$SKIKO_JAR" ] && [ -f "$SKIKO_JAR" ]; then
+    echo "==> Found Skiko native runtime JAR: $(basename "$SKIKO_JAR")"
+    echo "==> Extracting native binaries (*.so, *.sha256) from Skiko JAR..."
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$SKIKO_JAR" "*.so" "*.sha256" -d "$BUILD_DIR/lib/" 2>/dev/null || true
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c "
+import zipfile
+with zipfile.ZipFile('$SKIKO_JAR', 'r') as z:
+    for name in z.namelist():
+        if name.endswith('.so') or name.endswith('.sha256'):
+            z.extract(name, '$BUILD_DIR/lib/')
+" 2>/dev/null || true
+    fi
 fi
 
 cd "$BUILD_DIR"

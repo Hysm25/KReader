@@ -57,12 +57,8 @@ JVM_OPTS=(
     "-Dswing.aatext=true"
 )
 
-# Optimize for Wayland compositors (CachyOS / Arch defaults)
-if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
-    JVM_OPTS+=("-Dskiko.renderApi=OPENGL")
-fi
-
-# 6. Locate Classpath
+# 6. Locate Classpath and Native Library Path
+SKIKO_LIB_PATH="$APP_DIR/lib"
 CLASSPATH=""
 if [ -d "$APP_DIR/lib" ]; then
     CLASSPATH="$APP_DIR/lib/*"
@@ -76,9 +72,20 @@ if [ -z "$CLASSPATH" ] || [ -z "$(find -L "$APP_DIR" -name '*.jar' 2>/dev/null |
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -d "$SCRIPT_DIR/../lib" ]; then
         CLASSPATH="$SCRIPT_DIR/../lib/*"
+        SKIKO_LIB_PATH="$SCRIPT_DIR/../lib"
     elif [ -d "$SCRIPT_DIR/lib" ]; then
         CLASSPATH="$SCRIPT_DIR/lib/*"
+        SKIKO_LIB_PATH="$SCRIPT_DIR/lib"
     fi
+fi
+
+if [ -d "$SKIKO_LIB_PATH" ]; then
+    JVM_OPTS+=("-Dskiko.library.path=$SKIKO_LIB_PATH" "-Djava.library.path=$SKIKO_LIB_PATH")
+fi
+
+# Optimize for Wayland compositors (CachyOS / Arch defaults)
+if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+    JVM_OPTS+=("-Dskiko.renderApi=OPENGL")
 fi
 
 # 7. Launch KReader

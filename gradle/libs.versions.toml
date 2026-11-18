@@ -17,6 +17,7 @@ okio = "3.9.1"
 readium = "3.0.0"
 desugar-jdk-libs = "2.1.4"
 jsoup = "1.18.3"
+skiko = "0.8.18"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
@@ -39,6 +40,7 @@ readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", ver
 readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+skiko-awt-runtime-linux-x64 = { module = "org.jetbrains.skiko:skiko-awt-runtime-linux-x64", version.ref = "skiko" }
 
 # Gradle Plugins
 android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
