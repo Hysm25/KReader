@@ -191,6 +191,7 @@ fun DesktopReaderLayout(
         ThemeMode.SEPIA -> Color(0xFFFBF0D9)
         ThemeMode.DARK -> if (state.theme.backgroundColorHex.equals("#000000", ignoreCase = true)) Color(0xFF000000) else Color(0xFF141414)
         ThemeMode.SYSTEM -> if (isSystemDark) Color(0xFF141414) else Color(0xFFFAFAFA)
+        ThemeMode.SYSTEM_LIGHT -> Color(0xFFFAFAFA)
         ThemeMode.CUSTOM -> parseHexToComposeColor(state.theme.backgroundColorHex, Color.White)
     }
 
