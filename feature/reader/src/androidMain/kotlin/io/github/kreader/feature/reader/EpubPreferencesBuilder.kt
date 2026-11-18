@@ -92,7 +92,7 @@ fun buildReadiumPreferences(
         scroll = isScrollMode,
         readingProgression = progression,
         ligatures = true,
-        publisherStyles = true
+        publisherStyles = false
     )
 }
 

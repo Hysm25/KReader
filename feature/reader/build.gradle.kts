@@ -51,6 +51,9 @@ kotlin {
             implementation(libs.readium.streamer)
             implementation(libs.androidx.core.ktx)
         }
+        androidUnitTest.dependencies {
+            implementation(kotlin("test"))
+        }
         val desktopMain by getting {
             dependencies {
                 implementation(libs.kotlinx.coroutines.swing)

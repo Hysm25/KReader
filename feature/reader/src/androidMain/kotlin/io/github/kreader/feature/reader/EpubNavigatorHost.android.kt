@@ -261,17 +261,8 @@ actual fun EpubNavigatorHost(
                 runCatching {
                     frag.submitPreferences(preferences)
                     lastSubmittedPreferences = preferences
-                    injectReaderStyles(frag, typography)
                 }
             }
-        }
-    }
-
-    // Live updates for line height and text alignment
-    LaunchedEffect(currentFragment, typography.lineHeightMultiplier, typography.textAlignment, isNavigatorReady) {
-        val frag = currentFragment ?: return@LaunchedEffect
-        if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            injectReaderStyles(frag, typography)
         }
     }
 
@@ -485,7 +476,6 @@ actual fun EpubNavigatorHost(
                     override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
                             scope.launch {
-                                injectReaderStyles(f, typography)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -529,7 +519,6 @@ actual fun EpubNavigatorHost(
                                 )
                             }
                             scope.launch {
-                                injectReaderStyles(f, typography)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -829,7 +818,6 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
-                            injectReaderStyles(frag, typography)
                             val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
                             if (selectedFont != null) {
                                 injectFontFace(frag, selectedFont)
@@ -895,7 +883,6 @@ private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont
                 val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
                 fmt to b64
             }
-            val contentSelectors = "body, p, h1, h2, h3, h4, h5, h6, li, blockquote"
             """
                 (function() {
                     var el = document.getElementById('kreader-custom-font');
@@ -904,7 +891,7 @@ private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont
                         el.id = 'kreader-custom-font';
                         (document.head || document.documentElement).appendChild(el);
                     }
-                    el.textContent = '@font-face { font-family: "${font.name}"; src: url("data:font/$format;charset=utf-8;base64,$base64"); } $contentSelectors { font-family: "${font.name}", sans-serif !important; }';
+                    el.textContent = '@font-face { font-family: "${font.name}"; src: url("data:font/$format;charset=utf-8;base64,$base64"); }';
                 })();
             """.trimIndent()
         } ?: return
@@ -936,45 +923,6 @@ private suspend fun clearFontFace(frag: EpubNavigatorFragment) {
 
 private fun locatorCacheKey(loc: Locator): String {
     return "${loc.href}__${loc.locations.progression}__${loc.locations.totalProgression}__${loc.locations.position}__${loc.text?.highlight}__${loc.text?.before}"
-}
-
-private suspend fun injectReaderStyles(frag: EpubNavigatorFragment, typography: ReaderTypography) {
-    runCatching {
-        val textAlignCss = when (typography.textAlignment) {
-            ReaderTypography.TextAlignment.JUSTIFY -> "text-align: justify !important;"
-            ReaderTypography.TextAlignment.START -> "text-align: start !important;"
-            ReaderTypography.TextAlignment.DEFAULT -> ""
-        }
-        val lineHeightCss = "line-height: ${typography.lineHeightMultiplier} !important;"
-
-        val cssJs = """
-            (function() {
-                var el = document.getElementById('kreader-reader-styles');
-                if (!el) {
-                    el = document.createElement('style');
-                    el.id = 'kreader-reader-styles';
-                    (document.head || document.documentElement).appendChild(el);
-                }
-                el.textContent = `
-                    body, p, li, blockquote {
-                        $lineHeightCss
-                        $textAlignCss
-                    }
-                    hr {
-                        margin-left: auto !important;
-                        margin-right: auto !important;
-                        text-align: center !important;
-                    }
-                `;
-            })();
-        """.trimIndent()
-        frag.evaluateJavascript(cssJs)
-        frag.view?.let { root ->
-            findWebViews(root).forEach { wv ->
-                wv.evaluateJavascript(cssJs, null)
-            }
-        }
-    }
 }
 
 private fun findWebViews(view: View): List<WebView> {
