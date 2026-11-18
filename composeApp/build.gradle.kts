@@ -67,7 +67,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.AppImage, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
             packageName = "kreader"
-            packageVersion = "1.0.0"
+            packageVersion = "2.5.0"
             description = "KReader EPUB Reader"
             vendor = "io.github.kreader"
         }
@@ -82,8 +82,8 @@ android {
         applicationId = "io.github.kreader"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 250
+        versionName = "2.5.0"
     }
 
     splits {
