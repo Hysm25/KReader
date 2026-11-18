@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -301,19 +302,19 @@ actual fun EpubNavigatorHost(
                 val readiumLoc = searchLocatorsCache[key] ?: domainLoc.toReadium()
                 lastSearchProgression = domainLoc.locations.totalProgression ?: domainLoc.locations.progression
                 lastSearchHighlightTimestamp = System.currentTimeMillis()
-                frag.go(readiumLoc, animated = false) {
-                    scope.launch {
-                        lastSearchHighlightTimestamp = System.currentTimeMillis()
-                        val searchDeco = Decoration(
-                            id = "search_match_${System.currentTimeMillis()}",
-                            locator = readiumLoc,
-                            style = Decoration.Style.Highlight(
-                                tint = android.graphics.Color.argb(160, 255, 179, 0),
-                                isActive = true
-                            )
+                frag.go(readiumLoc, animated = false)
+                scope.launch {
+                    kotlinx.coroutines.delay(120)
+                    lastSearchHighlightTimestamp = System.currentTimeMillis()
+                    val searchDeco = Decoration(
+                        id = "search_match_${System.currentTimeMillis()}",
+                        locator = readiumLoc,
+                        style = Decoration.Style.Highlight(
+                            tint = android.graphics.Color.argb(160, 255, 179, 0),
+                            isActive = true
                         )
-                        frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
-                    }
+                    )
+                    frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
                 }
             }
         }
@@ -823,7 +824,7 @@ actual fun EpubNavigatorHost(
 
                         runCatching {
                             val domainLocator = readiumLocator.toDomain()
-                            val prog = domainLocator.locations.totalProgression
+                            val prog: Float = domainLocator.locations.totalProgression
                                 ?: run {
                                     val pub = publication
                                     if (pub != null && pub.readingOrder.isNotEmpty()) {
