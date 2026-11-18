@@ -272,26 +272,15 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // 4. Inject custom @font-face CSS if user selected an imported font and overrideFont is enabled
-    var lastInjectedFontName by remember(book.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(currentFragment, typography.fontFamily, typography.overrideFont, customFonts, isNavigatorReady) {
+    // 4. Apply font override across all text elements (including h1-h6 headings) and typography customizations
+    var lastAppliedOverrideKey by remember(book.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentFragment, typography, customFonts, isNavigatorReady) {
         val frag = currentFragment ?: return@LaunchedEffect
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            val fontName = typography.fontFamily
-            val shouldInject = typography.overrideFont && !fontName.equals("Default", ignoreCase = true)
-            val targetFontName = if (shouldInject) fontName else null
-            if (targetFontName != lastInjectedFontName) {
-                if (shouldInject) {
-                    val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                    if (selectedCustomFont != null) {
-                        injectFontFace(frag, selectedCustomFont)
-                    } else {
-                        clearFontFace(frag)
-                    }
-                } else {
-                    clearFontFace(frag)
-                }
-                lastInjectedFontName = targetFontName
+            val key = "${typography.overrideFont}:${typography.fontFamily}:${typography.lineHeightMultiplier}:${typography.textAlignment}"
+            if (key != lastAppliedOverrideKey) {
+                applyTypographyAndFontOverrides(frag, typography, customFonts)
+                lastAppliedOverrideKey = key
             }
         }
     }
@@ -488,13 +477,7 @@ actual fun EpubNavigatorHost(
                     override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
                             scope.launch {
-                                if (typography.overrideFont) {
-                                    val fontName = typography.fontFamily
-                                    val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                                    if (selectedCustomFont != null) {
-                                        injectFontFace(f, selectedCustomFont)
-                                    }
-                                }
+                                applyTypographyAndFontOverrides(f, typography, customFonts)
                             }
                         }
                     }
@@ -533,13 +516,7 @@ actual fun EpubNavigatorHost(
                                 )
                             }
                             scope.launch {
-                                if (typography.overrideFont) {
-                                    val fontName = typography.fontFamily
-                                    val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                                    if (selectedCustomFont != null) {
-                                        injectFontFace(f, selectedCustomFont)
-                                    }
-                                }
+                                applyTypographyAndFontOverrides(f, typography, customFonts)
                             }
                             isNavigatorReady = true
                             if (currentFragment !== f) {
@@ -825,12 +802,9 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
-                            if (typography.overrideFont) {
-                                val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
-                                if (selectedFont != null) {
-                                    injectFontFace(frag, selectedFont)
-                                }
-                            }
+                            applyTypographyAndFontOverrides(frag, typography, customFonts)
+                            kotlinx.coroutines.delay(100)
+                            applyTypographyAndFontOverrides(frag, typography, customFonts)
                             if (activeDecorations.isNotEmpty()) {
                                 frag.applyDecorations(activeDecorations.toList(), group = "highlights")
                             }
@@ -884,46 +858,91 @@ actual fun EpubNavigatorHost(
 
 private val fontBase64Cache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
 
-private suspend fun injectFontFace(frag: EpubNavigatorFragment, font: CustomFont) {
+private suspend fun applyTypographyAndFontOverrides(
+    frag: EpubNavigatorFragment,
+    typography: ReaderTypography,
+    customFonts: List<CustomFont>
+) {
     runCatching {
-        val cssJs = withContext(Dispatchers.IO) {
-            val file = File(font.path)
-            if (!file.exists()) return@withContext null
-            val (format, base64) = fontBase64Cache.getOrPut(font.path) {
-                val fontBytes = file.readBytes()
-                val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
-                val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
-                fmt to b64
-            }
-            """
+        val js = withContext(Dispatchers.IO) {
+            val fontOverrideJs = if (typography.overrideFont && typography.fontFamily.isNotBlank() && !typography.fontFamily.equals("Default", ignoreCase = true)) {
+                val fontName = typography.fontFamily
+                val customFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                val fontFaceDef = if (customFont != null) {
+                    val file = File(customFont.path)
+                    if (file.exists() && file.length() > 0L) {
+                        val (format, base64) = fontBase64Cache.getOrPut(customFont.path) {
+                            val fontBytes = file.readBytes()
+                            val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
+                            val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+                            fmt to b64
+                        }
+                        "@font-face { font-family: '$fontName'; src: url('data:font/$format;charset=utf-8;base64,$base64'); }\n"
+                    } else ""
+                } else ""
+
+                val fontCssValue = when (fontName.lowercase()) {
+                    "serif" -> "serif !important"
+                    "sans-serif" -> "sans-serif !important"
+                    "monospace" -> "monospace !important"
+                    else -> "'$fontName', sans-serif !important"
+                }
+
+                """
                 (function() {
-                    var el = document.getElementById('kreader-custom-font');
+                    var el = document.getElementById('kreader-override-font');
                     if (!el) {
                         el = document.createElement('style');
-                        el.id = 'kreader-custom-font';
+                        el.id = 'kreader-override-font';
                         (document.head || document.documentElement).appendChild(el);
                     }
-                    el.textContent = '@font-face { font-family: "${font.name}"; src: url("data:font/$format;charset=utf-8;base64,$base64"); }';
+                    el.textContent = `${fontFaceDef}body, h1, h2, h3, h4, h5, h6, p, a, div, span, li, blockquote, [class*="title"], [class*="chapter"], [class*="heading"] { font-family: $fontCssValue; }`;
                 })();
-            """.trimIndent()
-        } ?: return
-        frag.evaluateJavascript(cssJs)
-        frag.view?.let { root ->
-            findWebViews(root).forEach { wv ->
-                wv.evaluateJavascript(cssJs, null)
+                """.trimIndent()
+            } else {
+                """
+                (function() {
+                    var el = document.getElementById('kreader-override-font');
+                    if (el) el.remove();
+                    var customEl = document.getElementById('kreader-custom-font');
+                    if (customEl) customEl.remove();
+                })();
+                """.trimIndent()
             }
-        }
-    }
-}
 
-private suspend fun clearFontFace(frag: EpubNavigatorFragment) {
-    runCatching {
-        val js = """
-            (function() {
-                var el = document.getElementById('kreader-custom-font');
-                if (el) { el.remove(); }
-            })();
-        """.trimIndent()
+            val textAlignRule = when (typography.textAlignment) {
+                ReaderTypography.TextAlignment.JUSTIFY -> "text-align: justify !important;"
+                ReaderTypography.TextAlignment.START -> "text-align: start !important;"
+                ReaderTypography.TextAlignment.DEFAULT -> ""
+            }
+            val lineHeightRule = if (typography.lineHeightMultiplier != 1.4f) {
+                "line-height: ${typography.lineHeightMultiplier} !important;"
+            } else ""
+
+            val typographyOverrideJs = if (textAlignRule.isNotEmpty() || lineHeightRule.isNotEmpty()) {
+                """
+                (function() {
+                    var el = document.getElementById('kreader-typography-overrides');
+                    if (!el) {
+                        el = document.createElement('style');
+                        el.id = 'kreader-typography-overrides';
+                        (document.head || document.documentElement).appendChild(el);
+                    }
+                    el.textContent = `body, p, li { $lineHeightRule $textAlignRule }`;
+                })();
+                """.trimIndent()
+            } else {
+                """
+                (function() {
+                    var el = document.getElementById('kreader-typography-overrides');
+                    if (el) el.remove();
+                })();
+                """.trimIndent()
+            }
+
+            "$fontOverrideJs\n$typographyOverrideJs"
+        }
+
         frag.evaluateJavascript(js)
         frag.view?.let { root ->
             findWebViews(root).forEach { wv ->

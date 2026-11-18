@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 class EpubPreferencesAndLayoutTest {
 
     @Test
-    fun testEpubPreferences_publisherStylesDisabledAllowsUserOverrides() {
+    fun testEpubPreferences_publisherStylesPreservesNativeHeadingScaleAndAllowsUserOverrides() {
         val theme = ReaderTheme(mode = ThemeMode.LIGHT)
         val typography = ReaderTypography(
             fontSizeSp = 20f,
@@ -40,10 +40,10 @@ class EpubPreferencesAndLayoutTest {
             isSystemInDarkTheme = false
         )
 
-        // publisherStyles MUST be false so ReadiumCSS allows user typography overrides to apply
-        assertFalse(
-            preferences.publisherStyles ?: true,
-            "publisherStyles must be explicitly false so ReadiumCSS honors user typography preferences"
+        // publisherStyles MUST be true so ReadiumCSS honors native EPUB CSS heading sizes (h1-h6), centered <hr>, and publisher styling proportions
+        assertTrue(
+            preferences.publisherStyles ?: false,
+            "publisherStyles must be explicitly true so ReadiumCSS honors author heading scale and layout styling"
         )
 
         // Font size scaled relative to 16sp
@@ -216,13 +216,37 @@ class EpubPreferencesAndLayoutTest {
             isRtl = false
         )
 
-        // In ReadiumCSS, when textAlign is null and publisherStyles is false,
-        // user custom property --USER__textAlign is not set, leaving HTML5/CSS defaults:
+        // In ReadiumCSS, when publisherStyles is true:
         // <hr> maintains margin-left: auto; margin-right: auto; (centered)
-        // <h1>-<h6> and blockquotes maintain their semantic publisher styling.
+        // <h1>-<h6> and blockquotes maintain their semantic publisher styling and true heading sizes.
         // fontFamily is null so publisher embedded fonts are respected.
         assertNull(prefs.textAlign)
         assertNull(prefs.fontFamily)
-        assertFalse(prefs.publisherStyles ?: true)
+        assertTrue(prefs.publisherStyles ?: false)
+    }
+
+    @Test
+    fun testTypographyOverrides_fontOverrideAppliesToAllElementsWhileYieldingWhenDisabled() {
+        val defaultTypography = ReaderTypography(fontFamily = "Default", overrideFont = false)
+        val defaultPrefs = buildReadiumPreferences(
+            theme = ReaderTheme(mode = ThemeMode.LIGHT),
+            typography = defaultTypography,
+            isScrollMode = false,
+            isRtl = false
+        )
+        // Disabled override yields 100% to publisher fonts
+        assertNull(defaultPrefs.fontFamily)
+        assertTrue(defaultPrefs.publisherStyles ?: false)
+
+        val overriddenTypography = ReaderTypography(fontFamily = "Amiri", overrideFont = true)
+        val overriddenPrefs = buildReadiumPreferences(
+            theme = ReaderTheme(mode = ThemeMode.LIGHT),
+            typography = overriddenTypography,
+            isScrollMode = false,
+            isRtl = false
+        )
+        // Enabled override specifies fontFamily for Readium while publisherStyles = true preserves heading size scale
+        assertEquals("Amiri", overriddenPrefs.fontFamily?.name)
+        assertTrue(overriddenPrefs.publisherStyles ?: false)
     }
 }
