@@ -771,7 +771,7 @@ private fun DesktopReaderSidebar(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = bm.title.ifBlank { "Bookmark" },
+                                                text = bm.title.orEmpty().ifBlank { "Bookmark" },
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Medium,
                                                 color = MaterialTheme.colorScheme.onSurface
@@ -863,10 +863,11 @@ private fun DesktopReaderSidebar(
                                                         overflow = TextOverflow.Ellipsis
                                                     )
                                                 }
-                                                if (!hl.annotation.isNullOrBlank()) {
+                                                val annotation = hl.annotation
+                                                if (!annotation.isNullOrBlank()) {
                                                     Spacer(modifier = Modifier.height(4.dp))
                                                     Text(
-                                                        text = hl.annotation,
+                                                        text = annotation,
                                                         style = MaterialTheme.typography.bodySmall,
                                                         color = MaterialTheme.colorScheme.primary
                                                     )

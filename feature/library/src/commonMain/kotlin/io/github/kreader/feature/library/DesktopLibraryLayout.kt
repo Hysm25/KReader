@@ -711,10 +711,11 @@ private fun DesktopBookCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (!book.author.isNullOrBlank()) {
+                val author = book.author
+                if (!author.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = book.author,
+                        text = author,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
