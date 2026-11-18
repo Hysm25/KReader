@@ -277,7 +277,7 @@ actual fun EpubNavigatorHost(
     LaunchedEffect(currentFragment, typography, customFonts, isNavigatorReady) {
         val frag = currentFragment ?: return@LaunchedEffect
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            val key = "${typography.overrideFont}:${typography.fontFamily}:${typography.lineHeightMultiplier}:${typography.textAlignment}"
+            val key = "${typography.overrideFont}:${typography.fontFamily}:${typography.fontSizeSp}:${typography.lineHeightMultiplier}:${typography.textAlignment}"
             if (key != lastAppliedOverrideKey) {
                 applyTypographyAndFontOverrides(frag, typography, customFonts)
                 lastAppliedOverrideKey = key
@@ -910,6 +910,9 @@ private suspend fun applyTypographyAndFontOverrides(
                 """.trimIndent()
             }
 
+            val fontScale = (typography.fontSizeSp / 16.0f).coerceIn(0.5f, 3.0f)
+            val fontScaleRule = "--kreader-font-scale: $fontScale;"
+
             val textAlignRule = when (typography.textAlignment) {
                 ReaderTypography.TextAlignment.JUSTIFY -> "text-align: justify !important;"
                 ReaderTypography.TextAlignment.START -> "text-align: start !important;"
@@ -919,28 +922,22 @@ private suspend fun applyTypographyAndFontOverrides(
                 "line-height: ${typography.lineHeightMultiplier} !important;"
             } else ""
 
-            val typographyOverrideJs = if (textAlignRule.isNotEmpty() || lineHeightRule.isNotEmpty()) {
-                """
-                (function() {
-                    var el = document.getElementById('kreader-typography-overrides');
-                    if (!el) {
-                        el = document.createElement('style');
-                        el.id = 'kreader-typography-overrides';
-                        (document.head || document.documentElement).appendChild(el);
-                    }
-                    el.textContent = `body, p, li { $lineHeightRule $textAlignRule }`;
-                })();
-                """.trimIndent()
-            } else {
-                """
-                (function() {
-                    var el = document.getElementById('kreader-typography-overrides');
-                    if (el) el.remove();
-                })();
-                """.trimIndent()
-            }
+            val typographyOverrideJs = """
+            (function() {
+                var el = document.getElementById('kreader-typography-overrides');
+                if (!el) {
+                    el = document.createElement('style');
+                    el.id = 'kreader-typography-overrides';
+                    (document.head || document.documentElement).appendChild(el);
+                }
+                var bodyRules = '${if (lineHeightRule.isNotEmpty() || textAlignRule.isNotEmpty()) "body, p, li { $lineHeightRule $textAlignRule }" else ""}';
+                el.textContent = `:root, html { $fontScaleRule } ` + bodyRules;
+            })();
+            """.trimIndent()
 
-            "$fontOverrideJs\n$typographyOverrideJs"
+            val fontNormalizeJs = EpubStyleNormalizer.buildNormalizationScript(fontScale)
+
+            "$fontOverrideJs\n$typographyOverrideJs\n$fontNormalizeJs"
         }
 
         frag.evaluateJavascript(js)

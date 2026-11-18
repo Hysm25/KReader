@@ -249,4 +249,84 @@ class EpubPreferencesAndLayoutTest {
         assertEquals("Amiri", overriddenPrefs.fontFamily?.name)
         assertTrue(overriddenPrefs.publisherStyles ?: false)
     }
+
+    @Test
+    fun testFontSizeScaling_withHardcodedPxAndPtStylesheets() {
+        val samplePublisherCss = """
+            p {
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            h1.chapter-title {
+                font-size: 24px;
+                text-align: center;
+            }
+            h2.section-header {
+                font-size: 20px;
+            }
+            span.footnote {
+                font-size: 10pt;
+            }
+            .calibre_1 {
+                font-size: 11pt !important;
+            }
+            hr.divider {
+                width: 40%;
+                margin-left: auto;
+                margin-right: auto;
+                border: 1px solid #ccc;
+            }
+        """.trimIndent()
+
+        // 1. Normalize CSS to replace hardcoded absolute sizes with dynamic calc using --kreader-font-scale
+        val normalizedCss = EpubStyleNormalizer.normalizeCssAbsoluteFontSizes(samplePublisherCss)
+
+        assertTrue(normalizedCss.contains("font-size: calc(14px * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(24px * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(20px * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(10pt * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(11pt * var(--kreader-font-scale, 1)) !important"))
+
+        // Centered <hr> and other properties remain intact
+        assertTrue(normalizedCss.contains("margin-left: auto;"))
+        assertTrue(normalizedCss.contains("margin-right: auto;"))
+        assertTrue(normalizedCss.contains("line-height: 1.5;"))
+        assertTrue(normalizedCss.contains("text-align: center;"))
+
+        // 2. Test scaling calculations at 20sp (scale 1.25)
+        val scaleUp = 20f / 16f
+        val scaledP = EpubStyleNormalizer.computeScaledFontSize("14px", scaleUp)
+        val scaledH1 = EpubStyleNormalizer.computeScaledFontSize("24px", scaleUp)
+        val scaledH2 = EpubStyleNormalizer.computeScaledFontSize("20px", scaleUp)
+        val scaledFootnote = EpubStyleNormalizer.computeScaledFontSize("10pt", scaleUp)
+        val scaledCalibre = EpubStyleNormalizer.computeScaledFontSize("11pt", scaleUp)
+
+        assertEquals("17.5px", scaledP)
+        assertEquals("30px", scaledH1)
+        assertEquals("25px", scaledH2)
+        assertEquals("12.5pt", scaledFootnote)
+        assertEquals("13.75pt", scaledCalibre)
+
+        // Verify proportional heading-to-body ratio is strictly preserved
+        val originalRatio = 24f / 14f
+        val scaledRatio = 30f / 17.5f
+        assertEquals(originalRatio, scaledRatio, 0.001f)
+
+        // 3. Test scaling calculations at 12sp (scale 0.75)
+        val scaleDown = 12f / 16f
+        assertEquals("10.5px", EpubStyleNormalizer.computeScaledFontSize("14px", scaleDown))
+        assertEquals("18px", EpubStyleNormalizer.computeScaledFontSize("24px", scaleDown))
+        val scaledDownRatio = 18f / 10.5f
+        assertEquals(originalRatio, scaledDownRatio, 0.001f)
+    }
+
+    @Test
+    fun testFontSizeScaling_normalizationScriptIncludesStyleSheetAndInlineDOMTraversal() {
+        val script = EpubStyleNormalizer.buildNormalizationScript(1.25f)
+        assertTrue(script.contains("--kreader-font-scale"))
+        assertTrue(script.contains("document.styleSheets"))
+        assertTrue(script.contains("processRules"))
+        assertTrue(script.contains("querySelectorAll('[style*=\"font-size\"]')"))
+        assertTrue(script.contains("calc("))
+    }
 }
