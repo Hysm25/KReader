@@ -64,6 +64,7 @@ actual class VaultStorage(private val context: Context) {
     private fun getFileMutex(fileName: String): Mutex =
         fileMutexes.getOrPut(fileName) { Mutex() }
     private val coverMutex = Mutex()
+    private val configFileUriCache = ConcurrentHashMap<String, Uri>()
 
     private fun loadInitialVault(): String? {
         val saved = prefs.getString("active_vault_uri", null) ?: return null
@@ -90,6 +91,7 @@ actual class VaultStorage(private val context: Context) {
             apply()
         }
         _activeVaultUriOrPath.value = uriOrPath
+        configFileUriCache.clear()
         registerVaultContentObserver(uriOrPath)
     }
 
@@ -179,8 +181,17 @@ actual class VaultStorage(private val context: Context) {
         val mutex = getFileMutex(fileName)
         return mutex.withLock {
             withContext(Dispatchers.IO) {
+                val cachedUri = configFileUriCache[fileName]
+                if (cachedUri != null) {
+                    val content = runCatching {
+                        context.contentResolver.openInputStream(cachedUri)?.bufferedReader()?.use { it.readText() }
+                    }.getOrNull()
+                    if (content != null) return@withContext content
+                    configFileUriCache.remove(fileName)
+                }
                 val kreaderDir = getOrCreateKReaderDir() ?: return@withContext null
                 val file = kreaderDir.findFile(fileName) ?: return@withContext null
+                configFileUriCache[fileName] = file.uri
                 runCatching {
                     context.contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() }
                 }.getOrNull()
@@ -192,10 +203,24 @@ actual class VaultStorage(private val context: Context) {
         val mutex = getFileMutex(fileName)
         mutex.withLock {
             withContext(Dispatchers.IO) {
+                val cachedUri = configFileUriCache[fileName]
+                if (cachedUri != null) {
+                    val success = runCatching {
+                        context.contentResolver.openOutputStream(cachedUri, "wt")?.use { out ->
+                            out.write(content.toByteArray(Charsets.UTF_8))
+                            out.flush()
+                        }
+                        true
+                    }.getOrDefault(false)
+                    if (success) return@withContext
+                    configFileUriCache.remove(fileName)
+                }
+
                 val kreaderDir = getOrCreateKReaderDir() ?: return@withContext
 
                 // Overwrite existing file or create once if absent
                 val file = kreaderDir.findFile(fileName) ?: kreaderDir.createFile("application/json", fileName) ?: return@withContext
+                configFileUriCache[fileName] = file.uri
                 runCatching {
                     context.contentResolver.openOutputStream(file.uri, "wt")?.use { out ->
                         out.write(content.toByteArray(Charsets.UTF_8))

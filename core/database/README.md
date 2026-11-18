@@ -13,9 +13,8 @@ Provides the local-first storage engine and repository layer for KReader. Implem
 - `convertHtmlToMarkdown`: Utility extracting structured Markdown from EPUB chapter HTML/XHTML documents (`[EpubToMarkdown.kt:convertHtmlToMarkdown]`).
 
 ## Invariants
-- `[VaultStorage.android.kt:writeConfig]`: Concurrent writes to vault configuration files (`workspace.json`, `appearance.json`, `annotations.json`, `themes.json`) are guarded by per-filename `Mutex` locks in a `ConcurrentHashMap`.
-- `[VaultStorage.android.kt:writeConfig]`: Reentrant or duplicate stray files matching pattern `<name> (\d+).json` created by Android SAF are detected and deleted prior to writing.
-- `[VaultModels.kt:VaultWorkspace]`: Books are keyed in `VaultWorkspace` by their relative vault paths, ensuring vault portability across directories and devices.
+- `[VaultStorage.android.kt:writeConfig]`: Concurrent writes to vault configuration files (`workspace.json`, `appearance.json`, `annotations.json`, `themes.json`) are guarded by per-filename `Mutex` locks in a `ConcurrentHashMap`. Config file Uris are cached in `configFileUriCache` to avoid expensive SAF directory traversal queries on every write.
+- `[VaultModels.kt:VaultWorkspace]`: Books are keyed in `VaultWorkspace` by their relative vault paths, ensuring vault portability across directories and devices. Per-book overrides use `ReaderPreferencesOverride` for sparse per-property inheritance without freezing global preferences.
 - `[BookRepository.kt:exportBookToMarkdown]`: Book titles are sanitized against regex `[^a-zA-Z0-9_ \u0600-\u06FF-]` before creating markdown export files in the vault.
 
 ## Side Effects

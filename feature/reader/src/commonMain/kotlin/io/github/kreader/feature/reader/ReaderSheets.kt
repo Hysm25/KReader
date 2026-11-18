@@ -168,6 +168,7 @@ fun ReaderNavigationDrawer(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(0.85f)
+                .widthIn(max = 400.dp)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
@@ -594,8 +595,9 @@ fun ReaderSearchSheet(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxHeight(0.82f)
+                .fillMaxHeight(0.85f)
                 .fillMaxWidth()
+                .widthIn(max = 600.dp)
                 .align(Alignment.BottomCenter)
                 .clickable(
                     interactionSource = interactionSource,
@@ -869,6 +871,7 @@ fun HighlightDetailDialog(
     var selectedColor by remember(highlight.id) { mutableStateOf(highlight.colorHex) }
 
     AlertDialog(
+        modifier = Modifier.widthIn(max = 500.dp),
         onDismissRequest = onDismiss,
         title = { Text("Highlight Details") },
         text = {
@@ -955,6 +958,7 @@ fun AddNoteDialog(
     var selectedColor by remember { mutableStateOf(HighlightColors.Yellow) }
 
     AlertDialog(
+        modifier = Modifier.widthIn(max = 500.dp),
         onDismissRequest = onDismiss,
         title = { Text("Add Note") },
         text = {
@@ -1130,7 +1134,8 @@ fun ReaderSettingsSheet(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .widthIn(max = 600.dp)
+                .fillMaxHeight(0.85f)
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .clickable(
@@ -1280,53 +1285,6 @@ fun ReaderSettingsSheet(
                                             textColor = Color(0xFFDCDCDC),
                                             isSelected = theme.mode == ThemeMode.DARK && theme.backgroundColorHex.equals("#000000", ignoreCase = true),
                                             onClick = { onThemeChange(ReaderThemePresets.Amoled) }
-                                        )
-                                        for (ct in customThemes) {
-                                            val ctBg = parseHexToColor(ct.backgroundColorHex)
-                                            val ctText = parseHexToColor(ct.textColorHex)
-                                            val isSelected = theme.mode == ThemeMode.CUSTOM &&
-                                                theme.backgroundColorHex.equals(ct.backgroundColorHex, ignoreCase = true) &&
-                                                theme.textColorHex.equals(ct.textColorHex, ignoreCase = true)
-                                            CustomSavedThemeOption(
-                                                name = ct.name,
-                                                bgColor = ctBg,
-                                                textColor = ctText,
-                                                isSelected = isSelected,
-                                                onClick = { onThemeChange(ct.toReaderTheme()) },
-                                                onDelete = { onDeleteCustomTheme(ct.id) }
-                                            )
-                                        }
-                                        ThemeOption(
-                                            label = "+ Custom",
-                                            bgColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.backgroundColorHex) else Color(0xFF2E3440),
-                                            textColor = if (theme.mode == ThemeMode.CUSTOM) parseHexToColor(theme.textColorHex) else Color(0xFFECEFF4),
-                                            isSelected = theme.mode == ThemeMode.CUSTOM,
-                                            onClick = {
-                                                val currentBg = if (theme.mode == ThemeMode.CUSTOM) theme.backgroundColorHex else "#2E3440"
-                                                val currentText = if (theme.mode == ThemeMode.CUSTOM) theme.textColorHex else "#ECEFF4"
-                                                val currentAccent = if (theme.mode == ThemeMode.CUSTOM) theme.accentColorHex else "#88C0D0"
-                                                onThemeChange(
-                                                    ReaderTheme(
-                                                        mode = ThemeMode.CUSTOM,
-                                                        backgroundColorHex = currentBg,
-                                                        textColorHex = currentText,
-                                                        accentColorHex = currentAccent
-                                                    )
-                                                )
-                                            }
-                                        )
-                                    }
-
-                                    if (theme.mode == ThemeMode.CUSTOM) {
-                                        HorizontalDivider(
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                                            thickness = 0.5.dp,
-                                            modifier = Modifier.padding(vertical = 4.dp)
-                                        )
-                                        CustomThemeEditor(
-                                            theme = theme,
-                                            onThemeChange = onThemeChange,
-                                            onSaveTheme = onSaveCustomTheme
                                         )
                                     }
                                 }

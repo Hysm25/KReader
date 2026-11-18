@@ -641,13 +641,34 @@ actual fun EpubNavigatorHost(
                         runCatching {
                             val domainLocator = readiumLocator.toDomain()
                             val prog = domainLocator.locations.totalProgression
-                                ?: domainLocator.locations.progression
-                                ?: 0f
+                                ?: run {
+                                    val pub = publication
+                                    if (pub != null && pub.readingOrder.isNotEmpty()) {
+                                        val order = pub.readingOrder
+                                        val spineIndex = order.indexOfFirst { link ->
+                                            link.href.toString().substringBefore('#') == readiumLocator.href.toString().substringBefore('#')
+                                        }
+                                        if (spineIndex >= 0) {
+                                            val chapterProg = (readiumLocator.locations.progression ?: 0.0).coerceIn(0.0, 1.0)
+                                            ((spineIndex + chapterProg) / order.size).toFloat().coerceIn(0f, 1f)
+                                        } else null
+                                    } else null
+                                }
+                                ?: (domainLocator.locations.progression ?: 0f)
+
+                            val updatedLocator = if (domainLocator.locations.totalProgression == null) {
+                                domainLocator.copy(
+                                    locations = domainLocator.locations.copy(totalProgression = prog)
+                                )
+                            } else {
+                                domainLocator
+                            }
+
                             if (lastProgression != null && kotlin.math.abs(prog - (lastProgression ?: 0f)) > 0.0001f) {
                                 controller.clearSearchHighlight?.invoke()
                             }
                             lastProgression = prog
-                            currentOnProgressChanged(prog, domainLocator)
+                            currentOnProgressChanged(prog, updatedLocator)
                         }
                     }
                 }

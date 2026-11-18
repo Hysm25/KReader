@@ -9,6 +9,9 @@ import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderPreferences
+import io.github.kreader.core.model.ReaderPreferencesOverride
+import io.github.kreader.core.model.ReaderTypographyOverride
+import io.github.kreader.core.model.mergeWith
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +59,7 @@ interface BookRepository {
     suspend fun saveReaderPreferences(preferences: ReaderPreferences)
     fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences>
     suspend fun getEffectivePreferences(bookId: String): ReaderPreferences
+    suspend fun updateBookPreferencesOverride(bookId: String, update: (ReaderPreferencesOverride?) -> ReaderPreferencesOverride?)
     suspend fun savePreferences(bookId: String, preferences: ReaderPreferences, applyToThisBookOnly: Boolean = true)
     suspend fun resetPreferences(bookId: String)
     suspend fun resetGlobalPreferences()
@@ -394,34 +398,57 @@ class JsonVaultBookRepository(
 
     override fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences> =
         combine(_preferences, _workspace) { global, ws ->
-            ws.books[bookId]?.preferencesOverride ?: global
+            val override = ws.books[bookId]?.preferencesOverride
+            global.mergeWith(override)
         }
 
     override suspend fun getEffectivePreferences(bookId: String): ReaderPreferences = withContext(ioDispatcher) {
-        _workspace.value.books[bookId]?.preferencesOverride ?: _preferences.value
+        val global = _preferences.value
+        val override = _workspace.value.books[bookId]?.preferencesOverride
+        global.mergeWith(override)
+    }
+
+    override suspend fun updateBookPreferencesOverride(
+        bookId: String,
+        update: (ReaderPreferencesOverride?) -> ReaderPreferencesOverride?
+    ): Unit = withContext(ioDispatcher) {
+        val currentWorkspace = _workspace.value
+        val existingRecord = currentWorkspace.books[bookId] ?: BookProgressRecord(relativePath = bookId)
+        val updatedOverride = update(existingRecord.preferencesOverride)?.takeUnless { it.isEmpty() }
+        val updatedBooks = currentWorkspace.books.toMutableMap()
+        updatedBooks[bookId] = existingRecord.copy(preferencesOverride = updatedOverride)
+        val newWorkspace = currentWorkspace.copy(books = updatedBooks)
+        _workspace.value = newWorkspace
+        vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
     }
 
     override suspend fun savePreferences(bookId: String, preferences: ReaderPreferences, applyToThisBookOnly: Boolean): Unit = withContext(ioDispatcher) {
         if (applyToThisBookOnly) {
-            val currentWorkspace = _workspace.value
-            val updatedBooks = currentWorkspace.books.toMutableMap()
-            val existingRecord = updatedBooks[bookId] ?: BookProgressRecord(relativePath = bookId)
-            updatedBooks[bookId] = existingRecord.copy(preferencesOverride = preferences)
-            val newWorkspace = currentWorkspace.copy(books = updatedBooks)
-            _workspace.value = newWorkspace
-            vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
+            val global = _preferences.value
+            val typoOverride = ReaderTypographyOverride(
+                fontFamily = preferences.typography.fontFamily.takeIf { it != global.typography.fontFamily },
+                fontSizeSp = preferences.typography.fontSizeSp.takeIf { it != global.typography.fontSizeSp },
+                lineHeightMultiplier = preferences.typography.lineHeightMultiplier.takeIf { it != global.typography.lineHeightMultiplier },
+                letterSpacingSp = preferences.typography.letterSpacingSp.takeIf { it != global.typography.letterSpacingSp },
+                textAlignment = preferences.typography.textAlignment.takeIf { it != global.typography.textAlignment },
+                paddingHorizontal = preferences.typography.paddingHorizontal.takeIf { it != global.typography.paddingHorizontal },
+                paddingVertical = preferences.typography.paddingVertical.takeIf { it != global.typography.paddingVertical }
+            )
+            val override = ReaderPreferencesOverride(
+                theme = preferences.theme.takeIf { it != global.theme },
+                typography = typoOverride.takeUnless { it.isEmpty() },
+                isScrollMode = preferences.isScrollMode.takeIf { it != global.isScrollMode },
+                pageLayout = preferences.pageLayout.takeIf { it != global.pageLayout },
+                pageMargins = preferences.pageMargins.takeIf { it != global.pageMargins },
+                brightness = preferences.brightness.takeIf { it != global.brightness },
+                volumeKeyNavigation = preferences.volumeKeyNavigation.takeIf { it != global.volumeKeyNavigation },
+                keepScreenOn = preferences.keepScreenOn.takeIf { it != global.keepScreenOn },
+                orientationLock = preferences.orientationLock.takeIf { it != global.orientationLock }
+            )
+            updateBookPreferencesOverride(bookId) { override }
         } else {
-            _preferences.value = preferences
-            vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(preferences))
-            val currentWorkspace = _workspace.value
-            if (currentWorkspace.books[bookId]?.preferencesOverride != null) {
-                val updatedBooks = currentWorkspace.books.toMutableMap()
-                val existingRecord = updatedBooks[bookId]!!
-                updatedBooks[bookId] = existingRecord.copy(preferencesOverride = null)
-                val newWorkspace = currentWorkspace.copy(books = updatedBooks)
-                _workspace.value = newWorkspace
-                vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
-            }
+            saveReaderPreferences(preferences)
+            resetPreferences(bookId)
         }
     }
 

@@ -11,6 +11,8 @@ Defines core domain entities, value objects, reading preference models, and loca
 - `Highlight`: User highlight annotation associating text ranges, colors, notes, and timestamps (`[Highlight.kt:Highlight]`).
 - `Locator`: Readium-compliant location pointer referencing publication resource URLs, progression percentages, and text excerpts (`[Locator.kt:Locator]`).
 - `ReaderPreferences`: Aggregate container for theme, typography, layout, brightness, volume key navigation, and orientation preferences (`[ReaderPreferences.kt:ReaderPreferences]`).
+- `ReaderPreferencesOverride`: Sparse/granular per-book preference overrides enabling per-property local customization while maintaining dynamic inheritance from global settings (`[ReaderPreferences.kt:ReaderPreferencesOverride]`).
+- `ReaderTypographyOverride`: Sparse typography overrides (font, size, line height, alignment, padding) applied per-book (`[ReaderPreferences.kt:ReaderTypographyOverride]`).
 - `ReaderTheme`: Visual appearance configuration supporting light, dark, sepia, amoled, system, and custom palettes (`[ReaderTheme.kt:ReaderTheme]`).
 - `ReaderTypography`: Font, font size, line height, letter spacing, alignment, and viewport padding configuration (`[ReaderTheme.kt:ReaderTypography]`).
 - `ExternalBookOpener`: Reactive state holder for external EPUB open requests (`[ExternalBookOpener.kt:ExternalBookOpener]`).

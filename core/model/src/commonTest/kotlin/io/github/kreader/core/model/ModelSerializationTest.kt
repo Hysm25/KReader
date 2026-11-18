@@ -90,4 +90,62 @@ class ModelSerializationTest {
         assertEquals(book.format, deserialized.format)
         assertEquals(book.source.displayName, deserialized.source.displayName)
     }
+
+    @Test
+    fun testReaderPreferencesOverrideSparseInheritance() {
+        val global = ReaderPreferences(
+            theme = ReaderTheme(mode = ThemeMode.LIGHT),
+            typography = ReaderTypography(fontFamily = "Default", fontSizeSp = 16f, lineHeightMultiplier = 1.4f)
+        )
+
+        // Book overrides only fontFamily
+        val fontOverride = ReaderPreferencesOverride(
+            typography = ReaderTypographyOverride(fontFamily = "Amiri")
+        )
+
+        val merged = global.mergeWith(fontOverride)
+        assertEquals("Amiri", merged.typography.fontFamily)
+        assertEquals(16f, merged.typography.fontSizeSp)
+        assertEquals(1.4f, merged.typography.lineHeightMultiplier)
+        assertEquals(ThemeMode.LIGHT, merged.theme.mode)
+
+        // Global updates: theme changes to SEPIA and font size changes to 20f
+        val updatedGlobal = global.copy(
+            theme = ReaderTheme(mode = ThemeMode.SEPIA),
+            typography = global.typography.copy(fontSizeSp = 20f)
+        )
+
+        val updatedMerged = updatedGlobal.mergeWith(fontOverride)
+        assertEquals("Amiri", updatedMerged.typography.fontFamily) // Overridden property preserved
+        assertEquals(20f, updatedMerged.typography.fontSizeSp)     // Inherited from updated global
+        assertEquals(ThemeMode.SEPIA, updatedMerged.theme.mode)    // Inherited from updated global
+
+        // Null override inherits 100% of global
+        val resetMerged = updatedGlobal.mergeWith(null)
+        assertEquals("Default", resetMerged.typography.fontFamily)
+        assertEquals(20f, resetMerged.typography.fontSizeSp)
+        assertEquals(ThemeMode.SEPIA, resetMerged.theme.mode)
+    }
+
+    @Test
+    fun testReaderPreferencesOverrideSerializationRoundTrip() {
+        val override = ReaderPreferencesOverride(
+            theme = ReaderTheme(mode = ThemeMode.DARK),
+            typography = ReaderTypographyOverride(
+                fontFamily = "Scheherazade",
+                fontSizeSp = 22f
+            ),
+            isScrollMode = true
+        )
+
+        val serialized = json.encodeToString(override)
+        val deserialized = json.decodeFromString<ReaderPreferencesOverride>(serialized)
+
+        assertEquals(ThemeMode.DARK, deserialized.theme?.mode)
+        assertEquals("Scheherazade", deserialized.typography?.fontFamily)
+        assertEquals(22f, deserialized.typography?.fontSizeSp)
+        assertEquals(null, deserialized.typography?.lineHeightMultiplier)
+        assertEquals(true, deserialized.isScrollMode)
+        assertEquals(null, deserialized.keepScreenOn)
+    }
 }

@@ -6,8 +6,10 @@ import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.PageLayout
 import io.github.kreader.core.model.ReaderPreferences
+import io.github.kreader.core.model.ReaderPreferencesOverride
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
+import io.github.kreader.core.model.ReaderTypographyOverride
 import io.github.kreader.core.model.ThemeMode
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -30,7 +32,11 @@ class VaultJsonSerializationTest {
                     relativePath = "Fiction/Book1.epub",
                     totalProgression = 0.65f,
                     lastReadTimestamp = 1700000000000L,
-                    lastLocator = Locator.initial("ch2.xhtml", "application/xhtml+xml")
+                    lastLocator = Locator.initial("ch2.xhtml", "application/xhtml+xml"),
+                    preferencesOverride = ReaderPreferencesOverride(
+                        theme = ReaderTheme(mode = ThemeMode.DARK),
+                        typography = ReaderTypographyOverride(fontFamily = "Amiri")
+                    )
                 )
             )
         )
@@ -43,6 +49,9 @@ class VaultJsonSerializationTest {
         assertTrue(record != null)
         assertEquals(0.65f, record.totalProgression)
         assertEquals("ch2.xhtml", record.lastLocator?.href)
+        assertEquals(ThemeMode.DARK, record.preferencesOverride?.theme?.mode)
+        assertEquals("Amiri", record.preferencesOverride?.typography?.fontFamily)
+        assertEquals(null, record.preferencesOverride?.typography?.fontSizeSp)
     }
 
     @Test

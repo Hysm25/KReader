@@ -13,8 +13,10 @@ import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderPreferences
+import io.github.kreader.core.model.ReaderPreferencesOverride
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
+import io.github.kreader.core.model.ReaderTypographyOverride
 import io.github.kreader.core.model.isRtlText
 import kotlin.math.abs
 import kotlin.random.Random
@@ -277,24 +279,38 @@ class ReaderViewModel(
     fun changeTheme(newTheme: ReaderTheme) {
         _uiState.update { it.copy(theme = newTheme) }
         scope.launch {
-            val updated = currentEffectivePreferences.copy(theme = newTheme)
-            bookRepository.savePreferences(book.id, updated, applyToThisBookOnly = true)
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                (current ?: ReaderPreferencesOverride()).copy(theme = newTheme)
+            }
         }
     }
 
     fun changeTypography(newTypography: ReaderTypography) {
+        val prev = _uiState.value.typography
         _uiState.update { it.copy(typography = newTypography) }
         scope.launch {
-            val updated = currentEffectivePreferences.copy(typography = newTypography)
-            bookRepository.savePreferences(book.id, updated, applyToThisBookOnly = true)
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                val prevTypo = current?.typography ?: ReaderTypographyOverride()
+                val updatedTypo = prevTypo.copy(
+                    fontFamily = if (newTypography.fontFamily != prev.fontFamily) newTypography.fontFamily else prevTypo.fontFamily,
+                    fontSizeSp = if (newTypography.fontSizeSp != prev.fontSizeSp) newTypography.fontSizeSp else prevTypo.fontSizeSp,
+                    lineHeightMultiplier = if (newTypography.lineHeightMultiplier != prev.lineHeightMultiplier) newTypography.lineHeightMultiplier else prevTypo.lineHeightMultiplier,
+                    letterSpacingSp = if (newTypography.letterSpacingSp != prev.letterSpacingSp) newTypography.letterSpacingSp else prevTypo.letterSpacingSp,
+                    textAlignment = if (newTypography.textAlignment != prev.textAlignment) newTypography.textAlignment else prevTypo.textAlignment,
+                    paddingHorizontal = if (newTypography.paddingHorizontal != prev.paddingHorizontal) newTypography.paddingHorizontal else prevTypo.paddingHorizontal,
+                    paddingVertical = if (newTypography.paddingVertical != prev.paddingVertical) newTypography.paddingVertical else prevTypo.paddingVertical
+                )
+                (current ?: ReaderPreferencesOverride()).copy(typography = updatedTypo)
+            }
         }
     }
 
     fun changeScrollMode(isScroll: Boolean) {
         _uiState.update { it.copy(isScrollMode = isScroll) }
         scope.launch {
-            val updated = currentEffectivePreferences.copy(isScrollMode = isScroll)
-            bookRepository.savePreferences(book.id, updated, applyToThisBookOnly = true)
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                (current ?: ReaderPreferencesOverride()).copy(isScrollMode = isScroll)
+            }
         }
     }
 
@@ -323,16 +339,18 @@ class ReaderViewModel(
     fun changeKeepScreenOn(enabled: Boolean) {
         _uiState.update { it.copy(keepScreenOn = enabled) }
         scope.launch {
-            val updated = currentEffectivePreferences.copy(keepScreenOn = enabled)
-            bookRepository.savePreferences(book.id, updated, applyToThisBookOnly = true)
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                (current ?: ReaderPreferencesOverride()).copy(keepScreenOn = enabled)
+            }
         }
     }
 
     fun changeOrientationLock(lock: OrientationLock) {
         _uiState.update { it.copy(orientationLock = lock) }
         scope.launch {
-            val updated = currentEffectivePreferences.copy(orientationLock = lock)
-            bookRepository.savePreferences(book.id, updated, applyToThisBookOnly = true)
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                (current ?: ReaderPreferencesOverride()).copy(orientationLock = lock)
+            }
         }
     }
 
@@ -341,8 +359,12 @@ class ReaderViewModel(
             bookRepository.addCustomFont(font)
             val updatedTypography = _uiState.value.typography.copy(fontFamily = font.name)
             _uiState.update { it.copy(typography = updatedTypography) }
-            val updated = currentEffectivePreferences.copy(typography = updatedTypography)
-            bookRepository.savePreferences(book.id, updated, applyToThisBookOnly = true)
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                val prevTypo = current?.typography ?: ReaderTypographyOverride()
+                (current ?: ReaderPreferencesOverride()).copy(
+                    typography = prevTypo.copy(fontFamily = font.name)
+                )
+            }
         }
     }
 
@@ -352,8 +374,12 @@ class ReaderViewModel(
             if (_uiState.value.typography.fontFamily.equals(fontName, ignoreCase = true)) {
                 val updatedTypography = _uiState.value.typography.copy(fontFamily = "Default")
                 _uiState.update { it.copy(typography = updatedTypography) }
-                val updated = currentEffectivePreferences.copy(typography = updatedTypography)
-                bookRepository.savePreferences(book.id, updated, applyToThisBookOnly = true)
+                bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                    val prevTypo = current?.typography ?: ReaderTypographyOverride()
+                    (current ?: ReaderPreferencesOverride()).copy(
+                        typography = prevTypo.copy(fontFamily = "Default")
+                    )
+                }
             }
         }
     }

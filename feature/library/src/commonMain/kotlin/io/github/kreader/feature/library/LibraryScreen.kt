@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
@@ -240,20 +242,27 @@ fun LibraryScreen(
                                     value = state.searchQuery,
                                     onValueChange = onSearchQueryChanged,
                                     singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
                                         color = MaterialTheme.colorScheme.onSurface
                                     ),
                                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                     modifier = Modifier.weight(1f),
                                     decorationBox = { innerTextField ->
-                                        if (state.searchQuery.isEmpty()) {
-                                            Text(
-                                                text = if (state.books.isNotEmpty()) "Search in ${state.vaultName ?: "Books"}..." else "Search library...",
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            if (state.searchQuery.isEmpty()) {
+                                                Text(
+                                                    text = if (state.books.isNotEmpty()) "Search in ${state.vaultName ?: "Books"}..." else "Search library...",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            innerTextField()
                                         }
-                                        innerTextField()
                                     }
                                 )
                                 if (state.searchQuery.isNotEmpty()) {
@@ -272,29 +281,45 @@ fun LibraryScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
 
-                        IconButton(onClick = onRefreshVault) {
+                        IconButton(
+                            onClick = onRefreshVault,
+                            modifier = Modifier.size(40.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.Refresh,
                                 contentDescription = "Refresh Vault",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
-                        IconButton(onClick = { folderPickerLauncher() }) {
+                        Spacer(modifier = Modifier.width(2.dp))
+
+                        IconButton(
+                            onClick = { folderPickerLauncher() },
+                            modifier = Modifier.size(40.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.FolderOpen,
                                 contentDescription = "Change Folder",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
-                        IconButton(onClick = onOpenGlobalSettings) {
+                        Spacer(modifier = Modifier.width(2.dp))
+
+                        IconButton(
+                            onClick = onOpenGlobalSettings,
+                            modifier = Modifier.size(40.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
                                 contentDescription = "Global Settings",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
@@ -495,6 +520,7 @@ fun LibraryScreen(
 
     if (showMultiDeleteDialog) {
         AlertDialog(
+            modifier = Modifier.widthIn(max = 480.dp),
             onDismissRequest = { showMultiDeleteDialog = false },
             icon = {
                 Icon(

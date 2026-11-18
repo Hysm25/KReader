@@ -4,7 +4,7 @@
 Provides the library user interface, book discovery, Obsidian vault folder onboarding, metadata extraction, book cover caching, and sharing capabilities for KReader.
 
 ## Interface
-- `LibraryScreen`: Top-level Composable displaying the active vault books, search query bar, filter chips, sort menu, and vault selection button (`[LibraryScreen.kt:LibraryScreen]`).
+- `LibraryScreen`: Top-level Composable displaying the active vault books, responsive single-line search query bar with ellipsis overflow protection, compact action icons, sort menu, and vault selection button (`[LibraryScreen.kt:LibraryScreen]`).
 - `LibraryViewModel`: Presentation state holder coordinating vault file observation, background metadata parsing, cover extraction, and book imports (`[LibraryViewModel.kt:LibraryViewModel]`).
 - `LibraryUiState`: Immutable state model representing book lists, search filters, loading states, and active vault paths (`[LibraryState.kt:LibraryUiState]`).
 - `BookGrid`: Multiplatform grid composable rendering book cover cards, reading badges, context menus, and multi-selection mode (`[BookGrid.kt:BookGrid]`).

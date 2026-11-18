@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -245,50 +246,57 @@ fun ReaderScreen(
                         .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
                         .padding(
                             vertical = state.typography.paddingVertical.dp
-                        )
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
-                    EpubNavigatorHost(
-                    book = book,
-                    initialLocator = book.lastLocator,
-                    theme = state.theme,
-                    typography = state.typography,
-                    isScrollMode = state.isScrollMode,
-                    controller = epubController,
-                    customFonts = customFonts,
-                    highlights = state.highlights,
-                    onHighlightClicked = { highlightId ->
-                        val h = state.highlights.find { it.id == highlightId }
-                        if (h != null) {
-                            onHighlightClicked(h)
-                        }
-                    },
-                    onAddHighlight = { id, locator, colorHex ->
-                        val newHighlight = Highlight(
-                            id = id,
-                            bookId = book.id,
-                            locator = locator,
-                            colorHex = colorHex,
-                            annotation = null,
-                            createdTimestamp = Clock.System.now().toEpochMilliseconds(),
-                            modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .widthIn(max = 840.dp)
+                    ) {
+                        // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
+                        EpubNavigatorHost(
+                            book = book,
+                            initialLocator = book.lastLocator,
+                            theme = state.theme,
+                            typography = state.typography,
+                            isScrollMode = state.isScrollMode,
+                            controller = epubController,
+                            customFonts = customFonts,
+                            highlights = state.highlights,
+                            onHighlightClicked = { highlightId ->
+                                val h = state.highlights.find { it.id == highlightId }
+                                if (h != null) {
+                                    onHighlightClicked(h)
+                                }
+                            },
+                            onAddHighlight = { id, locator, colorHex ->
+                                val newHighlight = Highlight(
+                                    id = id,
+                                    bookId = book.id,
+                                    locator = locator,
+                                    colorHex = colorHex,
+                                    annotation = null,
+                                    createdTimestamp = Clock.System.now().toEpochMilliseconds(),
+                                    modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
+                                )
+                                onSaveHighlight(newHighlight)
+                            },
+                            onAddNoteRequested = { locator, selectedText ->
+                                onOpenAddNoteDialog(locator, selectedText)
+                            },
+                            onProgressChanged = { prog, loc ->
+                                liveProgression = prog
+                                liveLocator = loc
+                                onProgressChanged(prog, loc)
+                            },
+                            onTableOfContentsLoaded = onTableOfContentsLoaded,
+                            onDirectionDetected = onDirectionDetected,
+                            onTap = onToggleControls,
+                            modifier = Modifier.fillMaxSize()
                         )
-                        onSaveHighlight(newHighlight)
-                    },
-                    onAddNoteRequested = { locator, selectedText ->
-                        onOpenAddNoteDialog(locator, selectedText)
-                    },
-                    onProgressChanged = { prog, loc ->
-                        liveProgression = prog
-                        liveLocator = loc
-                        onProgressChanged(prog, loc)
-                    },
-                    onTableOfContentsLoaded = onTableOfContentsLoaded,
-                    onDirectionDetected = onDirectionDetected,
-                    onTap = onToggleControls,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+                    }
+                }
         } else {
                 // Fallback Idle/Error/Loading
                 Box(
@@ -332,6 +340,13 @@ fun ReaderScreen(
                 }
             }
 
+            val currentChapterTitle = remember(liveLocator, state.tocItems) {
+                val currHref = liveLocator?.href?.substringBefore('#')
+                state.tocItems.find {
+                    !currHref.isNullOrBlank() && it.locator.href.substringBefore('#') == currHref
+                }?.title ?: liveLocator?.title
+            }
+
             // Top Bar Overlay (floating)
             AnimatedVisibility(
                 visible = state.isControlsVisible,
@@ -341,6 +356,7 @@ fun ReaderScreen(
             ) {
                 ReaderTopBar(
                     title = state.book?.title ?: "Reading",
+                    chapterTitle = currentChapterTitle,
                     isBookmarked = state.isCurrentBookmarked,
                     onBackClick = onBackClick,
                     onSearchClick = onSearchClick,
@@ -358,10 +374,6 @@ fun ReaderScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 val prog = liveProgression
-                val currentChapterTitle = state.tocItems.find {
-                    val currHref = liveLocator?.href?.substringBefore('#')
-                    currHref != null && it.locator.href.substringBefore('#') == currHref
-                }?.title ?: liveLocator?.title
                 val pageInfo = "${(prog * 100).toInt()}%"
 
                 ReaderBottomBar(

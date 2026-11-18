@@ -34,7 +34,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ReaderTopBar(
     title: String,
+    chapterTitle: String? = null,
     isBookmarked: Boolean = false,
     onBackClick: () -> Unit,
     onSearchClick: () -> Unit,
@@ -63,12 +66,27 @@ fun ReaderTopBar(
     Column(modifier = modifier.fillMaxWidth()) {
         TopAppBar(
             title = {
-                Text(
-                    text = title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Column(
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (!chapterTitle.isNullOrBlank()) {
+                        Text(
+                            text = chapterTitle,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             },
             navigationIcon = {
                 IconButton(onClick = onBackClick) {
@@ -130,10 +148,16 @@ fun ReaderBottomBar(
     isRtl: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    var sliderValue by remember(progression) { mutableStateOf(progression) }
     var isDragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(progression) }
 
-    val currentDisplayProg = if (isDragging) sliderValue else progression
+    LaunchedEffect(progression) {
+        if (!isDragging) {
+            dragValue = progression
+        }
+    }
+
+    val currentDisplayProg = if (isDragging) dragValue else progression
     val pct = (currentDisplayProg * 100).toInt()
     val remainingPct = (1f - currentDisplayProg).coerceIn(0f, 1f)
     val totalEstimatedMinutes = 240
@@ -176,14 +200,14 @@ fun ReaderBottomBar(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Slider(
-                        value = currentDisplayProg.coerceIn(0f, 1f),
+                        value = dragValue.coerceIn(0f, 1f),
                         onValueChange = {
                             isDragging = true
-                            sliderValue = it
+                            dragValue = it
                         },
                         onValueChangeFinished = {
                             isDragging = false
-                            onSeek(sliderValue)
+                            onSeek(dragValue)
                         },
                         valueRange = 0f..1f,
                         modifier = Modifier.fillMaxWidth()
