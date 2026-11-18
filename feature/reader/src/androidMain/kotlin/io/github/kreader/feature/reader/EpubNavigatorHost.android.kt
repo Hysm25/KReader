@@ -693,7 +693,7 @@ actual fun EpubNavigatorHost(
                 val currentSel = activeSelection
                 val rect = currentSel?.rect
 
-                val swatches = rememberThemeHarmonizedSwatches(theme, isSystemInDarkTheme)
+                val swatches = rememberThemeHarmonizedSwatches(theme, isSystemDark)
                 val menuWidth = (swatches.size * 34 + 110).dp
                 val menuHeight = 52.dp
                 val containerWidth = maxWidth
@@ -782,7 +782,7 @@ actual fun EpubNavigatorHost(
             // Render Highlights as Decorations with theme-calibrated tint and deduplicated application
             val isDarkTheme = when (theme.mode) {
                 ThemeMode.DARK -> true
-                ThemeMode.SYSTEM -> isSystemInDarkTheme
+                ThemeMode.SYSTEM -> isSystemDark
                 else -> false
             }
             val isSepia = theme.mode == ThemeMode.SEPIA
