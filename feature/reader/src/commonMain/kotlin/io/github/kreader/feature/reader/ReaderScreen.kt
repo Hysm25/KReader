@@ -14,14 +14,20 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
@@ -166,6 +173,7 @@ fun ReaderScreen(
             Color(0xFF121212)
         }
         ThemeMode.SYSTEM -> if (isSystemDark) Color(0xFF121212) else Color(0xFFFAFAFA)
+        ThemeMode.SYSTEM_LIGHT -> Color(0xFFFAFAFA)
         ThemeMode.CUSTOM -> parseHexToComposeColor(state.theme.backgroundColorHex, Color.White)
     }
 
@@ -291,26 +299,44 @@ fun ReaderScreen(
                             if (currentChapterTitle.isNotBlank()) {
                                 Text(
                                     text = currentChapterTitle,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .align(Alignment.TopStart)
-                                        .padding(start = 16.dp, top = 6.dp, end = 64.dp)
+                                        .padding(start = 16.dp, top = 8.dp, end = 64.dp)
                                 )
                             }
 
                             Text(
                                 text = pageIndicatorText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
                                 maxLines = 1,
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
-                                    .padding(end = 16.dp, bottom = 6.dp, start = 64.dp)
+                                    .padding(end = 16.dp, bottom = 8.dp, start = 64.dp)
                             )
                         }
+                    }
+
+                    // Visual Bookmark Ribbon in top-right corner
+                    AnimatedVisibility(
+                        visible = state.isCurrentBookmarked,
+                        enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(200)) +
+                                slideInVertically(animationSpec = androidx.compose.animation.core.tween(200)) { -it },
+                        exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(150)) +
+                               slideOutVertically(animationSpec = androidx.compose.animation.core.tween(150)) { -it },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 24.dp)
+                    ) {
+                        BookmarkRibbon(
+                            onClick = onBookmarkToggle
+                        )
                     }
 
                     // Reading Viewport with padding so text never overlaps the HUD
@@ -319,8 +345,8 @@ fun ReaderScreen(
                             .fillMaxSize()
                             .widthIn(max = 840.dp)
                             .padding(
-                                top = 28.dp + state.typography.paddingVertical.dp,
-                                bottom = 28.dp + state.typography.paddingVertical.dp
+                                top = 36.dp + state.typography.paddingVertical.dp,
+                                bottom = 36.dp + state.typography.paddingVertical.dp
                             )
                     ) {
                         // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
@@ -557,6 +583,42 @@ fun ReaderScreen(
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = 16.dp)
+            )
+        }
+    }
+}
+
+private val BookmarkRibbonShape = GenericShape { size, _ ->
+    moveTo(0f, 0f)
+    lineTo(size.width, 0f)
+    lineTo(size.width, size.height)
+    lineTo(size.width / 2f, size.height * 0.72f)
+    lineTo(0f, size.height)
+    close()
+}
+
+@Composable
+private fun BookmarkRibbon(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .size(width = 24.dp, height = 36.dp)
+            .clickable(onClick = onClick),
+        shape = BookmarkRibbonShape,
+        color = MaterialTheme.colorScheme.primary,
+        shadowElevation = 3.dp
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(top = 2.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Bookmark,
+                contentDescription = "Bookmarked page",
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(14.dp)
             )
         }
     }

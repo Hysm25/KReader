@@ -261,9 +261,17 @@ actual fun EpubNavigatorHost(
                 runCatching {
                     frag.submitPreferences(preferences)
                     lastSubmittedPreferences = preferences
-                    injectReaderStyles(frag)
+                    injectReaderStyles(frag, typography)
                 }
             }
+        }
+    }
+
+    // Live updates for line height and text alignment
+    LaunchedEffect(currentFragment, typography.lineHeightMultiplier, typography.textAlignment, isNavigatorReady) {
+        val frag = currentFragment ?: return@LaunchedEffect
+        if (isNavigatorReady && frag.isAdded && frag.context != null) {
+            injectReaderStyles(frag, typography)
         }
     }
 
@@ -304,17 +312,23 @@ actual fun EpubNavigatorHost(
                 lastSearchHighlightTimestamp = System.currentTimeMillis()
                 frag.go(readiumLoc, animated = false)
                 scope.launch {
-                    kotlinx.coroutines.delay(120)
-                    lastSearchHighlightTimestamp = System.currentTimeMillis()
-                    val searchDeco = Decoration(
-                        id = "search_match_${System.currentTimeMillis()}",
-                        locator = readiumLoc,
-                        style = Decoration.Style.Highlight(
-                            tint = android.graphics.Color.argb(160, 255, 179, 0),
-                            isActive = true
+                    // Wait for sheet and soft keyboard exit animation to finish and WebView layout to stabilize
+                    kotlinx.coroutines.delay(280)
+                    if (frag.isAdded && frag.context != null) {
+                        lastSearchHighlightTimestamp = System.currentTimeMillis()
+                        // Re-snap to exact locator on the settled full-screen reading viewport
+                        frag.go(readiumLoc, animated = false)
+                        kotlinx.coroutines.delay(80)
+                        val searchDeco = Decoration(
+                            id = "search_match_${System.currentTimeMillis()}",
+                            locator = readiumLoc,
+                            style = Decoration.Style.Highlight(
+                                tint = android.graphics.Color.argb(160, 255, 179, 0),
+                                isActive = true
+                            )
                         )
-                    )
-                    frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
+                        frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
+                    }
                 }
             }
         }
@@ -471,7 +485,7 @@ actual fun EpubNavigatorHost(
                     override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
                             scope.launch {
-                                injectReaderStyles(f)
+                                injectReaderStyles(f, typography)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -515,7 +529,7 @@ actual fun EpubNavigatorHost(
                                 )
                             }
                             scope.launch {
-                                injectReaderStyles(f)
+                                injectReaderStyles(f, typography)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -815,7 +829,7 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
-                            injectReaderStyles(frag)
+                            injectReaderStyles(frag, typography)
                             val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
                             if (selectedFont != null) {
                                 injectFontFace(frag, selectedFont)
@@ -924,8 +938,15 @@ private fun locatorCacheKey(loc: Locator): String {
     return "${loc.href}__${loc.locations.progression}__${loc.locations.totalProgression}__${loc.locations.position}__${loc.text?.highlight}__${loc.text?.before}"
 }
 
-private suspend fun injectReaderStyles(frag: EpubNavigatorFragment) {
+private suspend fun injectReaderStyles(frag: EpubNavigatorFragment, typography: ReaderTypography) {
     runCatching {
+        val textAlignCss = when (typography.textAlignment) {
+            ReaderTypography.TextAlignment.JUSTIFY -> "text-align: justify !important;"
+            ReaderTypography.TextAlignment.START -> "text-align: start !important;"
+            ReaderTypography.TextAlignment.DEFAULT -> ""
+        }
+        val lineHeightCss = "line-height: ${typography.lineHeightMultiplier} !important;"
+
         val cssJs = """
             (function() {
                 var el = document.getElementById('kreader-reader-styles');
@@ -934,7 +955,17 @@ private suspend fun injectReaderStyles(frag: EpubNavigatorFragment) {
                     el.id = 'kreader-reader-styles';
                     (document.head || document.documentElement).appendChild(el);
                 }
-                el.textContent = 'hr { margin-left: auto !important; margin-right: auto !important; text-align: center !important; }';
+                el.textContent = `
+                    body, p, li, blockquote {
+                        $lineHeightCss
+                        $textAlignCss
+                    }
+                    hr {
+                        margin-left: auto !important;
+                        margin-right: auto !important;
+                        text-align: center !important;
+                    }
+                `;
             })();
         """.trimIndent()
         frag.evaluateJavascript(cssJs)

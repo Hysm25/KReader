@@ -31,6 +31,13 @@ actual fun getReaderColorScheme(theme: ReaderTheme): ColorScheme {
                 if (isSystemDark) SoftDarkColorScheme else PureLightColorScheme
             }
         }
+        ThemeMode.SYSTEM_LIGHT -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                dynamicLightColorScheme(context)
+            } else {
+                PureLightColorScheme
+            }
+        }
         ThemeMode.CUSTOM -> createCustomColorScheme(theme)
     }
 }

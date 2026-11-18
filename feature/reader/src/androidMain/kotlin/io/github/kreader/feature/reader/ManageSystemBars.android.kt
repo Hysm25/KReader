@@ -18,7 +18,7 @@ actual fun ManageSystemBars(isControlsVisible: Boolean, theme: ReaderTheme) {
     val isSystemDark = isSystemInDarkTheme()
 
     val isDarkTheme = when (theme.mode) {
-        ThemeMode.LIGHT, ThemeMode.SEPIA -> false
+        ThemeMode.LIGHT, ThemeMode.SEPIA, ThemeMode.SYSTEM_LIGHT -> false
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemDark
         ThemeMode.CUSTOM -> {

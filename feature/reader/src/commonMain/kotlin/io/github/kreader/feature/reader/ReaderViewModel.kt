@@ -152,29 +152,29 @@ class ReaderViewModel(
     }
 
     fun toggleBookmark() {
-        scope.launch {
-            val currentState = _uiState.value
-            val currHref = currentState.currentLocator?.href ?: book.lastLocator?.href
-            val currProg = currentState.currentLocator?.locations?.progression ?: currentState.totalProgression
-            val bookmarks = currentState.bookmarks
-            val existing = bookmarks.find { b ->
-                (currHref != null && b.locator.href == currHref) &&
-                    abs((b.locator.locations.progression ?: 0f) - currProg) < 0.05f
-            }
-            if (existing != null) {
+        val currentState = _uiState.value
+        val currentLoc = currentState.currentLocator ?: book.lastLocator ?: Locator(href = "", type = "application/epub+zip")
+        val existing = findMatchingBookmark(currentState.bookmarks, currentLoc, currentState.totalProgression)
+        if (existing != null) {
+            _uiState.update { it.copy(bookmarks = it.bookmarks.filterNot { b -> b.id == existing.id }) }
+            scope.launch {
                 bookRepository.deleteBookmark(existing.id)
-            } else {
-                val currentLoc = currentState.currentLocator ?: book.lastLocator ?: Locator(href = "", type = "application/epub+zip")
-                val chapterTitle = currentState.tocItems.find {
-                    it.locator.href.substringBefore("#") == currentLoc.href.substringBefore("#")
-                }?.title ?: currentLoc.title ?: "Bookmark at ${(currentState.totalProgression * 100).toInt()}%"
-                val newBookmark = Bookmark(
-                    id = "bm_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
-                    bookId = book.id,
-                    locator = currentLoc,
-                    title = chapterTitle,
-                    createdTimestamp = Clock.System.now().toEpochMilliseconds()
-                )
+            }
+        } else {
+            val chapterTitle = currentState.tocItems.find {
+                it.locator.href.substringBefore("#") == currentLoc.href.substringBefore("#")
+            }?.title ?: currentLoc.title ?: "Page ${currentLoc.locations.position ?: ""}".trim().ifEmpty {
+                "Bookmark at ${(currentState.totalProgression * 100).toInt()}%"
+            }
+            val newBookmark = Bookmark(
+                id = "bm_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
+                bookId = book.id,
+                locator = currentLoc,
+                title = chapterTitle,
+                createdTimestamp = Clock.System.now().toEpochMilliseconds()
+            )
+            _uiState.update { it.copy(bookmarks = it.bookmarks + newBookmark) }
+            scope.launch {
                 bookRepository.saveBookmark(newBookmark)
             }
         }

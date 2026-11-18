@@ -78,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -98,10 +99,14 @@ import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
 import io.github.kreader.core.model.toReaderTheme
+import kotlin.math.roundToInt
 
 object ReaderThemePresets {
     val System = ReaderTheme(
         mode = ThemeMode.SYSTEM
+    )
+    val SystemLight = ReaderTheme(
+        mode = ThemeMode.SYSTEM_LIGHT
     )
     val Light = ReaderTheme(
         mode = ThemeMode.LIGHT,
@@ -581,6 +586,7 @@ fun ReaderSearchSheet(
 ) {
     if (!isOpen) return
 
+    val keyboardController = LocalSoftwareKeyboardController.current
     val interactionSource = remember { MutableInteractionSource() }
 
     Box(
@@ -770,7 +776,10 @@ fun ReaderSearchSheet(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onResultClick(result) },
+                                    .clickable {
+                                        keyboardController?.hide()
+                                        onResultClick(result)
+                                    },
                                 shape = RoundedCornerShape(14.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainer,
                                 tonalElevation = 2.dp
@@ -1120,6 +1129,7 @@ fun ReaderSettingsSheet(
     var selectedTab by remember { mutableStateOf(ReaderSettingsTab.THEME) }
     var tempHorizontalPadding by remember(typography.paddingHorizontal) { mutableStateOf(typography.paddingHorizontal.toFloat()) }
     var tempVerticalPadding by remember(typography.paddingVertical) { mutableStateOf(typography.paddingVertical.toFloat()) }
+    var tempLineHeight by remember(typography.lineHeightMultiplier) { mutableStateOf(typography.lineHeightMultiplier) }
 
     Box(
         modifier = Modifier
@@ -1257,6 +1267,13 @@ fun ReaderSettingsSheet(
                                             textColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                             isSelected = theme.mode == ThemeMode.SYSTEM,
                                             onClick = { onThemeChange(ReaderThemePresets.System) }
+                                        )
+                                        ThemeOption(
+                                            label = "System Light",
+                                            bgColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            textColor = MaterialTheme.colorScheme.onSurface,
+                                            isSelected = theme.mode == ThemeMode.SYSTEM_LIGHT,
+                                            onClick = { onThemeChange(ReaderThemePresets.SystemLight) }
                                         )
                                         ThemeOption(
                                             label = "Light",
@@ -1449,7 +1466,7 @@ fun ReaderSettingsSheet(
                                 }
                             }
 
-                            // 3. Line Height Card (Segmented)
+                            // 3. Line Height Card (Continuous Slider)
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -1459,25 +1476,41 @@ fun ReaderSettingsSheet(
                                     modifier = Modifier.padding(16.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(
-                                        text = "Line Height",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    val currentLineHeightCategory = when {
-                                        typography.lineHeightMultiplier < 1.55f -> 1.4f
-                                        typography.lineHeightMultiplier <= 1.85f -> 1.7f
-                                        else -> 2.0f
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Line Height",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        ) {
+                                            val formatted = kotlin.math.round(tempLineHeight * 10f) / 10f
+                                            Text(
+                                                text = "${formatted}x",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
-                                    SegmentedButtonGroup(
-                                        options = listOf(
-                                            1.4f to "1.4x",
-                                            1.7f to "1.7x",
-                                            2.0f to "2.0x"
-                                        ),
-                                        selected = currentLineHeightCategory,
-                                        onSelect = { onTypographyChange(typography.copy(lineHeightMultiplier = it)) }
+                                    Slider(
+                                        value = tempLineHeight,
+                                        onValueChange = { tempLineHeight = it },
+                                        onValueChangeFinished = {
+                                            val finalVal = kotlin.math.round(tempLineHeight * 10f) / 10f
+                                            onTypographyChange(typography.copy(lineHeightMultiplier = finalVal))
+                                        },
+                                        valueRange = 1.0f..2.5f,
+                                        steps = 14,
+                                        modifier = Modifier.fillMaxWidth()
                                     )
                                 }
                             }

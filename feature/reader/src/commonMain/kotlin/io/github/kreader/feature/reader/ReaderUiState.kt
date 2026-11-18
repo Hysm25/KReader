@@ -51,16 +51,31 @@ data class ReaderUiState(
     val totalPageCount: Int = 0
 ) {
     val isCurrentBookmarked: Boolean
-        get() {
-            val currPos = currentLocator?.locations?.position
-            if (currPos != null) {
-                val matched = bookmarks.any { b -> b.locator.locations.position == currPos }
-                if (matched) return true
-            }
-            val currHref = currentLocator?.href ?: return false
-            val currProg = currentLocator.locations.progression ?: totalProgression
-            return bookmarks.any { b ->
-                b.locator.href == currHref && abs((b.locator.locations.progression ?: 0f) - currProg) < 0.05f
-            }
+        get() = findMatchingBookmark(bookmarks, currentLocator, totalProgression) != null
+}
+
+fun findMatchingBookmark(
+    bookmarks: List<Bookmark>,
+    currentLocator: Locator?,
+    totalProgression: Float
+): Bookmark? {
+    if (currentLocator == null) return null
+    val currPos = currentLocator.locations.position
+    if (currPos != null && currPos > 0) {
+        val matchByPos = bookmarks.find { b -> b.locator.locations.position == currPos }
+        if (matchByPos != null) return matchByPos
+    }
+    val currHref = currentLocator.href.substringBefore('#')
+    val currProg = currentLocator.locations.progression ?: totalProgression
+    return bookmarks.find { b ->
+        val bHref = b.locator.href.substringBefore('#')
+        if (bHref != currHref) return@find false
+        val bPos = b.locator.locations.position
+        if (currPos != null && bPos != null && currPos > 0 && bPos > 0) {
+            bPos == currPos
+        } else {
+            val bProg = b.locator.locations.progression ?: b.locator.locations.totalProgression ?: 0f
+            abs(bProg - currProg) < 0.05f
         }
+    }
 }

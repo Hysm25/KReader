@@ -8,6 +8,7 @@ enum class ThemeMode {
     DARK,
     SEPIA,
     SYSTEM,
+    SYSTEM_LIGHT,
     CUSTOM
 }
 

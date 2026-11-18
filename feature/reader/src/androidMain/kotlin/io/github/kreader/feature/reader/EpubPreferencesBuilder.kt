@@ -32,6 +32,7 @@ fun buildReadiumPreferences(
         } else {
             Color(0xFFFAFAFA.toInt())
         }
+        ThemeMode.SYSTEM_LIGHT -> Color(0xFFFAFAFA.toInt())
         ThemeMode.CUSTOM -> {
             val parsed = parseHexColorInt(theme.backgroundColorHex, 0xFFFFFFFF.toInt())
             Color(parsed)
@@ -51,6 +52,7 @@ fun buildReadiumPreferences(
         } else {
             Color(0xFF1A1A1A.toInt())
         }
+        ThemeMode.SYSTEM_LIGHT -> Color(0xFF1A1A1A.toInt())
         ThemeMode.CUSTOM -> {
             val parsed = parseHexColorInt(theme.textColorHex, 0xFF1A1A1A.toInt())
             Color(parsed)
@@ -90,7 +92,7 @@ fun buildReadiumPreferences(
         scroll = isScrollMode,
         readingProgression = progression,
         ligatures = true,
-        publisherStyles = false
+        publisherStyles = true
     )
 }
 
