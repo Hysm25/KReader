@@ -61,20 +61,20 @@ JVM_OPTS=(
 SKIKO_LIB_PATH="$APP_DIR/lib"
 CLASSPATH=""
 if [ -d "$APP_DIR/lib" ]; then
-    CLASSPATH="$APP_DIR/lib/*"
+    CLASSPATH="$APP_DIR/lib:$APP_DIR/lib/*"
 fi
 if [ -d "$APP_DIR" ]; then
-    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$APP_DIR/*"
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$APP_DIR:$APP_DIR/*"
 fi
 
 if [ -z "$CLASSPATH" ] || [ -z "$(find -L "$APP_DIR" -name '*.jar' 2>/dev/null | head -n 1)" ]; then
     # Fallback to local execution directory if running from unpacked build
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -d "$SCRIPT_DIR/../lib" ]; then
-        CLASSPATH="$SCRIPT_DIR/../lib/*"
+        CLASSPATH="$SCRIPT_DIR/../lib:$SCRIPT_DIR/../lib/*"
         SKIKO_LIB_PATH="$SCRIPT_DIR/../lib"
     elif [ -d "$SCRIPT_DIR/lib" ]; then
-        CLASSPATH="$SCRIPT_DIR/lib/*"
+        CLASSPATH="$SCRIPT_DIR/lib:$SCRIPT_DIR/lib/*"
         SKIKO_LIB_PATH="$SCRIPT_DIR/lib"
     fi
 fi

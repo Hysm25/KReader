@@ -89,7 +89,7 @@ jobs:
             -w /workspace \
             archlinux:latest \
             bash -c "
-              pacman -Syu --noconfirm base-devel sudo zstd unzip &&
+              pacman -Syu --noconfirm base-devel sudo zstd unzip python &&
               useradd -m -s /bin/bash builder &&
               echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers &&
               chown -R builder:builder /workspace &&
@@ -101,7 +101,7 @@ jobs:
       - name: Verify Arch Linux Package Contents
         run: |
           echo "==> Inspecting generated Arch Linux package..."
-          PKG_FILE=$(ls packaging/arch/build/*.pkg.tar.zst 2>/dev/null | head -n 1)
+          PKG_FILE=$(ls packaging/arch/build/kreader-[0-9]*.pkg.tar.zst 2>/dev/null | grep -v 'debug' | head -n 1)
           if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
             echo "ERROR: Package file not found in packaging/arch/build/" >&2
             exit 1
@@ -134,19 +134,36 @@ jobs:
             HAS_SKIKO_SHA256=1
           fi
 
-          # Inspect inside packaged JARs
-          VERIFY_DIR=$(mktemp -d)
-          tar -xf "$PKG_FILE" -C "$VERIFY_DIR"
-          for jar in "$VERIFY_DIR"/usr/lib/kreader/lib/*.jar; do
-            if [ -f "$jar" ] && unzip -l "$jar" 2>/dev/null | grep -q "libskiko-linux-x64\.so\.sha256"; then
-              echo "✓ Found libskiko-linux-x64.so.sha256 inside $(basename "$jar")"
-              HAS_SKIKO_SHA256=1
-            fi
-          done
-          rm -rf "$VERIFY_DIR"
+          if tar -tf "$PKG_FILE" | grep -q "libskiko-linux-x64\.so"; then
+            echo "✓ Found libskiko-linux-x64.so directly in package."
+          else
+            echo "ERROR: libskiko-linux-x64.so missing from package!" >&2
+            exit 1
+          fi
+
+          # Inspect inside packaged JARs using Python
+          python3 -c "
+          import tarfile, zipfile, io, sys
+
+          pkg = '$PKG_FILE'
+          print(f'Inspecting JARs inside {pkg} for Skiko runtime...')
+          with tarfile.open(pkg, 'r:*') as tf:
+              for m in tf.getmembers():
+                  if m.name.endswith('.jar') and ('skiko' in m.name.lower() or 'composeapp' in m.name.lower()):
+                      f = tf.extractfile(m)
+                      if f:
+                          try:
+                              with zipfile.ZipFile(io.BytesIO(f.read())) as zf:
+                                  names = zf.namelist()
+                                  has_sha = any('libskiko-linux-x64.so.sha256' in n for n in names)
+                                  if has_sha:
+                                      print(f'✓ Found libskiko-linux-x64.so.sha256 inside {m.name}')
+                          except Exception as e:
+                              print(f'Error reading {m.name}: {e}')
+          " || true
 
           if [ "$HAS_SKIKO_SHA256" -eq 0 ]; then
-            echo "ERROR: libskiko-linux-x64.so.sha256 was NOT found in package or packaged JARs!" >&2
+            echo "ERROR: libskiko-linux-x64.so.sha256 was NOT found in package!" >&2
             exit 1
           fi
 

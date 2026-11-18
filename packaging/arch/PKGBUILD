@@ -6,6 +6,7 @@ pkgdesc="Modern, local-first EPUB reader with Obsidian-style vault persistence"
 arch=('x86_64')
 url="https://github.com/Hysm25/KReader"
 license=('MIT')
+options=('!debug')
 depends=(
     'java-runtime>=21'
     'libglvnd'

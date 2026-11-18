@@ -71,7 +71,8 @@ if [ -n "$SKIKO_JAR" ] && [ -f "$SKIKO_JAR" ]; then
     echo "==> Extracting native binaries (*.so, *.sha256) from Skiko JAR..."
     if command -v unzip >/dev/null 2>&1; then
         unzip -q -o "$SKIKO_JAR" "*.so" "*.sha256" -d "$BUILD_DIR/lib/" 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
+    fi
+    if command -v python3 >/dev/null 2>&1; then
         python3 -c "
 import zipfile
 with zipfile.ZipFile('$SKIKO_JAR', 'r') as z:
@@ -80,6 +81,41 @@ with zipfile.ZipFile('$SKIKO_JAR', 'r') as z:
             z.extract(name, '$BUILD_DIR/lib/')
 " 2>/dev/null || true
     fi
+fi
+
+# Ensure libskiko-linux-x64.so.sha256 is generated if libskiko-linux-x64.so is present
+if [ -f "$BUILD_DIR/lib/libskiko-linux-x64.so" ]; then
+    echo "==> Ensuring libskiko-linux-x64.so.sha256 is present and valid..."
+    sha256sum "$BUILD_DIR/lib/libskiko-linux-x64.so" | awk '{print $1}' | tr -d '\n' > "$BUILD_DIR/lib/libskiko-linux-x64.so.sha256"
+fi
+
+# Inject Skiko native library and sha256 resource into JARs so getResourceAsStream finds them
+if command -v python3 >/dev/null 2>&1; then
+    python3 -c "
+import glob, os, zipfile
+
+build_lib = '$BUILD_DIR/lib'
+so_file = os.path.join(build_lib, 'libskiko-linux-x64.so')
+sha_file = os.path.join(build_lib, 'libskiko-linux-x64.so.sha256')
+
+if os.path.exists(sha_file):
+    for jar in glob.glob(os.path.join(build_lib, '*.jar')):
+        bname = os.path.basename(jar).lower()
+        if 'skiko' in bname or 'composeapp' in bname:
+            print(f'--> Injecting Skiko runtime assets into {os.path.basename(jar)}')
+            with zipfile.ZipFile(jar, 'a') as zf:
+                zf.write(sha_file, 'libskiko-linux-x64.so.sha256')
+                if os.path.exists(so_file) and 'skiko' in bname:
+                    zf.write(so_file, 'libskiko-linux-x64.so')
+" 2>/dev/null || true
+fi
+
+if [ -f "$BUILD_DIR/lib/libskiko-linux-x64.so" ] && [ -f "$BUILD_DIR/lib/libskiko-linux-x64.so.sha256" ]; then
+    echo "==> Skiko native runtime verified in $BUILD_DIR/lib/:"
+    echo "    - libskiko-linux-x64.so ($(ls -lh "$BUILD_DIR/lib/libskiko-linux-x64.so" | awk '{print $5}'))"
+    echo "    - libskiko-linux-x64.so.sha256 ($(cat "$BUILD_DIR/lib/libskiko-linux-x64.so.sha256"))"
+else
+    echo "WARNING: libskiko-linux-x64.so or libskiko-linux-x64.so.sha256 not found in $BUILD_DIR/lib/!" >&2
 fi
 
 cd "$BUILD_DIR"
