@@ -47,7 +47,8 @@ data class ReaderUiState(
     val pendingNoteText: String? = null,
     val keepScreenOn: Boolean = false,
     val orientationLock: OrientationLock = OrientationLock.AUTO,
-    val customThemes: List<CustomTheme> = emptyList()
+    val customThemes: List<CustomTheme> = emptyList(),
+    val totalPageCount: Int = 0
 ) {
     val isCurrentBookmarked: Boolean
         get() {

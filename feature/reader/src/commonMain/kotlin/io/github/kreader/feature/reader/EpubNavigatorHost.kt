@@ -28,5 +28,6 @@ expect fun EpubNavigatorHost(
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
     onTap: () -> Unit,
+    onPageCountLoaded: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 )

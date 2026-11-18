@@ -6,6 +6,7 @@ import io.github.kreader.core.model.Locator
 
 class EpubNavigatorController {
     var goTo: ((Locator) -> Unit)? = null
+    var goToSearchResult: ((Locator) -> Unit)? = null
     var goNext: (() -> Unit)? = null
     var goPrevious: (() -> Unit)? = null
     var seekToProgression: ((Float) -> Unit)? = null

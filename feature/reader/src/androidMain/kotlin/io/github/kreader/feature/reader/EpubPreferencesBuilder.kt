@@ -82,15 +82,15 @@ fun buildReadiumPreferences(
         textColor = textColor,
         fontFamily = fontFamily,
         textAlign = textAlign,
-        fontSize = (typography.fontSizeSp / 16.0).toDouble().coerceIn(0.6, 2.5),
-        lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceAtLeast(1.5),
+        fontSize = (typography.fontSizeSp / 16.0).toDouble().coerceIn(0.5, 3.0),
+        lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceIn(1.0, 3.0),
         columnCount = ColumnCount.ONE,
         spread = Spread.NEVER,
         pageMargins = scaledMargin,
         scroll = isScrollMode,
         readingProgression = progression,
         ligatures = true,
-        publisherStyles = true
+        publisherStyles = false
     )
 }
 

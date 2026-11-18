@@ -110,6 +110,7 @@ actual fun EpubNavigatorHost(
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onDirectionDetected: (isRtl: Boolean) -> Unit,
     onTap: () -> Unit,
+    onPageCountLoaded: (Int) -> Unit,
     modifier: Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -133,6 +134,7 @@ actual fun EpubNavigatorHost(
     val currentOnProgressChanged by rememberUpdatedState(onProgressChanged)
     val currentOnTableOfContentsLoaded by rememberUpdatedState(onTableOfContentsLoaded)
     val currentOnDirectionDetected by rememberUpdatedState(onDirectionDetected)
+    val currentOnPageCountLoaded by rememberUpdatedState(onPageCountLoaded)
 
     // Resolve custom font family if selected
     val activeFontFamily = remember(typography.fontFamily, customFonts) {
@@ -189,6 +191,9 @@ actual fun EpubNavigatorHost(
                     isRtl = rtl
                     currentOnDirectionDetected(rtl)
                     currentOnTableOfContentsLoaded(doc.tableOfContents)
+                    if (doc.spine.isNotEmpty()) {
+                        currentOnPageCountLoaded(doc.spine.size)
+                    }
 
                     // Find initial spine item
                     val initHref = initialLocator?.href

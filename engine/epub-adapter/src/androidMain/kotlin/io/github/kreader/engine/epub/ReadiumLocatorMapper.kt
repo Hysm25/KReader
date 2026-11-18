@@ -45,6 +45,17 @@ fun Locator.toReadium(): org.readium.r2.shared.publication.Locator {
         ?: Url("#")!!
     val parsedMediaType = MediaType(type) ?: MediaType.BINARY
 
+    val parsedOtherLocations: Map<String, Any> = locations.otherLocations.mapValues { (_, value) ->
+        val trimmed = value.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching { org.json.JSONObject(trimmed) }.getOrDefault(value)
+        } else if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            runCatching { org.json.JSONArray(trimmed) }.getOrDefault(value)
+        } else {
+            value
+        }
+    }
+
     return org.readium.r2.shared.publication.Locator(
         href = parsedUrl,
         mediaType = parsedMediaType,
@@ -54,7 +65,7 @@ fun Locator.toReadium(): org.readium.r2.shared.publication.Locator {
             progression = locations.progression?.toDouble(),
             position = locations.position,
             totalProgression = locations.totalProgression?.toDouble(),
-            otherLocations = locations.otherLocations
+            otherLocations = parsedOtherLocations
         ),
         text = text?.let {
             org.readium.r2.shared.publication.Locator.Text(

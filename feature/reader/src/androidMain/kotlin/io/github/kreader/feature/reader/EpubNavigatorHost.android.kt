@@ -87,6 +87,7 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.locateProgression
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.Try
@@ -113,6 +114,7 @@ actual fun EpubNavigatorHost(
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onDirectionDetected: (isRtl: Boolean) -> Unit,
     onTap: () -> Unit,
+    onPageCountLoaded: (Int) -> Unit,
     modifier: Modifier
 ) {
     val context = LocalContext.current
@@ -126,6 +128,7 @@ actual fun EpubNavigatorHost(
     val currentOnAddNoteRequested by rememberUpdatedState(onAddNoteRequested)
     val currentOnTableOfContentsLoaded by rememberUpdatedState(onTableOfContentsLoaded)
     val currentOnDirectionDetected by rememberUpdatedState(onDirectionDetected)
+    val currentOnPageCountLoaded by rememberUpdatedState(onPageCountLoaded)
 
     var publication by remember { mutableStateOf<Publication?>(null) }
     var currentFragment by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
@@ -134,6 +137,12 @@ actual fun EpubNavigatorHost(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var lastSearchHighlightTimestamp by remember(book.id) { mutableLongStateOf(0L) }
+    var lastSearchProgression by remember(book.id) { mutableStateOf<Float?>(null) }
+    var totalPositionsCount by remember(book.id) { mutableIntStateOf(0) }
+
+    val searchLocatorsCache = remember(book.id) {
+        Collections.synchronizedMap(LinkedHashMap<String, org.readium.r2.shared.publication.Locator>())
+    }
 
     val configuredFragments = remember(book.id) {
         Collections.newSetFromMap(WeakHashMap<EpubNavigatorFragment, Boolean>())
@@ -152,7 +161,7 @@ actual fun EpubNavigatorHost(
         }.fold(
             onSuccess = { pub ->
                 publication = pub
-                val (isPubRtl, toc) = withContext(Dispatchers.Default) {
+                val (isPubRtl, toc, pageCount) = withContext(Dispatchers.Default) {
                     val readingProg = pub.metadata.readingProgression
                     val hasRtlProgression = readingProg == org.readium.r2.shared.publication.ReadingProgression.RTL
                     val hasRtlLanguage = pub.metadata.languages.any { isRtlLanguage(it) }
@@ -164,11 +173,16 @@ actual fun EpubNavigatorHost(
 
                     val rtl = hasRtlProgression || hasRtlLanguage || hasRtlText
                     val items = pub.tableOfContents.map { it.toTocItem(pub) }
-                    rtl to items
+                    val count = runCatching { pub.positions().size }.getOrDefault(0)
+                    Triple(rtl, items, count)
                 }
                 detectedRtl = isPubRtl
+                totalPositionsCount = pageCount
                 currentOnDirectionDetected(isPubRtl)
                 currentOnTableOfContentsLoaded(toc)
+                if (pageCount > 0) {
+                    currentOnPageCountLoaded(pageCount)
+                }
                 isLoading = false
             },
             onFailure = { err ->
@@ -246,6 +260,7 @@ actual fun EpubNavigatorHost(
                 runCatching {
                     frag.submitPreferences(preferences)
                     lastSubmittedPreferences = preferences
+                    injectReaderStyles(frag)
                 }
             }
         }
@@ -274,7 +289,32 @@ actual fun EpubNavigatorHost(
         controller.goTo = { locator ->
             val frag = currentFragment
             if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
-                frag.go(locator.toReadium(), animated = true)
+                val key = locatorCacheKey(locator)
+                val target = searchLocatorsCache[key] ?: locator.toReadium()
+                frag.go(target, animated = true)
+            }
+        }
+        controller.goToSearchResult = { domainLoc ->
+            val frag = currentFragment
+            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                val key = locatorCacheKey(domainLoc)
+                val readiumLoc = searchLocatorsCache[key] ?: domainLoc.toReadium()
+                lastSearchProgression = domainLoc.locations.totalProgression ?: domainLoc.locations.progression
+                lastSearchHighlightTimestamp = System.currentTimeMillis()
+                frag.go(readiumLoc, animated = false) {
+                    scope.launch {
+                        lastSearchHighlightTimestamp = System.currentTimeMillis()
+                        val searchDeco = Decoration(
+                            id = "search_match_${System.currentTimeMillis()}",
+                            locator = readiumLoc,
+                            style = Decoration.Style.Highlight(
+                                tint = android.graphics.Color.argb(160, 255, 179, 0),
+                                isActive = true
+                            )
+                        )
+                        frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
+                    }
+                }
             }
         }
         controller.goNext = {
@@ -324,11 +364,13 @@ actual fun EpubNavigatorHost(
         controller.highlightSearchResult = { locator ->
             val frag = currentFragment
             if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+                val key = locatorCacheKey(locator)
+                val target = searchLocatorsCache[key] ?: locator.toReadium()
                 lastSearchHighlightTimestamp = System.currentTimeMillis()
                 scope.launch {
                     val searchDeco = Decoration(
                         id = "search_match_${System.currentTimeMillis()}",
-                        locator = locator.toReadium(),
+                        locator = target,
                         style = Decoration.Style.Highlight(
                             tint = android.graphics.Color.argb(160, 255, 179, 0),
                             isActive = true
@@ -358,7 +400,10 @@ actual fun EpubNavigatorHost(
                             val page = searchIterator.next().unwrapReadium<LocatorCollection>()
                             if (page == null || page.locators.isEmpty()) break
                             for (loc in page.locators) {
-                                results.add(loc.toDomain())
+                                val domainLoc = loc.toDomain()
+                                val key = locatorCacheKey(domainLoc)
+                                searchLocatorsCache[key] = loc
+                                results.add(domainLoc)
                                 count++
                             }
                         }
@@ -371,6 +416,7 @@ actual fun EpubNavigatorHost(
         }
         onDispose {
             controller.goTo = null
+            controller.goToSearchResult = null
             controller.goNext = null
             controller.goPrevious = null
             controller.seekToProgression = null
@@ -424,6 +470,7 @@ actual fun EpubNavigatorHost(
                     override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
                             scope.launch {
+                                injectReaderStyles(f)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -467,6 +514,7 @@ actual fun EpubNavigatorHost(
                                 )
                             }
                             scope.launch {
+                                injectReaderStyles(f)
                                 val fontName = typography.fontFamily
                                 val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                                 if (selectedCustomFont != null) {
@@ -766,6 +814,7 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
+                            injectReaderStyles(frag)
                             val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
                             if (selectedFont != null) {
                                 injectFontFace(frag, selectedFont)
@@ -790,16 +839,21 @@ actual fun EpubNavigatorHost(
                                 }
                                 ?: (domainLocator.locations.progression ?: 0f)
 
-                            val updatedLocator = if (domainLocator.locations.totalProgression == null) {
-                                domainLocator.copy(
-                                    locations = domainLocator.locations.copy(totalProgression = prog)
+                            val pos = domainLocator.locations.position
+                                ?: if (totalPositionsCount > 0 && prog > 0f) {
+                                    ((prog * totalPositionsCount).toInt() + 1).coerceIn(1, totalPositionsCount)
+                                } else null
+
+                            val updatedLocator = domainLocator.copy(
+                                locations = domainLocator.locations.copy(
+                                    totalProgression = prog,
+                                    position = pos ?: domainLocator.locations.position
                                 )
-                            } else {
-                                domainLocator
-                            }
+                            )
 
                             if (lastProgression != null && kotlin.math.abs(prog - (lastProgression ?: 0f)) > 0.0001f) {
-                                if (System.currentTimeMillis() - lastSearchHighlightTimestamp > 1500L) {
+                                val isSearchJump = lastSearchProgression != null && kotlin.math.abs(prog - (lastSearchProgression ?: 0f)) < 0.005f
+                                if (!isSearchJump && System.currentTimeMillis() - lastSearchHighlightTimestamp > 3000L) {
                                     controller.clearSearchHighlight?.invoke()
                                 }
                             }
@@ -860,6 +914,32 @@ private suspend fun clearFontFace(frag: EpubNavigatorFragment) {
         frag.view?.let { root ->
             findWebViews(root).forEach { wv ->
                 wv.evaluateJavascript(js, null)
+            }
+        }
+    }
+}
+
+private fun locatorCacheKey(loc: Locator): String {
+    return "${loc.href}__${loc.locations.progression}__${loc.locations.totalProgression}__${loc.locations.position}__${loc.text?.highlight}__${loc.text?.before}"
+}
+
+private suspend fun injectReaderStyles(frag: EpubNavigatorFragment) {
+    runCatching {
+        val cssJs = """
+            (function() {
+                var el = document.getElementById('kreader-reader-styles');
+                if (!el) {
+                    el = document.createElement('style');
+                    el.id = 'kreader-reader-styles';
+                    (document.head || document.documentElement).appendChild(el);
+                }
+                el.textContent = 'hr { margin-left: auto !important; margin-right: auto !important; text-align: center !important; }';
+            })();
+        """.trimIndent()
+        frag.evaluateJavascript(cssJs)
+        frag.view?.let { root ->
+            findWebViews(root).forEach { wv ->
+                wv.evaluateJavascript(cssJs, null)
             }
         }
     }

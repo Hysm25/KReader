@@ -199,6 +199,7 @@ fun App() {
                     onResetToDefaults = { readerViewModel.resetToDefaults() },
                     onProgressChanged = { prog, loc -> readerViewModel.updateProgress(prog, loc) },
                     onTableOfContentsLoaded = { toc -> readerViewModel.setTableOfContents(toc) },
+                    onPageCountLoaded = { count -> readerViewModel.setTotalPageCount(count) },
                     customFonts = readerViewModel.customFonts,
                     customThemes = readerUiState.customThemes,
                     onSaveCustomTheme = { theme -> readerViewModel.saveCustomTheme(theme) },

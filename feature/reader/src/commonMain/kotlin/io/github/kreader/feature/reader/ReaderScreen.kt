@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -95,6 +96,7 @@ fun ReaderScreen(
     onKeepScreenOnChange: (Boolean) -> Unit = {},
     onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
+    onPageCountLoaded: (Int) -> Unit = {},
     onExportMarkdown: (suspend () -> String?)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -207,11 +209,43 @@ fun ReaderScreen(
     var liveLocator: Locator? by remember(state.book?.id) {
         mutableStateOf(state.currentLocator ?: state.book?.lastLocator)
     }
+    var totalPageCount by remember(state.book?.id) {
+        mutableIntStateOf(state.totalPageCount)
+    }
 
-    LaunchedEffect(state.totalProgression, state.currentLocator) {
+    LaunchedEffect(state.totalProgression, state.currentLocator, state.totalPageCount) {
         liveProgression = state.totalProgression
         if (state.currentLocator != null) {
             liveLocator = state.currentLocator
+        }
+        if (state.totalPageCount > 0) {
+            totalPageCount = state.totalPageCount
+        }
+    }
+
+    val currentChapterTitle = remember(liveLocator, state.tocItems, state.book) {
+        val currHref = liveLocator?.href?.substringBefore('#')
+        state.tocItems.find {
+            !currHref.isNullOrBlank() && it.locator.href.substringBefore('#') == currHref
+        }?.title ?: liveLocator?.title ?: state.book?.title.orEmpty()
+    }
+
+    val currentPage = remember(liveLocator, liveProgression, totalPageCount) {
+        val pos = liveLocator?.locations?.position
+        if (pos != null && pos > 0) {
+            pos
+        } else if (totalPageCount > 0) {
+            ((liveProgression * totalPageCount).toInt() + 1).coerceIn(1, totalPageCount)
+        } else {
+            0
+        }
+    }
+
+    val pageIndicatorText = remember(currentPage, totalPageCount, liveProgression) {
+        if (totalPageCount > 0 && currentPage > 0) {
+            "$currentPage / $totalPageCount"
+        } else {
+            "${(liveProgression * 100).toInt()}%"
         }
     }
 
@@ -243,16 +277,51 @@ fun ReaderScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
-                        .padding(
-                            vertical = state.typography.paddingVertical.dp
-                        ),
+                        .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout)),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Persistent Minimal Reading HUD (Top-Left Chapter Title & Bottom-Right Page Indicator)
+                    AnimatedVisibility(
+                        visible = !state.isControlsVisible,
+                        enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(150)),
+                        exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(150)),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (currentChapterTitle.isNotBlank()) {
+                                Text(
+                                    text = currentChapterTitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(start = 16.dp, top = 6.dp, end = 64.dp)
+                                )
+                            }
+
+                            Text(
+                                text = pageIndicatorText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = 16.dp, bottom = 6.dp, start = 64.dp)
+                            )
+                        }
+                    }
+
+                    // Reading Viewport with padding so text never overlaps the HUD
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .widthIn(max = 840.dp)
+                            .padding(
+                                top = 28.dp + state.typography.paddingVertical.dp,
+                                bottom = 28.dp + state.typography.paddingVertical.dp
+                            )
                     ) {
                         // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
                         EpubNavigatorHost(
@@ -293,11 +362,15 @@ fun ReaderScreen(
                             onTableOfContentsLoaded = onTableOfContentsLoaded,
                             onDirectionDetected = onDirectionDetected,
                             onTap = onToggleControls,
+                            onPageCountLoaded = { count ->
+                                totalPageCount = count
+                                onPageCountLoaded(count)
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
-        } else {
+            } else {
                 // Fallback Idle/Error/Loading
                 Box(
                     modifier = Modifier
@@ -340,13 +413,6 @@ fun ReaderScreen(
                 }
             }
 
-            val currentChapterTitle = remember(liveLocator, state.tocItems) {
-                val currHref = liveLocator?.href?.substringBefore('#')
-                state.tocItems.find {
-                    !currHref.isNullOrBlank() && it.locator.href.substringBefore('#') == currHref
-                }?.title ?: liveLocator?.title
-            }
-
             // Top Bar Overlay (floating)
             AnimatedVisibility(
                 visible = state.isControlsVisible,
@@ -374,7 +440,7 @@ fun ReaderScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 val prog = liveProgression
-                val pageInfo = "${(prog * 100).toInt()}%"
+                val pageInfo = pageIndicatorText
 
                 ReaderBottomBar(
                     progression = prog,
@@ -435,8 +501,12 @@ fun ReaderScreen(
                 onQueryChange = onSearchQueryChange,
                 onSearch = executeSearch,
                 onResultClick = { locator ->
-                    epubController.goTo?.invoke(locator)
-                    epubController.highlightSearchResult?.invoke(locator)
+                    if (epubController.goToSearchResult != null) {
+                        epubController.goToSearchResult?.invoke(locator)
+                    } else {
+                        epubController.goTo?.invoke(locator)
+                        epubController.highlightSearchResult?.invoke(locator)
+                    }
                     onDismissSearch()
                 },
                 onDismiss = onDismissSearch

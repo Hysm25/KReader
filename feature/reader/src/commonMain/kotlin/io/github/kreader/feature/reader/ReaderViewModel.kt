@@ -324,6 +324,10 @@ class ReaderViewModel(
         _uiState.update { it.copy(tocItems = toc) }
     }
 
+    fun setTotalPageCount(count: Int) {
+        _uiState.update { it.copy(totalPageCount = count) }
+    }
+
     fun saveCustomTheme(newTheme: CustomTheme) {
         scope.launch {
             bookRepository.saveCustomTheme(newTheme)
