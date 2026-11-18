@@ -43,7 +43,8 @@ data class ReaderTypographyOverride(
     val letterSpacingSp: Float? = null,
     val textAlignment: ReaderTypography.TextAlignment? = null,
     val paddingHorizontal: Int? = null,
-    val paddingVertical: Int? = null
+    val paddingVertical: Int? = null,
+    val overrideFont: Boolean? = null
 ) {
     fun isEmpty(): Boolean =
         fontFamily == null &&
@@ -52,7 +53,8 @@ data class ReaderTypographyOverride(
         letterSpacingSp == null &&
         textAlignment == null &&
         paddingHorizontal == null &&
-        paddingVertical == null
+        paddingVertical == null &&
+        overrideFont == null
 }
 
 @Serializable
@@ -91,7 +93,8 @@ fun ReaderPreferences.mergeWith(override: ReaderPreferencesOverride?): ReaderPre
             letterSpacingSp = override.typography.letterSpacingSp ?: this.typography.letterSpacingSp,
             textAlignment = override.typography.textAlignment ?: this.typography.textAlignment,
             paddingHorizontal = override.typography.paddingHorizontal ?: this.typography.paddingHorizontal,
-            paddingVertical = override.typography.paddingVertical ?: this.typography.paddingVertical
+            paddingVertical = override.typography.paddingVertical ?: this.typography.paddingVertical,
+            overrideFont = override.typography.overrideFont ?: this.typography.overrideFont
         )
     }
     return this.copy(

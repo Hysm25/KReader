@@ -101,13 +101,14 @@ class ModelSerializationTest {
             typography = ReaderTypography(fontFamily = "Default", fontSizeSp = 16f, lineHeightMultiplier = 1.4f)
         )
 
-        // Book overrides only fontFamily
+        // Book overrides only fontFamily and overrideFont
         val fontOverride = ReaderPreferencesOverride(
-            typography = ReaderTypographyOverride(fontFamily = "Amiri")
+            typography = ReaderTypographyOverride(fontFamily = "Amiri", overrideFont = true)
         )
 
         val merged = global.mergeWith(fontOverride)
         assertEquals("Amiri", merged.typography.fontFamily)
+        assertEquals(true, merged.typography.overrideFont)
         assertEquals(16f, merged.typography.fontSizeSp)
         assertEquals(1.4f, merged.typography.lineHeightMultiplier)
         assertEquals(ThemeMode.LIGHT, merged.theme.mode)
@@ -120,12 +121,14 @@ class ModelSerializationTest {
 
         val updatedMerged = updatedGlobal.mergeWith(fontOverride)
         assertEquals("Amiri", updatedMerged.typography.fontFamily) // Overridden property preserved
+        assertEquals(true, updatedMerged.typography.overrideFont)  // Overridden property preserved
         assertEquals(20f, updatedMerged.typography.fontSizeSp)     // Inherited from updated global
         assertEquals(ThemeMode.SEPIA, updatedMerged.theme.mode)    // Inherited from updated global
 
         // Null override inherits 100% of global
         val resetMerged = updatedGlobal.mergeWith(null)
         assertEquals("Default", resetMerged.typography.fontFamily)
+        assertEquals(false, resetMerged.typography.overrideFont)
         assertEquals(20f, resetMerged.typography.fontSizeSp)
         assertEquals(ThemeMode.SEPIA, resetMerged.theme.mode)
     }
@@ -136,7 +139,8 @@ class ModelSerializationTest {
             theme = ReaderTheme(mode = ThemeMode.DARK),
             typography = ReaderTypographyOverride(
                 fontFamily = "Scheherazade",
-                fontSizeSp = 22f
+                fontSizeSp = 22f,
+                overrideFont = true
             ),
             isScrollMode = true
         )
@@ -146,6 +150,7 @@ class ModelSerializationTest {
 
         assertEquals(ThemeMode.DARK, deserialized.theme?.mode)
         assertEquals("Scheherazade", deserialized.typography?.fontFamily)
+        assertEquals(true, deserialized.typography?.overrideFont)
         assertEquals(22f, deserialized.typography?.fontSizeSp)
         assertEquals(null, deserialized.typography?.lineHeightMultiplier)
         assertEquals(true, deserialized.isScrollMode)

@@ -298,7 +298,8 @@ class ReaderViewModel(
                     letterSpacingSp = if (newTypography.letterSpacingSp != prev.letterSpacingSp) newTypography.letterSpacingSp else prevTypo.letterSpacingSp,
                     textAlignment = if (newTypography.textAlignment != prev.textAlignment) newTypography.textAlignment else prevTypo.textAlignment,
                     paddingHorizontal = if (newTypography.paddingHorizontal != prev.paddingHorizontal) newTypography.paddingHorizontal else prevTypo.paddingHorizontal,
-                    paddingVertical = if (newTypography.paddingVertical != prev.paddingVertical) newTypography.paddingVertical else prevTypo.paddingVertical
+                    paddingVertical = if (newTypography.paddingVertical != prev.paddingVertical) newTypography.paddingVertical else prevTypo.paddingVertical,
+                    overrideFont = if (newTypography.overrideFont != prev.overrideFont) newTypography.overrideFont else prevTypo.overrideFont
                 )
                 (current ?: ReaderPreferencesOverride()).copy(typography = updatedTypo)
             }
@@ -361,12 +362,12 @@ class ReaderViewModel(
     fun importCustomFont(font: CustomFont) {
         scope.launch {
             bookRepository.addCustomFont(font)
-            val updatedTypography = _uiState.value.typography.copy(fontFamily = font.name)
+            val updatedTypography = _uiState.value.typography.copy(fontFamily = font.name, overrideFont = true)
             _uiState.update { it.copy(typography = updatedTypography) }
             bookRepository.updateBookPreferencesOverride(book.id) { current ->
                 val prevTypo = current?.typography ?: ReaderTypographyOverride()
                 (current ?: ReaderPreferencesOverride()).copy(
-                    typography = prevTypo.copy(fontFamily = font.name)
+                    typography = prevTypo.copy(fontFamily = font.name, overrideFont = true)
                 )
             }
         }

@@ -65,7 +65,7 @@ fun buildReadiumPreferences(
         ReadingProgression.LTR
     }
 
-    val fontFamily = if (typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true)) {
+    val fontFamily = if (!typography.overrideFont || typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true)) {
         null
     } else {
         FontFamily(typography.fontFamily)

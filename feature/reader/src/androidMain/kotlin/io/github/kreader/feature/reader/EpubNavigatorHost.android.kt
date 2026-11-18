@@ -13,6 +13,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.core.view.doOnLayout
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,7 +69,10 @@ import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
+import io.github.kreader.core.model.ThemeMode
 import io.github.kreader.core.model.ReaderTypography
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import io.github.kreader.core.model.isRtlLanguage
 import io.github.kreader.core.model.isRtlText
 import io.github.kreader.engine.epub.ReadiumEpubOpener
@@ -266,20 +272,26 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // 4. Inject custom @font-face CSS if user selected an imported font (cached & debounced)
+    // 4. Inject custom @font-face CSS if user selected an imported font and overrideFont is enabled
     var lastInjectedFontName by remember(book.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(currentFragment, typography.fontFamily, customFonts, isNavigatorReady) {
+    LaunchedEffect(currentFragment, typography.fontFamily, typography.overrideFont, customFonts, isNavigatorReady) {
         val frag = currentFragment ?: return@LaunchedEffect
         if (isNavigatorReady && frag.isAdded && frag.context != null) {
             val fontName = typography.fontFamily
-            if (fontName != lastInjectedFontName) {
-                val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                if (selectedCustomFont != null) {
-                    injectFontFace(frag, selectedCustomFont)
+            val shouldInject = typography.overrideFont && !fontName.equals("Default", ignoreCase = true)
+            val targetFontName = if (shouldInject) fontName else null
+            if (targetFontName != lastInjectedFontName) {
+                if (shouldInject) {
+                    val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                    if (selectedCustomFont != null) {
+                        injectFontFace(frag, selectedCustomFont)
+                    } else {
+                        clearFontFace(frag)
+                    }
                 } else {
                     clearFontFace(frag)
                 }
-                lastInjectedFontName = fontName
+                lastInjectedFontName = targetFontName
             }
         }
     }
@@ -476,10 +488,12 @@ actual fun EpubNavigatorHost(
                     override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
                         if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
                             scope.launch {
-                                val fontName = typography.fontFamily
-                                val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                                if (selectedCustomFont != null) {
-                                    injectFontFace(f, selectedCustomFont)
+                                if (typography.overrideFont) {
+                                    val fontName = typography.fontFamily
+                                    val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                                    if (selectedCustomFont != null) {
+                                        injectFontFace(f, selectedCustomFont)
+                                    }
                                 }
                             }
                         }
@@ -519,10 +533,12 @@ actual fun EpubNavigatorHost(
                                 )
                             }
                             scope.launch {
-                                val fontName = typography.fontFamily
-                                val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                                if (selectedCustomFont != null) {
-                                    injectFontFace(f, selectedCustomFont)
+                                if (typography.overrideFont) {
+                                    val fontName = typography.fontFamily
+                                    val selectedCustomFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                                    if (selectedCustomFont != null) {
+                                        injectFontFace(f, selectedCustomFont)
+                                    }
                                 }
                             }
                             isNavigatorReady = true
@@ -677,12 +693,13 @@ actual fun EpubNavigatorHost(
                 val currentSel = activeSelection
                 val rect = currentSel?.rect
 
-                val menuWidth = 264.dp
+                val swatches = rememberThemeHarmonizedSwatches(theme, isSystemInDarkTheme)
+                val menuWidth = (swatches.size * 34 + 110).dp
                 val menuHeight = 52.dp
                 val containerWidth = maxWidth
                 val containerHeight = maxHeight
 
-                val (menuX, menuY) = remember(rect, containerWidth, containerHeight, density) {
+                val (rawMenuX, rawMenuY) = remember(rect, containerWidth, containerHeight, density, menuWidth) {
                     if (rect != null) {
                         val leftDp = with(density) { rect.left.toDp() }
                         val rightDp = with(density) { rect.right.toDp() }
@@ -705,6 +722,17 @@ actual fun EpubNavigatorHost(
                     }
                 }
 
+                val menuX by animateDpAsState(
+                    targetValue = rawMenuX,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    label = "selectionMenuX"
+                )
+                val menuY by animateDpAsState(
+                    targetValue = rawMenuY,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    label = "selectionMenuY"
+                )
+
                 androidx.compose.animation.AnimatedVisibility(
                     visible = currentSel != null,
                     enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(150)) +
@@ -716,32 +744,10 @@ actual fun EpubNavigatorHost(
                     if (currentSel != null) {
                         Material3SelectionMenu(
                             selection = currentSel,
+                            swatches = swatches,
                             onHighlight = { colorHex ->
                                 val id = "hl_${System.currentTimeMillis()}_${(1000..9999).random()}"
                                 currentOnAddHighlight(id, currentSel.domainLocator, colorHex)
-                                val baseColor = try {
-                                    android.graphics.Color.parseColor(colorHex)
-                                } catch (_: Exception) {
-                                    android.graphics.Color.YELLOW
-                                }
-                                val tintColor = android.graphics.Color.argb(
-                                    77,
-                                    android.graphics.Color.red(baseColor),
-                                    android.graphics.Color.green(baseColor),
-                                    android.graphics.Color.blue(baseColor)
-                                )
-                                val deco = Decoration(
-                                    id = id,
-                                    locator = currentSel.readiumLocator,
-                                    style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
-                                )
-                                val frag = currentFragment
-                                if (frag != null && frag.isAdded && frag.context != null) {
-                                    scope.launch {
-                                        activeDecorations.add(deco)
-                                        frag.applyDecorations(activeDecorations.toList(), group = "highlights")
-                                    }
-                                }
                                 currentFragment?.clearSelection()
                                 currentSel.actionMode?.finish()
                                 activeSelection = null
@@ -773,33 +779,34 @@ actual fun EpubNavigatorHost(
                 }
             }
 
-            // Render Highlights as Decorations (guarded by isNavigatorReady & isAdded with subtle ~0.30f pastel alpha, strictly Highlight)
-            LaunchedEffect(currentFragment, highlights, isNavigatorReady) {
+            // Render Highlights as Decorations with theme-calibrated tint and deduplicated application
+            val isDarkTheme = when (theme.mode) {
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme
+                else -> false
+            }
+            val isSepia = theme.mode == ThemeMode.SEPIA
+
+            var lastAppliedHighlightsKey by remember(book.id) { mutableStateOf("") }
+            LaunchedEffect(currentFragment, highlights, isNavigatorReady, isDarkTheme, isSepia) {
                 val frag = currentFragment ?: return@LaunchedEffect
                 if (isNavigatorReady && frag.isAdded && frag.context != null) {
-                    runCatching {
-                        val decorations = highlights.map { h ->
-                            val baseColor = try {
-                                android.graphics.Color.parseColor(h.colorHex)
-                            } catch (_: Exception) {
-                                android.graphics.Color.YELLOW
+                    val currentKey = highlights.joinToString(";") { "${it.id}:${it.colorHex}:${it.locator.href}:${it.locator.locations.progression}" } + ":$isDarkTheme:$isSepia"
+                    if (currentKey != lastAppliedHighlightsKey) {
+                        runCatching {
+                            val decorations = highlights.map { h ->
+                                val tintColor = calculateHighlightTintColor(h.colorHex, isDarkTheme, isSepia)
+                                Decoration(
+                                    id = h.id,
+                                    locator = h.locator.toReadium(),
+                                    style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
+                                )
                             }
-                            // Apply soft translucent pastel transparency (~0.30f / 77 alpha int)
-                            val tintColor = android.graphics.Color.argb(
-                                77,
-                                android.graphics.Color.red(baseColor),
-                                android.graphics.Color.green(baseColor),
-                                android.graphics.Color.blue(baseColor)
-                            )
-                            Decoration(
-                                id = h.id,
-                                locator = h.locator.toReadium(),
-                                style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
-                            )
+                            activeDecorations.clear()
+                            activeDecorations.addAll(decorations)
+                            frag.applyDecorations(activeDecorations.toList(), group = "highlights")
+                            lastAppliedHighlightsKey = currentKey
                         }
-                        activeDecorations.clear()
-                        activeDecorations.addAll(decorations)
-                        frag.applyDecorations(activeDecorations.toList(), group = "highlights")
                     }
                 }
             }
@@ -818,9 +825,14 @@ actual fun EpubNavigatorHost(
                         val currHref = readiumLocator.href.toString().substringBefore('#')
                         if (currHref != lastSpineHref) {
                             lastSpineHref = currHref
-                            val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
-                            if (selectedFont != null) {
-                                injectFontFace(frag, selectedFont)
+                            if (typography.overrideFont) {
+                                val selectedFont = customFonts.find { it.name.equals(typography.fontFamily, ignoreCase = true) }
+                                if (selectedFont != null) {
+                                    injectFontFace(frag, selectedFont)
+                                }
+                            }
+                            if (activeDecorations.isNotEmpty()) {
+                                frag.applyDecorations(activeDecorations.toList(), group = "highlights")
                             }
                         }
 
@@ -952,6 +964,68 @@ private data class ActiveSelection(
     val actionMode: ActionMode?
 )
 
+private data class HighlightColorSwatch(
+    val hex: String,
+    val color: androidx.compose.ui.graphics.Color,
+    val name: String
+)
+
+@Composable
+private fun rememberThemeHarmonizedSwatches(theme: ReaderTheme, isSystemInDarkTheme: Boolean): List<HighlightColorSwatch> {
+    val isDark = when (theme.mode) {
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme
+        else -> false
+    }
+    val isSepia = theme.mode == ThemeMode.SEPIA
+
+    return remember(theme.mode, isDark, isSepia) {
+        when {
+            isSepia -> listOf(
+                HighlightColorSwatch("#F59E0B", androidx.compose.ui.graphics.Color(0xFFF59E0B), "Warm Amber"),
+                HighlightColorSwatch("#84CC16", androidx.compose.ui.graphics.Color(0xFF84CC16), "Warm Olive"),
+                HighlightColorSwatch("#0D9488", androidx.compose.ui.graphics.Color(0xFF0D9488), "Vintage Teal"),
+                HighlightColorSwatch("#E11D48", androidx.compose.ui.graphics.Color(0xFFE11D48), "Rose"),
+                HighlightColorSwatch("#78350F", androidx.compose.ui.graphics.Color(0xFF78350F), "Espresso Ink")
+            )
+            isDark -> listOf(
+                HighlightColorSwatch("#FACC15", androidx.compose.ui.graphics.Color(0xFFFACC15), "Goldenrod"),
+                HighlightColorSwatch("#4ADE80", androidx.compose.ui.graphics.Color(0xFF4ADE80), "Emerald Mint"),
+                HighlightColorSwatch("#38BDF8", androidx.compose.ui.graphics.Color(0xFF38BDF8), "Sky Cyan"),
+                HighlightColorSwatch("#F472B6", androidx.compose.ui.graphics.Color(0xFFF472B6), "Soft Rose"),
+                HighlightColorSwatch("#A5B4FC", androidx.compose.ui.graphics.Color(0xFFA5B4FC), "Luminous Iris")
+            )
+            else -> listOf(
+                HighlightColorSwatch("#FEF08A", androidx.compose.ui.graphics.Color(0xFFFEF08A), "Canary Yellow"),
+                HighlightColorSwatch("#BBF7D0", androidx.compose.ui.graphics.Color(0xFFBBF7D0), "Mint Green"),
+                HighlightColorSwatch("#BAE6FD", androidx.compose.ui.graphics.Color(0xFFBAE6FD), "Sky Blue"),
+                HighlightColorSwatch("#FBCFE8", androidx.compose.ui.graphics.Color(0xFFFBCFE8), "Pastel Pink"),
+                HighlightColorSwatch("#334155", androidx.compose.ui.graphics.Color(0xFF334155), "Deep Slate Ink")
+            )
+        }
+    }
+}
+
+private fun calculateHighlightTintColor(colorHex: String, isDark: Boolean, isSepia: Boolean): Int {
+    val base = try {
+        android.graphics.Color.parseColor(colorHex)
+    } catch (_: Exception) {
+        android.graphics.Color.YELLOW
+    }
+    val r = android.graphics.Color.red(base)
+    val g = android.graphics.Color.green(base)
+    val b = android.graphics.Color.blue(base)
+
+    val luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+
+    val alpha = when {
+        isDark -> if (luminance > 0.65) 75 else 95
+        isSepia -> if (luminance < 0.35) 55 else 82
+        else -> if (luminance < 0.35) 48 else 88
+    }
+    return android.graphics.Color.argb(alpha, r, g, b)
+}
+
 private class SelectionActionModeCallback(
     private val scope: CoroutineScope,
     private val fragmentProvider: () -> EpubNavigatorFragment?,
@@ -959,35 +1033,29 @@ private class SelectionActionModeCallback(
     private val onSelectionDismissed: () -> Unit
 ) : ActionMode.Callback {
 
+    private var updateJob: Job? = null
+
     override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
         menu?.clear()
         mode?.title = ""
         mode?.subtitle = ""
-        val fragment = fragmentProvider() ?: return true
-        scope.launch {
-            val selection = fragment.currentSelection()
-            if (selection != null) {
-                val rect = selection.rect?.let { r ->
-                    SelectionRect(r.left, r.top, r.right, r.bottom)
-                }
-                onSelectionActive(
-                    ActiveSelection(
-                        readiumLocator = selection.locator,
-                        domainLocator = selection.locator.toDomain(),
-                        text = selection.locator.text.highlight ?: "",
-                        rect = rect,
-                        actionMode = mode
-                    )
-                )
-            }
-        }
+        fetchSelection(mode, debounceMs = 0L)
         return true
     }
 
     override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
         menu?.clear()
-        val fragment = fragmentProvider() ?: return false
-        scope.launch {
+        fetchSelection(mode, debounceMs = 16L)
+        return false
+    }
+
+    private fun fetchSelection(mode: ActionMode?, debounceMs: Long) {
+        updateJob?.cancel()
+        updateJob = scope.launch {
+            if (debounceMs > 0) {
+                delay(debounceMs)
+            }
+            val fragment = fragmentProvider() ?: return@launch
             val selection = fragment.currentSelection()
             if (selection != null) {
                 val rect = selection.rect?.let { r ->
@@ -1004,12 +1072,12 @@ private class SelectionActionModeCallback(
                 )
             }
         }
-        return false
     }
 
     override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean = false
 
     override fun onDestroyActionMode(mode: ActionMode?) {
+        updateJob?.cancel()
         onSelectionDismissed()
     }
 }
@@ -1017,20 +1085,12 @@ private class SelectionActionModeCallback(
 @Composable
 private fun Material3SelectionMenu(
     selection: ActiveSelection,
+    swatches: List<HighlightColorSwatch>,
     onHighlight: (colorHex: String) -> Unit,
     onAddNote: () -> Unit,
     onCopy: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val highlightColors = remember {
-        listOf(
-            "#FEF08A", // Yellow
-            "#BBF7D0", // Green
-            "#BAE6FD", // Blue
-            "#FBCFE8"  // Pink
-        )
-    }
-
     ElevatedCard(
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.elevatedCardColors(
@@ -1046,14 +1106,11 @@ private fun Material3SelectionMenu(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            highlightColors.forEach { colorHex ->
-                val parsedColor = remember(colorHex) {
-                    androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(colorHex))
-                }
+            swatches.forEach { swatch ->
                 Surface(
-                    onClick = { onHighlight(colorHex) },
+                    onClick = { onHighlight(swatch.hex) },
                     shape = CircleShape,
-                    color = parsedColor,
+                    color = swatch.color,
                     modifier = Modifier.size(28.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 ) {}

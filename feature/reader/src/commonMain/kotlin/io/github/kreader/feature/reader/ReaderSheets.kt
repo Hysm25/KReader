@@ -1342,7 +1342,42 @@ fun ReaderSettingsSheet(
                         }
 
                         ReaderSettingsTab.TYPOGRAPHY -> {
-                            // 1. Font Family Card
+                            // 1. Override Font Toggle Card
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Override Font",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = if (typography.overrideFont) "Enforcing custom font across publication" else "Using publisher's embedded fonts",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = typography.overrideFont,
+                                        onCheckedChange = { checked ->
+                                            onTypographyChange(typography.copy(overrideFont = checked))
+                                        }
+                                    )
+                                }
+                            }
+
+                            // 2. Font Family Card
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -1374,31 +1409,45 @@ fun ReaderSettingsSheet(
                                         }
                                     }
 
+                                    val baseFontOptions = listOf("Default", "Serif", "Sans-Serif", "Monospace")
+                                    val allAvailableFonts = baseFontOptions + customFonts.map { it.name }.filterNot { it in baseFontOptions }
+
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        FilterChip(
-                                            selected = typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true),
-                                            onClick = { onTypographyChange(typography.copy(fontFamily = "Default")) },
-                                            label = { Text("Default") }
-                                        )
-                                        for (font in customFonts) {
+                                        for (fontName in allAvailableFonts) {
+                                            val isDefault = fontName.equals("Default", ignoreCase = true)
+                                            val isSelected = if (!typography.overrideFont) {
+                                                isDefault
+                                            } else {
+                                                typography.fontFamily.equals(fontName, ignoreCase = true)
+                                            }
+                                            val isCustomFont = customFonts.any { it.name.equals(fontName, ignoreCase = true) }
+
                                             FilterChip(
-                                                selected = typography.fontFamily.equals(font.name, ignoreCase = true),
-                                                onClick = { onTypographyChange(typography.copy(fontFamily = font.name)) },
-                                                label = { Text(font.name) },
-                                                trailingIcon = {
-                                                    Icon(
-                                                        imageVector = Icons.Rounded.Close,
-                                                        contentDescription = "Delete ${font.name}",
-                                                        modifier = Modifier
-                                                            .size(16.dp)
-                                                            .clickable { onDeleteCustomFont(font.name) }
-                                                    )
-                                                }
+                                                selected = isSelected,
+                                                onClick = {
+                                                    if (isDefault) {
+                                                        onTypographyChange(typography.copy(fontFamily = "Default", overrideFont = false))
+                                                    } else {
+                                                        onTypographyChange(typography.copy(fontFamily = fontName, overrideFont = true))
+                                                    }
+                                                },
+                                                label = { Text(if (isDefault) "Default (Publisher)" else fontName) },
+                                                trailingIcon = if (isCustomFont) {
+                                                    {
+                                                        Icon(
+                                                            imageVector = Icons.Rounded.Close,
+                                                            contentDescription = "Delete $fontName",
+                                                            modifier = Modifier
+                                                                .size(16.dp)
+                                                                .clickable { onDeleteCustomFont(fontName) }
+                                                        )
+                                                    }
+                                                } else null
                                             )
                                         }
                                     }

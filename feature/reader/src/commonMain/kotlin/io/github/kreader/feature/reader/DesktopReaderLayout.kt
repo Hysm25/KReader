@@ -1124,11 +1124,17 @@ private fun DesktopAppearancePopover(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 allFonts.take(4).forEach { fontName ->
-                    val isSelected = typography.fontFamily.equals(fontName, ignoreCase = true) ||
-                        (fontName == "Default" && (typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true)))
+                    val isSelected = if (!typography.overrideFont || typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true)) {
+                        fontName == "Default"
+                    } else {
+                        typography.fontFamily.equals(fontName, ignoreCase = true)
+                    }
                     FilterChip(
                         selected = isSelected,
-                        onClick = { onTypographyChange(typography.copy(fontFamily = fontName)) },
+                        onClick = {
+                            val override = fontName != "Default"
+                            onTypographyChange(typography.copy(fontFamily = fontName, overrideFont = override))
+                        },
                         label = { Text(fontName, fontSize = 11.sp) },
                         modifier = Modifier.height(32.dp)
                     )
@@ -1141,10 +1147,12 @@ private fun DesktopAppearancePopover(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     allFonts.drop(4).forEach { fontName ->
-                        val isSelected = typography.fontFamily.equals(fontName, ignoreCase = true)
+                        val isSelected = typography.overrideFont && typography.fontFamily.equals(fontName, ignoreCase = true)
                         FilterChip(
                             selected = isSelected,
-                            onClick = { onTypographyChange(typography.copy(fontFamily = fontName)) },
+                            onClick = {
+                                onTypographyChange(typography.copy(fontFamily = fontName, overrideFont = true))
+                            },
                             label = { Text(fontName, fontSize = 11.sp) },
                             modifier = Modifier.height(32.dp)
                         )

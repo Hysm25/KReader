@@ -28,7 +28,8 @@ class EpubPreferencesAndLayoutTest {
             paddingHorizontal = 24,
             paddingVertical = 16,
             textAlignment = ReaderTypography.TextAlignment.JUSTIFY,
-            fontFamily = "Cinzel"
+            fontFamily = "Cinzel",
+            overrideFont = true
         )
 
         val preferences = buildReadiumPreferences(
@@ -57,7 +58,7 @@ class EpubPreferencesAndLayoutTest {
         // Text alignment justified
         assertEquals(TextAlign.JUSTIFY, preferences.textAlign)
 
-        // Font family set
+        // Font family set when overrideFont is true
         assertEquals("Cinzel", preferences.fontFamily?.name)
 
         // Reading progression LTR
@@ -70,6 +71,44 @@ class EpubPreferencesAndLayoutTest {
     }
 
     @Test
+    fun testEpubPreferences_overrideFontToggleControlsFontFamilyEnforcement() {
+        val theme = ReaderTheme(mode = ThemeMode.LIGHT)
+
+        // When overrideFont is false, custom/bundled font must NOT be enforced (publisher font preserved)
+        val typographyNoOverride = ReaderTypography(
+            fontFamily = "Cinzel",
+            overrideFont = false
+        )
+        val prefsNoOverride = buildReadiumPreferences(
+            theme = theme,
+            typography = typographyNoOverride,
+            isScrollMode = false,
+            isRtl = false
+        )
+        assertNull(
+            prefsNoOverride.fontFamily,
+            "When overrideFont is false, fontFamily must be null so publication's embedded font is respected"
+        )
+
+        // When overrideFont is true, fontFamily must be explicitly enforced
+        val typographyWithOverride = ReaderTypography(
+            fontFamily = "Cinzel",
+            overrideFont = true
+        )
+        val prefsWithOverride = buildReadiumPreferences(
+            theme = theme,
+            typography = typographyWithOverride,
+            isScrollMode = false,
+            isRtl = false
+        )
+        assertEquals(
+            "Cinzel",
+            prefsWithOverride.fontFamily?.name,
+            "When overrideFont is true, fontFamily must be set to the selected font"
+        )
+    }
+
+    @Test
     fun testEpubPreferences_arabicRtlProgressionAndDefaultAlignment() {
         val theme = ReaderTheme(mode = ThemeMode.LIGHT)
         val typography = ReaderTypography(
@@ -77,7 +116,8 @@ class EpubPreferencesAndLayoutTest {
             lineHeightMultiplier = 1.5f,
             paddingHorizontal = 16,
             textAlignment = ReaderTypography.TextAlignment.DEFAULT,
-            fontFamily = "Amiri"
+            fontFamily = "Amiri",
+            overrideFont = true
         )
 
         val preferences = buildReadiumPreferences(
@@ -101,6 +141,7 @@ class EpubPreferencesAndLayoutTest {
             "DEFAULT text alignment must map to null in EpubPreferences so publisher alignment / RTL flow is not clobbered"
         )
 
+        assertEquals("Amiri", preferences.fontFamily?.name)
         assertTrue(preferences.scroll ?: false)
     }
 
@@ -166,6 +207,7 @@ class EpubPreferencesAndLayoutTest {
         // are not forced into justify/start.
         val defaultTypography = ReaderTypography()
         assertEquals(ReaderTypography.TextAlignment.DEFAULT, defaultTypography.textAlignment)
+        assertFalse(defaultTypography.overrideFont)
 
         val prefs = buildReadiumPreferences(
             theme = ReaderTheme(mode = ThemeMode.LIGHT),
@@ -178,7 +220,9 @@ class EpubPreferencesAndLayoutTest {
         // user custom property --USER__textAlign is not set, leaving HTML5/CSS defaults:
         // <hr> maintains margin-left: auto; margin-right: auto; (centered)
         // <h1>-<h6> and blockquotes maintain their semantic publisher styling.
+        // fontFamily is null so publisher embedded fonts are respected.
         assertNull(prefs.textAlign)
+        assertNull(prefs.fontFamily)
         assertFalse(prefs.publisherStyles ?: true)
     }
 }
