@@ -18,100 +18,81 @@ cp "$SCRIPT_DIR/kreader.svg" "$BUILD_DIR/"
 echo "==> Locating compiled JARs and native libraries from Gradle build..."
 JAR_COUNT=0
 
-# Check Compose Desktop output locations:
-# In Compose Desktop createDistributable, JARs are placed in:
-# composeApp/build/compose/binaries/main/app/kreader/lib/app/*.jar OR lib/*.jar
-SEARCH_DIRS=(
-    "$ROOT_DIR/composeApp/build/compose/binaries/main/app/kreader/lib/app"
-    "$ROOT_DIR/composeApp/build/compose/binaries/main/app/kreader/lib"
-    "$ROOT_DIR/composeApp/build/compose/binaries/main/app"
-    "$ROOT_DIR/composeApp/build/compose/binaries/main"
-    "$ROOT_DIR/composeApp/build/libs"
-)
-
-for dir in "${SEARCH_DIRS[@]}"; do
-    if [ -d "$dir" ]; then
-        echo "--> Scanning directory: $dir"
-        find "$dir" -maxdepth 2 -type f -name "*.jar" ! -path "*/runtime/*" -exec cp -f {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
-    fi
-done
-
-JAR_COUNT=$(find "$BUILD_DIR/lib" -type f -name "*.jar" | wc -l)
-
-# Fallback: search anywhere in composeApp/build for .jar files if still 0
-if [ "$JAR_COUNT" -eq 0 ]; then
-    echo "--> Performing broader search under $ROOT_DIR/composeApp/build..."
-    find "$ROOT_DIR/composeApp/build" -type f -name "*.jar" ! -path "*/runtime/*" ! -path "*/tmp/*" ! -path "*/transformed/*" -exec cp -f {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
-    JAR_COUNT=$(find "$BUILD_DIR/lib" -type f -name "*.jar" | wc -l)
+# Primary Compose Desktop application distribution directory
+COMPOSE_APP_DIR="$ROOT_DIR/composeApp/build/compose/binaries/main/app/kreader/lib/app"
+if [ ! -d "$COMPOSE_APP_DIR" ]; then
+    COMPOSE_APP_DIR="$ROOT_DIR/composeApp/build/compose/binaries/main/app/kreader/lib"
 fi
 
+if [ -d "$COMPOSE_APP_DIR" ]; then
+    echo "--> Staging desktop application and dependency JARs from: $COMPOSE_APP_DIR"
+    find "$COMPOSE_APP_DIR" -maxdepth 1 -type f -name "*.jar" -exec cp -f {} "$BUILD_DIR/lib/" \;
+else
+    # Fallback search if createDistributable directory differs
+    echo "--> Performing fallback search for Compose Desktop JARs..."
+    find "$ROOT_DIR/composeApp/build/compose/binaries/main" -maxdepth 4 -type f -name "*.jar" ! -path "*/runtime/*" -exec cp -f {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
+fi
+
+JAR_COUNT=$(find "$BUILD_DIR/lib" -type f -name "*.jar" | wc -l)
 echo "==> Total application and dependency JARs staged: $JAR_COUNT"
+
 if [ "$JAR_COUNT" -eq 0 ]; then
-    echo "ERROR: No JAR libraries found under $ROOT_DIR/composeApp/build." >&2
+    echo "ERROR: No JAR libraries found under Compose Desktop output." >&2
     echo "Ensure './gradlew :composeApp:createDistributable' was executed first." >&2
     exit 1
 fi
 
-# Copy any standalone native .so libraries from Compose build
-echo "==> Scanning for native libraries (*.so)..."
-find "$ROOT_DIR/composeApp/build" -type f -name "*.so" ! -path "*/runtime/*" ! -path "*/tmp/*" -exec cp -f -v {} "$BUILD_DIR/lib/" \; 2>/dev/null || true
+# Locate and stage only the x86_64 Skiko native runtime (.so)
+echo "==> Staging Linux x64 Skiko native library..."
+SKIKO_SO=$(find "$COMPOSE_APP_DIR" -maxdepth 1 -type f -name "libskiko-linux-x64.so" 2>/dev/null | head -n 1)
+if [ -z "$SKIKO_SO" ]; then
+    SKIKO_SO=$(find "$ROOT_DIR/composeApp/build" -type f -name "libskiko-linux-x64.so" ! -path "*/runtime/*" 2>/dev/null | head -n 1)
+fi
 
-# If Skiko native runtime JAR is present, unpack native binaries so they are available standalone
+if [ -n "$SKIKO_SO" ] && [ -f "$SKIKO_SO" ]; then
+    cp -f "$SKIKO_SO" "$BUILD_DIR/lib/libskiko-linux-x64.so"
+fi
+
+# If Skiko native runtime JAR is present, extract native binaries if .so was not already found
 SKIKO_JAR=$(find "$BUILD_DIR/lib" -name "*skiko-awt-runtime-linux-x64*.jar" 2>/dev/null | head -n 1)
-if [ -z "$SKIKO_JAR" ]; then
-    SKIKO_JAR=$(find "$ROOT_DIR/composeApp/build" -name "*skiko-awt-runtime-linux-x64*.jar" 2>/dev/null | head -n 1)
-    if [ -n "$SKIKO_JAR" ] && [ -f "$SKIKO_JAR" ]; then
-        echo "--> Found Skiko JAR in build tree: $SKIKO_JAR"
-        cp -f "$SKIKO_JAR" "$BUILD_DIR/lib/"
-    fi
-fi
-
-if [ -n "$SKIKO_JAR" ] && [ -f "$SKIKO_JAR" ]; then
-    echo "==> Found Skiko native runtime JAR: $(basename "$SKIKO_JAR")"
-    echo "==> Extracting native binaries (*.so, *.sha256) from Skiko JAR..."
+if [ ! -f "$BUILD_DIR/lib/libskiko-linux-x64.so" ] && [ -n "$SKIKO_JAR" ] && [ -f "$SKIKO_JAR" ]; then
+    echo "==> Extracting native binaries (*.so, *.sha256) from Skiko runtime JAR..."
     if command -v unzip >/dev/null 2>&1; then
-        unzip -q -o "$SKIKO_JAR" "*.so" "*.sha256" -d "$BUILD_DIR/lib/" 2>/dev/null || true
-    fi
-    if command -v python3 >/dev/null 2>&1; then
-        python3 -c "
-import zipfile
-with zipfile.ZipFile('$SKIKO_JAR', 'r') as z:
-    for name in z.namelist():
-        if name.endswith('.so') or name.endswith('.sha256'):
-            z.extract(name, '$BUILD_DIR/lib/')
-" 2>/dev/null || true
+        unzip -q -o "$SKIKO_JAR" "libskiko-linux-x64.so" "libskiko-linux-x64.so.sha256" -d "$BUILD_DIR/lib/" 2>/dev/null || true
     fi
 fi
 
-# Ensure libskiko-linux-x64.so.sha256 is generated if libskiko-linux-x64.so is present
+# Strip debug symbols from native library to reduce package bloat
 if [ -f "$BUILD_DIR/lib/libskiko-linux-x64.so" ]; then
-    echo "==> Ensuring libskiko-linux-x64.so.sha256 is present and valid..."
+    if command -v strip >/dev/null 2>&1; then
+        echo "==> Stripping debug symbols from libskiko-linux-x64.so..."
+        strip --strip-unneeded "$BUILD_DIR/lib/libskiko-linux-x64.so" 2>/dev/null || true
+    fi
+    # Generate canonical sha256 checksum matching the staged binary
+    echo "==> Generating canonical libskiko-linux-x64.so.sha256 checksum..."
     sha256sum "$BUILD_DIR/lib/libskiko-linux-x64.so" | awk '{print $1}' | tr -d '\n' > "$BUILD_DIR/lib/libskiko-linux-x64.so.sha256"
 fi
 
-# Inject Skiko native library and sha256 resource into JARs so getResourceAsStream finds them
+# Inject ONLY the 64-byte sha256 resource into Skiko/Compose JARs for classloader verification
 if command -v python3 >/dev/null 2>&1; then
     python3 -c "
 import glob, os, zipfile
 
 build_lib = '$BUILD_DIR/lib'
-so_file = os.path.join(build_lib, 'libskiko-linux-x64.so')
 sha_file = os.path.join(build_lib, 'libskiko-linux-x64.so.sha256')
 
 if os.path.exists(sha_file):
     for jar in glob.glob(os.path.join(build_lib, '*.jar')):
         bname = os.path.basename(jar).lower()
         if 'skiko' in bname or 'composeapp' in bname:
-            print(f'--> Injecting Skiko runtime assets into {os.path.basename(jar)}')
+            print(f'--> Injecting Skiko sha256 checksum into {os.path.basename(jar)}')
             with zipfile.ZipFile(jar, 'a') as zf:
                 zf.write(sha_file, 'libskiko-linux-x64.so.sha256')
-                if os.path.exists(so_file) and 'skiko' in bname:
-                    zf.write(so_file, 'libskiko-linux-x64.so')
-" 2>/dev/null || true
+"
 fi
 
 if [ -f "$BUILD_DIR/lib/libskiko-linux-x64.so" ] && [ -f "$BUILD_DIR/lib/libskiko-linux-x64.so.sha256" ]; then
-    echo "==> Skiko native runtime verified in $BUILD_DIR/lib/:"
+    echo "==> Lean Skiko native runtime staged in $BUILD_DIR/lib/:"
     echo "    - libskiko-linux-x64.so ($(ls -lh "$BUILD_DIR/lib/libskiko-linux-x64.so" | awk '{print $5}'))"
     echo "    - libskiko-linux-x64.so.sha256 ($(cat "$BUILD_DIR/lib/libskiko-linux-x64.so.sha256"))"
 else
@@ -119,7 +100,9 @@ else
 fi
 
 cd "$BUILD_DIR"
-echo "==> Running makepkg..."
+echo "==> Running makepkg with optimized zstd level 19 compression..."
+export PKGEXT='.pkg.tar.zst'
+export COMPRESSZST=(zstd -c -z -q -19 -T0 -)
 makepkg --nodeps --noconfirm -f
 
 echo "==> Generated packages:"

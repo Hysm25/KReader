@@ -28,6 +28,7 @@ actual fun EpubNavigatorHost(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
+    isTwoPageSpread: Boolean,
     controller: EpubNavigatorController,
     customFonts: List<CustomFont>,
     highlights: List<Highlight>,

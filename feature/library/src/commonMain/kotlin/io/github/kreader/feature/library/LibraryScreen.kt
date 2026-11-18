@@ -91,6 +91,25 @@ fun LibraryScreen(
     }
     val bookShareLauncher = rememberBookShareLauncher()
 
+    if (io.github.kreader.feature.library.util.isDesktopPlatform) {
+        DesktopLibraryLayout(
+            state = state,
+            onBookClick = onBookClick,
+            onSelectVaultFolder = onSelectVaultFolder,
+            onRefreshVault = onRefreshVault,
+            onChangeVaultFolder = onChangeVaultFolder,
+            onOpenGlobalSettings = onOpenGlobalSettings,
+            onDeleteBook = onDeleteBook,
+            onDeleteBooks = onDeleteBooks,
+            onResetBookProgress = onResetBookProgress,
+            onSearchQueryChanged = onSearchQueryChanged,
+            onSortOrderChanged = onSortOrderChanged,
+            onExportBookToMarkdown = onExportBookToMarkdown,
+            modifier = modifier
+        )
+        return
+    }
+
     var selectedBookIds by remember { mutableStateOf(emptySet<String>()) }
     var showMultiDeleteDialog by remember { mutableStateOf(false) }
     val isSelectionMode = selectedBookIds.isNotEmpty()

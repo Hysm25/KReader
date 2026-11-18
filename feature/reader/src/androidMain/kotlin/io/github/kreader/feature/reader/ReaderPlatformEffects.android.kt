@@ -10,6 +10,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import io.github.kreader.core.model.OrientationLock
 
+actual val isDesktopPlatform: Boolean = false
+
 @Composable
 actual fun KeepScreenOn(enabled: Boolean) {
     val view = LocalView.current

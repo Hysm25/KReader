@@ -42,7 +42,9 @@ fun App() {
 
     LaunchedEffect(incomingSource) {
         val src = incomingSource ?: return@LaunchedEffect
-        libraryViewModel.importBook(src)
+        libraryViewModel.importBook(src) { importedBook ->
+            selectedBook = importedBook
+        }
         ExternalBookOpener.clear()
     }
 

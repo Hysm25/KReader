@@ -17,6 +17,7 @@ expect fun EpubNavigatorHost(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
+    isTwoPageSpread: Boolean = true,
     controller: EpubNavigatorController,
     customFonts: List<CustomFont> = emptyList(),
     highlights: List<Highlight> = emptyList(),

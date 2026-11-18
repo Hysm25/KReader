@@ -10,6 +10,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +63,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
@@ -95,6 +99,7 @@ actual fun EpubNavigatorHost(
     theme: ReaderTheme,
     typography: ReaderTypography,
     isScrollMode: Boolean,
+    isTwoPageSpread: Boolean,
     controller: EpubNavigatorController,
     customFonts: List<CustomFont>,
     highlights: List<Highlight>,
@@ -120,7 +125,7 @@ actual fun EpubNavigatorHost(
 
     // Page-based navigation state (for non-scroll mode)
     var currentPageIndex by remember { mutableIntStateOf(0) }
-    val blocksPerPage = 4
+    val blocksPerPage = 6
 
     // Decoded image cache
     val imageCache = remember { mutableStateMapOf<String, ImageBitmap>() }
@@ -311,10 +316,10 @@ actual fun EpubNavigatorHost(
             }
         }
         controller.goNext = {
-            if (isRtl) retreatPage() else advancePage()
+            advancePage()
         }
         controller.goPrevious = {
-            if (isRtl) advancePage() else retreatPage()
+            retreatPage()
         }
         controller.seekToProgression = { targetProgression ->
             val doc = document
@@ -366,7 +371,11 @@ actual fun EpubNavigatorHost(
                             if (isRtl) advancePage() else retreatPage()
                             true
                         }
-                        Key.Spacebar, Key.PageDown -> {
+                        Key.Spacebar -> {
+                            if (event.isShiftPressed) retreatPage() else advancePage()
+                            true
+                        }
+                        Key.PageDown -> {
                             advancePage()
                             true
                         }
@@ -399,71 +408,23 @@ actual fun EpubNavigatorHost(
                 }
             }
             isScrollMode -> {
-                // Continuous Scroll Viewport
+                // Continuous Scroll Viewport (Constrained line length, centered)
                 val listState = rememberLazyListState()
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(
-                            horizontal = typography.paddingHorizontal.dp,
-                            vertical = typography.paddingVertical.dp
-                        )
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopCenter
                 ) {
-                    items(currentBlocks, key = { it.id }) { block ->
-                        RenderBlock(
-                            block = block,
-                            highlights = highlights,
-                            textColor = textColor,
-                            fontFamily = activeFontFamily,
-                            typography = typography,
-                            isRtl = isRtl,
-                            document = document,
-                            currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
-                            imageCache = imageCache,
-                            onHighlightClicked = onHighlightClicked,
-                            onAddHighlight = { id, quote, colorHex ->
-                                val loc = Locator(
-                                    href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                    type = "application/xhtml+xml",
-                                    text = Locator.LocatorText(highlight = quote)
-                                )
-                                onAddHighlight(id, loc, colorHex)
-                            },
-                            onAddNoteRequested = { quote ->
-                                val loc = Locator(
-                                    href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                    type = "application/xhtml+xml",
-                                    text = Locator.LocatorText(highlight = quote)
-                                )
-                                onAddNoteRequested(loc, quote)
-                            }
-                        )
-                        Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.4f).dp))
-                    }
-                }
-            }
-            else -> {
-                // Paginated Viewport
-                val startIdx = currentPageIndex * blocksPerPage
-                val endIdx = (startIdx + blocksPerPage).coerceAtMost(currentBlocks.size)
-                val visibleBlocks = if (startIdx < currentBlocks.size) currentBlocks.subList(startIdx, endIdx) else emptyList()
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(
-                            horizontal = typography.paddingHorizontal.dp,
-                            vertical = typography.paddingVertical.dp
-                        ),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(
+                    LazyColumn(
+                        state = listState,
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
+                            .fillMaxHeight()
+                            .widthIn(max = 760.dp)
+                            .padding(
+                                horizontal = typography.paddingHorizontal.dp,
+                                vertical = typography.paddingVertical.dp
+                            )
                     ) {
-                        for (block in visibleBlocks) {
+                        items(currentBlocks, key = { it.id }) { block ->
                             RenderBlock(
                                 block = block,
                                 highlights = highlights,
@@ -492,46 +453,176 @@ actual fun EpubNavigatorHost(
                                     onAddNoteRequested(loc, quote)
                                 }
                             )
-                            Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
+                            Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.4f).dp))
                         }
                     }
+                }
+            }
+            else -> {
+                // Paginated Viewport: Responsive Two-Page Spread on Widescreen or Centered Single Page
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val isWideScreen = isTwoPageSpread && maxWidth >= 960.dp
 
-                    // Navigation Footer Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { if (isRtl) advancePage() else retreatPage() },
-                            enabled = currentSpineIndex > 0 || currentPageIndex > 0
+                    if (isWideScreen) {
+                        // Two-Page Spread: Left Column & Right Column with Center Spine Divider
+                        val perColumn = 3
+                        val totalPerSpread = perColumn * 2
+                        val startIdx = currentPageIndex * totalPerSpread
+                        val page1End = (startIdx + perColumn).coerceAtMost(currentBlocks.size)
+                        val page2End = (startIdx + totalPerSpread).coerceAtMost(currentBlocks.size)
+
+                        val page1Blocks = if (startIdx < currentBlocks.size) currentBlocks.subList(startIdx, page1End) else emptyList()
+                        val page2Blocks = if (page1End < currentBlocks.size) currentBlocks.subList(page1End, page2End) else emptyList()
+
+                        // In RTL: Page 1 is on right, Page 2 is on left!
+                        val leftBlocks = if (isRtl) page2Blocks else page1Blocks
+                        val rightBlocks = if (isRtl) page1Blocks else page2Blocks
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .widthIn(max = 1140.dp)
+                                .padding(horizontal = 24.dp, vertical = typography.paddingVertical.dp),
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(
-                                imageVector = if (isRtl) Icons.AutoMirrored.Filled.ArrowForward else Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Previous Page",
-                                tint = textColor.copy(alpha = 0.7f)
+                            // Left Page Column
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .padding(end = 24.dp)
+                            ) {
+                                for (block in leftBlocks) {
+                                    RenderBlock(
+                                        block = block,
+                                        highlights = highlights,
+                                        textColor = textColor,
+                                        fontFamily = activeFontFamily,
+                                        typography = typography,
+                                        isRtl = isRtl,
+                                        document = document,
+                                        currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
+                                        imageCache = imageCache,
+                                        onHighlightClicked = onHighlightClicked,
+                                        onAddHighlight = { id, quote, colorHex ->
+                                            val loc = Locator(
+                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
+                                                type = "application/xhtml+xml",
+                                                text = Locator.LocatorText(highlight = quote)
+                                            )
+                                            onAddHighlight(id, loc, colorHex)
+                                        },
+                                        onAddNoteRequested = { quote ->
+                                            val loc = Locator(
+                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
+                                                type = "application/xhtml+xml",
+                                                text = Locator.LocatorText(highlight = quote)
+                                            )
+                                            onAddNoteRequested(loc, quote)
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
+                                }
+                            }
+
+                            // Book Spine Crease Vertical Divider
+                            VerticalDivider(
+                                color = textColor.copy(alpha = 0.12f),
+                                thickness = 1.dp,
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .padding(vertical = 12.dp)
                             )
+
+                            // Right Page Column
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .padding(start = 24.dp)
+                            ) {
+                                for (block in rightBlocks) {
+                                    RenderBlock(
+                                        block = block,
+                                        highlights = highlights,
+                                        textColor = textColor,
+                                        fontFamily = activeFontFamily,
+                                        typography = typography,
+                                        isRtl = isRtl,
+                                        document = document,
+                                        currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
+                                        imageCache = imageCache,
+                                        onHighlightClicked = onHighlightClicked,
+                                        onAddHighlight = { id, quote, colorHex ->
+                                            val loc = Locator(
+                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
+                                                type = "application/xhtml+xml",
+                                                text = Locator.LocatorText(highlight = quote)
+                                            )
+                                            onAddHighlight(id, loc, colorHex)
+                                        },
+                                        onAddNoteRequested = { quote ->
+                                            val loc = Locator(
+                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
+                                                type = "application/xhtml+xml",
+                                                text = Locator.LocatorText(highlight = quote)
+                                            )
+                                            onAddNoteRequested(loc, quote)
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
+                                }
+                            }
                         }
+                    } else {
+                        // Single Page Column (Centered & Constrained)
+                        val startIdx = currentPageIndex * blocksPerPage
+                        val endIdx = (startIdx + blocksPerPage).coerceAtMost(currentBlocks.size)
+                        val visibleBlocks = if (startIdx < currentBlocks.size) currentBlocks.subList(startIdx, endIdx) else emptyList()
 
-                        val maxPages = ((currentBlocks.size + blocksPerPage - 1) / blocksPerPage).coerceAtLeast(1)
-                        Text(
-                            text = "Chapter ${currentSpineIndex + 1} of ${document?.spine?.size ?: 1}  •  Page ${currentPageIndex + 1}/$maxPages",
-                            color = textColor.copy(alpha = 0.6f),
-                            fontSize = 12.sp,
-                            fontFamily = activeFontFamily
-                        )
-
-                        IconButton(
-                            onClick = { if (isRtl) retreatPage() else advancePage() },
-                            enabled = currentSpineIndex < (document?.spine?.size ?: 1) - 1 || currentPageIndex < maxPages - 1
+                        Column(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .widthIn(max = 760.dp)
+                                .padding(
+                                    horizontal = typography.paddingHorizontal.dp,
+                                    vertical = typography.paddingVertical.dp
+                                )
                         ) {
-                            Icon(
-                                imageVector = if (isRtl) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "Next Page",
-                                tint = textColor.copy(alpha = 0.7f)
-                            )
+                            for (block in visibleBlocks) {
+                                RenderBlock(
+                                    block = block,
+                                    highlights = highlights,
+                                    textColor = textColor,
+                                    fontFamily = activeFontFamily,
+                                    typography = typography,
+                                    isRtl = isRtl,
+                                    document = document,
+                                    currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
+                                    imageCache = imageCache,
+                                    onHighlightClicked = onHighlightClicked,
+                                    onAddHighlight = { id, quote, colorHex ->
+                                        val loc = Locator(
+                                            href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
+                                            type = "application/xhtml+xml",
+                                            text = Locator.LocatorText(highlight = quote)
+                                        )
+                                        onAddHighlight(id, loc, colorHex)
+                                    },
+                                    onAddNoteRequested = { quote ->
+                                        val loc = Locator(
+                                            href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
+                                            type = "application/xhtml+xml",
+                                            text = Locator.LocatorText(highlight = quote)
+                                        )
+                                        onAddNoteRequested(loc, quote)
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
+                            }
                         }
                     }
                 }

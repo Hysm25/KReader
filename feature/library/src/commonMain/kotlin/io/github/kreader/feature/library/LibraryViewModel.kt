@@ -133,7 +133,7 @@ class LibraryViewModel(
         }
     }
 
-    fun importBook(source: BookSource) {
+    fun importBook(source: BookSource, onImported: ((Book) -> Unit)? = null) {
         scope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching {
@@ -152,6 +152,7 @@ class LibraryViewModel(
                     totalProgression = 0f
                 )
                 bookRepository.upsertBook(book)
+                onImported?.invoke(book)
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(

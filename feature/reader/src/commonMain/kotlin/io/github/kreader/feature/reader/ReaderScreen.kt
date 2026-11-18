@@ -97,6 +97,57 @@ fun ReaderScreen(
     onExportMarkdown: (suspend () -> String?)? = null,
     modifier: Modifier = Modifier
 ) {
+    if (isDesktopPlatform) {
+        DesktopReaderLayout(
+            state = state,
+            onBackClick = onBackClick,
+            onToggleControls = onToggleControls,
+            onPreviousPage = onPreviousPage,
+            onNextPage = onNextPage,
+            onSeek = onSeek,
+            onTocClick = onTocClick,
+            onSettingsClick = onSettingsClick,
+            onSearchClick = onSearchClick,
+            onBookmarkToggle = onBookmarkToggle,
+            onDismissNavigationDrawer = onDismissNavigationDrawer,
+            onTabSelected = onTabSelected,
+            onDeleteBookmark = onDeleteBookmark,
+            onDeleteHighlight = onDeleteHighlight,
+            onSaveHighlight = onSaveHighlight,
+            onHighlightClicked = onHighlightClicked,
+            onDismissHighlightDetail = onDismissHighlightDetail,
+            onSaveHighlightDetail = onSaveHighlightDetail,
+            onOpenAddNoteDialog = onOpenAddNoteDialog,
+            onDismissAddNoteDialog = onDismissAddNoteDialog,
+            onSaveNewNote = onSaveNewNote,
+            onSearchQueryChange = onSearchQueryChange,
+            onPerformSearch = onPerformSearch,
+            onSearchResultsChange = onSearchResultsChange,
+            onIsSearchingChange = onIsSearchingChange,
+            onDismissSearch = onDismissSearch,
+            onDismissToc = onDismissToc,
+            onDismissSettings = onDismissSettings,
+            onThemeChange = onThemeChange,
+            onTypographyChange = onTypographyChange,
+            onScrollModeChange = onScrollModeChange,
+            onResetToDefaults = onResetToDefaults,
+            onProgressChanged = onProgressChanged,
+            onTableOfContentsLoaded = onTableOfContentsLoaded,
+            customFonts = customFonts,
+            customThemes = customThemes,
+            onImportCustomFont = onImportCustomFont,
+            onDeleteCustomFont = onDeleteCustomFont,
+            onSaveCustomTheme = onSaveCustomTheme,
+            onDeleteCustomTheme = onDeleteCustomTheme,
+            onKeepScreenOnChange = onKeepScreenOnChange,
+            onOrientationLockChange = onOrientationLockChange,
+            onDirectionDetected = onDirectionDetected,
+            onExportMarkdown = onExportMarkdown,
+            modifier = modifier
+        )
+        return
+    }
+
     val interactionSource = remember { MutableInteractionSource() }
     val epubController = rememberEpubNavigatorController()
     val scope = rememberCoroutineScope()
