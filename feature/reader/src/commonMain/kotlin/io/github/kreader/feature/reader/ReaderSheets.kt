@@ -1552,13 +1552,13 @@ fun ReaderSettingsSheet(
                                     }
                                     Slider(
                                         value = tempLineHeight,
-                                        onValueChange = { tempLineHeight = it },
-                                        onValueChangeFinished = {
-                                            val finalVal = kotlin.math.round(tempLineHeight * 10f) / 10f
-                                            onTypographyChange(typography.copy(lineHeightMultiplier = finalVal))
+                                        onValueChange = {
+                                            tempLineHeight = it
+                                            onTypographyChange(
+                                                typography.copy(lineHeightMultiplier = it)
+                                            )
                                         },
                                         valueRange = 1.0f..2.5f,
-                                        steps = 14,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
@@ -1693,12 +1693,13 @@ fun ReaderSettingsSheet(
                                         }
                                         Slider(
                                             value = tempHorizontalPadding,
-                                            onValueChange = { tempHorizontalPadding = it },
-                                            onValueChangeFinished = {
-                                                onTypographyChange(typography.copy(paddingHorizontal = tempHorizontalPadding.toInt()))
+                                            onValueChange = {
+                                                tempHorizontalPadding = it
+                                                onTypographyChange(
+                                                    typography.copy(paddingHorizontal = it.toInt())
+                                                )
                                             },
                                             valueRange = 0f..48f,
-                                            steps = 11,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     }
@@ -1730,12 +1731,13 @@ fun ReaderSettingsSheet(
                                         }
                                         Slider(
                                             value = tempVerticalPadding,
-                                            onValueChange = { tempVerticalPadding = it },
-                                            onValueChangeFinished = {
-                                                onTypographyChange(typography.copy(paddingVertical = tempVerticalPadding.toInt()))
+                                            onValueChange = {
+                                                tempVerticalPadding = it
+                                                onTypographyChange(
+                                                    typography.copy(paddingVertical = it.toInt())
+                                                )
                                             },
                                             valueRange = 0f..32f,
-                                            steps = 7,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     }

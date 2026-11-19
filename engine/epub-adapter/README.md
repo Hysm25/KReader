@@ -12,6 +12,7 @@ Implements EPUB publication loading, parsing, and locator translation across pla
 - `DesktopEpubDocument`: Desktop EPUB container, metadata, spine, TOC, and resource extractor.
 - `EpubBlockParser`: Jsoup-based XHTML tokenizer converting book chapters into `ReaderContentBlock` AST nodes.
 - `ReadiumEpubOpener`: Android-specific publication loader using Readium's `AssetRetriever`, `DefaultHttpClient`, and `PublicationOpener` (`[ReadiumEpubOpener.kt:ReadiumEpubOpener]`).
+- `ReadiumFontResources`: Derives stable publication hrefs and absolute navigator URLs for user-imported font files (`[ReadiumFontResources.kt:ReadiumFontResources]`).
 - `toDomain`: Extension mapping Readium `Locator` instances to domain `Locator` entities (`[ReadiumLocatorMapper.kt:toDomain]`).
 - `toReadium`: Extension mapping domain `Locator` entities to Readium `Locator` instances (`[ReadiumLocatorMapper.kt:toReadium]`).
 - `toTocItem`: Extension mapping Readium navigation links to domain `TocItem` hierarchy (`[ReadiumLocatorMapper.kt:toTocItem]`).
@@ -24,7 +25,7 @@ Implements EPUB publication loading, parsing, and locator translation across pla
 - `[Text Normalization]`: Text extracted for `TextQuoteSelector` (`exact`, `prefix`, `suffix`) undergoes Unicode NFC normalization and contiguous whitespace collapsing (`[\r\n\t ]+` -> `' '`) to ensure cross-platform parity between Readium DOM and Desktop AST.
 
 ## Side Effects
-- `[ReadiumEpubOpener.kt:open]`: Reads EPUB archives from local storage or Android `ContentResolver`, unzips and parses container XML, package documents, and encryption manifests into Readium `Publication` memory structures.
+- `[ReadiumEpubOpener.kt:open]`: Reads EPUB archives from local storage or Android `ContentResolver`, unzips and parses container XML, package documents, and encryption manifests into Readium `Publication` memory structures. User-imported fonts are wrapped as publication resources served at `https://readium/publication/kreader-fonts/*`.
 - `[DesktopEpubReaderEngine.kt:open]`: Reads container XML (`META-INF/container.xml`), parses OPF package manifests, and caches extracted chapter metadata in memory.
 - `[AndroidEpubReaderEngine.kt:search]`: Executes Readium full-text search iterations across publication resources on Android.
 

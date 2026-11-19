@@ -21,6 +21,8 @@ import io.github.kreader.core.model.isRtlText
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,12 +48,18 @@ class ReaderViewModel(
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     private var currentEffectivePreferences = ReaderPreferences()
+    private var globalPreferences = ReaderPreferences()
+    private var typographySaveJob: Job? = null
 
     init {
         observeData()
     }
 
     private fun observeData() {
+        bookRepository.observeReaderPreferences().onEach { prefs ->
+            globalPreferences = prefs
+        }.launchIn(scope)
+
         bookRepository.observeEffectivePreferences(book.id).onEach { prefs ->
             currentEffectivePreferences = prefs
             _uiState.update { current ->
@@ -124,6 +132,12 @@ class ReaderViewModel(
     }
 
     fun updateProgress(progression: Float, locator: Locator) {
+        val current = _uiState.value
+        if (current.currentLocator == locator &&
+            abs(current.totalProgression - progression) < 0.0001f
+        ) {
+            return
+        }
         _uiState.update {
             it.copy(
                 totalProgression = progression,
@@ -137,18 +151,9 @@ class ReaderViewModel(
     }
 
     fun seek(targetProgression: Float) {
+        // Only update the transient UI state. The navigator emits the authoritative locator
+        // (with chapter progression and position) once the jump completes.
         _uiState.update { it.copy(totalProgression = targetProgression) }
-        scope.launch {
-            val now = Clock.System.now().toEpochMilliseconds()
-            val loc = _uiState.value.currentLocator ?: book.lastLocator ?: Locator(href = "", type = "application/epub+zip")
-            val updatedLoc = loc.copy(
-                locations = loc.locations.copy(
-                    totalProgression = targetProgression,
-                    progression = targetProgression
-                )
-            )
-            bookRepository.updateProgress(book.id, targetProgression, updatedLoc, now)
-        }
     }
 
     fun toggleBookmark() {
@@ -286,22 +291,33 @@ class ReaderViewModel(
     }
 
     fun changeTypography(newTypography: ReaderTypography) {
-        val prev = _uiState.value.typography
         _uiState.update { it.copy(typography = newTypography) }
-        scope.launch {
+        typographySaveJob?.cancel()
+        typographySaveJob = scope.launch {
+            // Debounce persistence so continuous slider drags update the reader live without
+            // writing the vault on every frame.
+            delay(200)
             bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                val prevTypo = current?.typography ?: ReaderTypographyOverride()
-                val updatedTypo = prevTypo.copy(
-                    fontFamily = if (newTypography.fontFamily != prev.fontFamily) newTypography.fontFamily else prevTypo.fontFamily,
-                    fontSizeSp = if (newTypography.fontSizeSp != prev.fontSizeSp) newTypography.fontSizeSp else prevTypo.fontSizeSp,
-                    lineHeightMultiplier = if (newTypography.lineHeightMultiplier != prev.lineHeightMultiplier) newTypography.lineHeightMultiplier else prevTypo.lineHeightMultiplier,
-                    letterSpacingSp = if (newTypography.letterSpacingSp != prev.letterSpacingSp) newTypography.letterSpacingSp else prevTypo.letterSpacingSp,
-                    textAlignment = if (newTypography.textAlignment != prev.textAlignment) newTypography.textAlignment else prevTypo.textAlignment,
-                    paddingHorizontal = if (newTypography.paddingHorizontal != prev.paddingHorizontal) newTypography.paddingHorizontal else prevTypo.paddingHorizontal,
-                    paddingVertical = if (newTypography.paddingVertical != prev.paddingVertical) newTypography.paddingVertical else prevTypo.paddingVertical,
-                    overrideFont = if (newTypography.overrideFont != prev.overrideFont) newTypography.overrideFont else prevTypo.overrideFont
+                val global = globalPreferences.typography
+                val typography = ReaderTypographyOverride(
+                    fontFamily = newTypography.fontFamily
+                        .takeIf { it != global.fontFamily },
+                    fontSizeSp = newTypography.fontSizeSp
+                        .takeIf { it != global.fontSizeSp },
+                    lineHeightMultiplier = newTypography.lineHeightMultiplier
+                        .takeIf { it != global.lineHeightMultiplier },
+                    letterSpacingSp = newTypography.letterSpacingSp
+                        .takeIf { it != global.letterSpacingSp },
+                    textAlignment = newTypography.textAlignment
+                        .takeIf { it != global.textAlignment },
+                    paddingHorizontal = newTypography.paddingHorizontal
+                        .takeIf { it != global.paddingHorizontal },
+                    paddingVertical = newTypography.paddingVertical
+                        .takeIf { it != global.paddingVertical },
+                    overrideFont = newTypography.overrideFont
+                        .takeIf { it != global.overrideFont }
                 )
-                (current ?: ReaderPreferencesOverride()).copy(typography = updatedTypo)
+                (current ?: ReaderPreferencesOverride()).copy(typography = typography)
             }
         }
     }

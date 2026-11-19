@@ -5,17 +5,20 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
-import android.util.Base64
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebView
-import androidx.core.view.doOnLayout
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,8 +48,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,18 +70,22 @@ import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
-import io.github.kreader.core.model.ThemeMode
 import io.github.kreader.core.model.ReaderTypography
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import io.github.kreader.core.model.ThemeMode
 import io.github.kreader.core.model.isRtlLanguage
 import io.github.kreader.core.model.isRtlText
 import io.github.kreader.engine.epub.ReadiumEpubOpener
+import io.github.kreader.engine.epub.ReadiumFontResources
 import io.github.kreader.engine.epub.toDomain
 import io.github.kreader.engine.epub.toReadium
 import io.github.kreader.engine.epub.toTocItem
+import java.io.File
+import java.util.Collections
+import java.util.WeakHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.readium.r2.navigator.DecorableNavigator
@@ -89,7 +94,9 @@ import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
+import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
@@ -98,11 +105,12 @@ import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.Try
-import java.io.File
-import java.util.Collections
-import java.util.WeakHashMap
 
-@OptIn(ExperimentalReadiumApi::class)
+private const val HIGHLIGHTS_GROUP = "highlights"
+private const val SEARCH_GROUP = "search-highlight"
+private const val SEARCH_DECORATION_ID = "search-current"
+
+@OptIn(ExperimentalReadiumApi::class, DelicateReadiumApi::class)
 @Composable
 actual fun EpubNavigatorHost(
     book: Book,
@@ -137,71 +145,71 @@ actual fun EpubNavigatorHost(
     val currentOnDirectionDetected by rememberUpdatedState(onDirectionDetected)
     val currentOnPageCountLoaded by rememberUpdatedState(onPageCountLoaded)
 
-    var publication by remember { mutableStateOf<Publication?>(null) }
-    var currentFragment by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
-    var isNavigatorReady by remember { mutableStateOf(false) }
-    var detectedRtl by remember { mutableStateOf<Boolean?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var lastSearchHighlightTimestamp by remember(book.id) { mutableLongStateOf(0L) }
-    var lastSearchProgression by remember(book.id) { mutableStateOf<Float?>(null) }
-    var totalPositionsCount by remember(book.id) { mutableIntStateOf(0) }
-
-    val searchLocatorsCache = remember(book.id) {
-        Collections.synchronizedMap(LinkedHashMap<String, org.readium.r2.shared.publication.Locator>())
-    }
-
-    val configuredFragments = remember(book.id) {
-        Collections.newSetFromMap(WeakHashMap<EpubNavigatorFragment, Boolean>())
-    }
+    var publication by remember(book.id) { mutableStateOf<Publication?>(null) }
+    var navigator by remember(book.id) { mutableStateOf<EpubNavigatorFragment?>(null) }
+    var isNavigatorReady by remember(book.id) { mutableStateOf(false) }
+    var detectedRtl by remember(book.id) { mutableStateOf<Boolean?>(null) }
+    var isLoading by remember(book.id) { mutableStateOf(true) }
+    var errorMessage by remember(book.id) { mutableStateOf<String?>(null) }
 
     val opener = remember(context) { ReadiumEpubOpener(context.applicationContext) }
 
-    // 1. Open publication and auto-detect reading direction (backgrounded on IO to prevent UI stutters)
-    LaunchedEffect(book.id) {
+    // Imported fonts are part of the publication resource container, so changing them requires
+    // opening a new publication. Keep the key stable across recompositions.
+    val fontsKey = remember(customFonts) {
+        customFonts.joinToString("|") { "${it.name}:${it.path}" }
+    }
+
+    // 1. Open the publication and resolve its metadata, TOC and position count off the UI thread.
+    LaunchedEffect(book.id, fontsKey) {
         isLoading = true
         errorMessage = null
         isNavigatorReady = false
-        currentFragment = null
+        navigator = null
+        publication = null
+        detectedRtl = null
+
         withContext(Dispatchers.IO) {
-            opener.open(book.source, book.id)
+            opener.open(book.source, book.id, customFonts)
         }.fold(
-            onSuccess = { pub ->
-                publication = pub
-                val (isPubRtl, toc, pageCount) = withContext(Dispatchers.Default) {
-                    val readingProg = pub.metadata.readingProgression
-                    val hasRtlProgression = readingProg == org.readium.r2.shared.publication.ReadingProgression.RTL
-                    val hasRtlLanguage = pub.metadata.languages.any { isRtlLanguage(it) }
-                    val hasRtlText = isRtlText(pub.metadata.title) ||
+            onSuccess = { opened ->
+                val (rtl, toc, pageCount) = withContext(Dispatchers.Default) {
+                    val readingProgression = opened.metadata.readingProgression
+                    val hasRtlProgression =
+                        readingProgression == org.readium.r2.shared.publication.ReadingProgression.RTL
+                    val hasRtlLanguage = opened.metadata.languages.any { isRtlLanguage(it) }
+                    val hasRtlText = isRtlText(opened.metadata.title) ||
                         isRtlText(book.title) ||
                         isRtlText(book.author.orEmpty()) ||
                         isRtlText(book.description.orEmpty()) ||
-                        pub.tableOfContents.any { isRtlText(it.title.orEmpty()) }
+                        opened.tableOfContents.any { isRtlText(it.title.orEmpty()) }
 
-                    val rtl = hasRtlProgression || hasRtlLanguage || hasRtlText
-                    val items = pub.tableOfContents.map { it.toTocItem(pub) }
-                    val count = runCatching { pub.positions().size }.getOrDefault(0)
-                    Triple(rtl, items, count)
+                    Triple(
+                        hasRtlProgression || hasRtlLanguage || hasRtlText,
+                        opened.tableOfContents.map { it.toTocItem(opened) },
+                        runCatching { opened.positions().size }.getOrDefault(0)
+                    )
                 }
-                detectedRtl = isPubRtl
-                totalPositionsCount = pageCount
-                currentOnDirectionDetected(isPubRtl)
+
+                publication = opened
+                detectedRtl = rtl
+                currentOnDirectionDetected(rtl)
                 currentOnTableOfContentsLoaded(toc)
                 if (pageCount > 0) {
                     currentOnPageCountLoaded(pageCount)
                 }
                 isLoading = false
             },
-            onFailure = { err ->
-                errorMessage = err.message ?: "Failed to open EPUB"
+            onFailure = { error ->
+                errorMessage = error.message ?: "Failed to open EPUB"
                 isLoading = false
             }
         )
     }
 
-    // 2. Build preferences (automatic reading direction + custom font support + system dark mode)
     val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val effectiveRtl = detectedRtl == true
+
     val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl, isSystemDark) {
         buildReadiumPreferences(
             theme = theme,
@@ -212,215 +220,129 @@ actual fun EpubNavigatorHost(
         )
     }
 
-    // Pre-warm font cache immediately in IO thread for instant custom font rendering
-    LaunchedEffect(customFonts) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            for (f in customFonts) {
-                runCatching {
-                    val file = File(f.path)
-                    if (file.exists() && file.length() > 0L) {
-                        fontBase64Cache.getOrPut(f.path) {
-                            val fontBytes = file.readBytes()
-                            val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
-                            val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
-                            fmt to b64
-                        }
-                    }
-                }
-            }
-        }
+    // 2. Submit official Readium preferences whenever they change.
+    var submittedPreferences by remember(book.id) {
+        mutableStateOf<org.readium.r2.navigator.epub.EpubPreferences?>(null)
+    }
+    LaunchedEffect(navigator, isNavigatorReady, preferences) {
+        val fragment = navigator ?: return@LaunchedEffect
+        if (!isNavigatorReady || !fragment.isAdded) return@LaunchedEffect
+        if (submittedPreferences == preferences) return@LaunchedEffect
+
+        runCatching { fragment.submitPreferences(preferences) }
+            .onSuccess { submittedPreferences = preferences }
     }
 
-    // One-shot realignment once navigator is ready to resolve initial padding overlap glitch & enforce full width
-    LaunchedEffect(isNavigatorReady) {
-        if (isNavigatorReady) {
-            val frag = currentFragment ?: return@LaunchedEffect
-            kotlinx.coroutines.delay(80)
-            runCatching {
-                if (frag.isAdded && frag.context != null) {
-                    val loc = frag.currentLocator.value
-                    frag.go(loc, animated = false)
-                    frag.view?.requestLayout()
-                }
+    // 3. Wire the imperative controller to official navigator APIs.
+    DisposableEffect(navigator, publication, isNavigatorReady) {
+        val fragment = navigator
+        val pub = publication
+
+        fun ready(): EpubNavigatorFragment? =
+            fragment?.takeIf { isNavigatorReady && it.isAdded && it.context != null }
+
+        fun clearSearchHighlight(nav: EpubNavigatorFragment) {
+            scope.launch {
+                runCatching { nav.applyDecorations(emptyList(), group = SEARCH_GROUP) }
             }
         }
-    }
 
-    // Re-snap when inter-page gap/margins change
-    LaunchedEffect(typography.paddingHorizontal, typography.paddingVertical) {
-        val frag = currentFragment ?: return@LaunchedEffect
-        if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            runCatching {
-                kotlinx.coroutines.delay(60)
-                val loc = frag.currentLocator.value
-                frag.go(loc, animated = false)
-            }
-        }
-    }
-
-    // 3. Submit preferences on change (deferred until fragment is attached and ready, without redundant submissions)
-    var lastSubmittedPreferences by remember(book.id) { mutableStateOf<org.readium.r2.navigator.epub.EpubPreferences?>(null) }
-    LaunchedEffect(currentFragment, preferences, isNavigatorReady) {
-        val frag = currentFragment ?: return@LaunchedEffect
-        if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            if (lastSubmittedPreferences != preferences) {
-                runCatching {
-                    frag.submitPreferences(preferences)
-                    lastSubmittedPreferences = preferences
-                }
-            }
-        }
-    }
-
-    // 4. Apply font override across all text elements (including h1-h6 headings) and typography customizations
-    var lastAppliedOverrideKey by remember(book.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(currentFragment, typography, customFonts, isNavigatorReady) {
-        val frag = currentFragment ?: return@LaunchedEffect
-        if (isNavigatorReady && frag.isAdded && frag.context != null) {
-            val key = "${typography.overrideFont}:${typography.fontFamily}:${typography.fontSizeSp}:${typography.lineHeightMultiplier}:${typography.textAlignment}"
-            if (key != lastAppliedOverrideKey) {
-                applyTypographyAndFontOverrides(frag, typography, customFonts)
-                lastAppliedOverrideKey = key
-            }
-        }
-    }
-
-    // 5. Wire controller navigation commands & search
-    DisposableEffect(currentFragment, publication, isNavigatorReady) {
         controller.goTo = { locator ->
-            val frag = currentFragment
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
-                val key = locatorCacheKey(locator)
-                val target = searchLocatorsCache[key] ?: locator.toReadium()
-                frag.go(target, animated = true)
+            ready()?.let { nav ->
+                clearSearchHighlight(nav)
+                nav.go(locator.toReadium(), animated = true)
             }
         }
-        controller.goToSearchResult = { domainLoc ->
-            val frag = currentFragment
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
-                val key = locatorCacheKey(domainLoc)
-                val readiumLoc = searchLocatorsCache[key] ?: domainLoc.toReadium()
-                lastSearchProgression = domainLoc.locations.totalProgression ?: domainLoc.locations.progression
-                lastSearchHighlightTimestamp = System.currentTimeMillis()
-                frag.go(readiumLoc, animated = false)
+        controller.goToSearchResult = { locator ->
+            ready()?.let { nav ->
+                val readiumLocator = locator.toReadium()
+                nav.go(readiumLocator, animated = false)
                 scope.launch {
-                    // Wait for sheet and soft keyboard exit animation to finish and WebView layout to stabilize
-                    kotlinx.coroutines.delay(280)
-                    if (frag.isAdded && frag.context != null) {
-                        lastSearchHighlightTimestamp = System.currentTimeMillis()
-                        // Re-snap to exact locator on the settled full-screen reading viewport
-                        frag.go(readiumLoc, animated = false)
-                        kotlinx.coroutines.delay(80)
-                        val searchDeco = Decoration(
-                            id = "search_match_${System.currentTimeMillis()}",
-                            locator = readiumLoc,
-                            style = Decoration.Style.Highlight(
-                                tint = android.graphics.Color.argb(160, 255, 179, 0),
-                                isActive = true
-                            )
-                        )
-                        frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
-                    }
+                    nav.applyDecorations(
+                        listOf(searchDecoration(readiumLocator)),
+                        group = SEARCH_GROUP
+                    )
                 }
             }
         }
         controller.goNext = {
-            val frag = currentFragment
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
-                frag.goForward(animated = true)
+            ready()?.let { nav ->
+                clearSearchHighlight(nav)
+                nav.goForward(animated = true)
             }
         }
         controller.goPrevious = {
-            val frag = currentFragment
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
-                frag.goBackward(animated = true)
+            ready()?.let { nav ->
+                clearSearchHighlight(nav)
+                nav.goBackward(animated = true)
             }
         }
-        controller.seekToProgression = { targetProg ->
-            val frag = currentFragment
-            val pub = publication
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null && pub != null) {
+        controller.seekToProgression = { targetProgression ->
+            ready()?.let { nav ->
+                clearSearchHighlight(nav)
                 scope.launch {
-                    val targetDouble = targetProg.toDouble().coerceIn(0.0, 1.0)
-                    val readiumLocator = runCatching {
-                        pub.locateProgression(targetDouble)
-                    }.getOrNull()
-
-                    if (readiumLocator != null) {
-                        frag.go(readiumLocator, animated = false)
-                    } else if (pub.readingOrder.isNotEmpty()) {
-                        val order = pub.readingOrder
-                        val index = (targetDouble * (order.size - 1)).toInt().coerceIn(0, order.size - 1)
-                        val link = order[index]
-                        val baseLocator = pub.locatorFromLink(link)
-                            ?: Locator(
-                                href = link.href.toString(),
-                                type = link.mediaType?.toString() ?: "application/xhtml+xml"
-                            ).toReadium()
-                        frag.go(baseLocator, animated = false)
+                    val target = targetProgression.toDouble().coerceIn(0.0, 1.0)
+                    val locator = pub?.let { opened ->
+                        runCatching { opened.locateProgression(target) }.getOrNull()
+                            ?: opened.readingOrder.takeIf { it.isNotEmpty() }?.let { order ->
+                                val index = (target * (order.size - 1)).toInt()
+                                    .coerceIn(0, order.size - 1)
+                                opened.locatorFromLink(order[index])
+                            }
+                    }
+                    if (locator != null) {
+                        nav.go(locator, animated = false)
                     }
                 }
             }
         }
         controller.clearSelection = {
-            val frag = currentFragment
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
-                frag.clearSelection()
-            }
+            ready()?.clearSelection()
         }
         controller.highlightSearchResult = { locator ->
-            val frag = currentFragment
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
-                val key = locatorCacheKey(locator)
-                val target = searchLocatorsCache[key] ?: locator.toReadium()
-                lastSearchHighlightTimestamp = System.currentTimeMillis()
+            ready()?.let { nav ->
+                val readiumLocator = locator.toReadium()
                 scope.launch {
-                    val searchDeco = Decoration(
-                        id = "search_match_${System.currentTimeMillis()}",
-                        locator = target,
-                        style = Decoration.Style.Highlight(
-                            tint = android.graphics.Color.argb(160, 255, 179, 0),
-                            isActive = true
-                        )
+                    nav.applyDecorations(
+                        listOf(searchDecoration(readiumLocator)),
+                        group = SEARCH_GROUP
                     )
-                    frag.applyDecorations(listOf(searchDeco), group = "search-highlight")
                 }
             }
         }
         controller.clearSearchHighlight = {
-            val frag = currentFragment
-            if (isNavigatorReady && frag != null && frag.isAdded && frag.context != null) {
+            ready()?.let { nav ->
                 scope.launch {
-                    frag.applyDecorations(emptyList(), group = "search-highlight")
+                    nav.applyDecorations(emptyList(), group = SEARCH_GROUP)
                 }
             }
         }
         controller.search = { query ->
-            val pub = publication
-            val results = mutableListOf<Locator>()
-            if (pub != null) {
-                val searchIterator = pub.search(query).unwrapReadium<SearchIterator>()
-                if (searchIterator != null) {
-                    try {
-                        var count = 0
-                        while (count < 100) {
-                            val page = searchIterator.next().unwrapReadium<LocatorCollection>()
-                            if (page == null || page.locators.isEmpty()) break
-                            for (loc in page.locators) {
-                                val domainLoc = loc.toDomain()
-                                val key = locatorCacheKey(domainLoc)
-                                searchLocatorsCache[key] = loc
-                                results.add(domainLoc)
-                                count++
+            withContext(Dispatchers.IO) {
+                val results = mutableListOf<Locator>()
+                if (pub != null && query.isNotBlank()) {
+                    val iterator = pub.search(query).unwrapReadium<SearchIterator>()
+                    if (iterator != null) {
+                        try {
+                            var count = 0
+                            while (count < SEARCH_RESULT_LIMIT) {
+                                val page = iterator.next().unwrapReadium<LocatorCollection>()
+                                    ?: break
+                                if (page.locators.isEmpty()) break
+                                page.locators.forEach { locator ->
+                                    results += locator.toDomain()
+                                    count++
+                                }
                             }
+                        } finally {
+                            iterator.close()
                         }
-                    } finally {
-                        searchIterator.close()
                     }
                 }
+                results
             }
-            results
         }
+
         onDispose {
             controller.goTo = null
             controller.goToSearchResult = null
@@ -434,7 +356,51 @@ actual fun EpubNavigatorHost(
         }
     }
 
-    // 6. Host in FragmentContainerView
+    // 4. Render highlights through the official decoration API. Decorations are retained by the
+    //    navigator and re-applied to every resource, including chapters loaded later.
+    val isDarkTheme = when (theme.mode) {
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemDark
+        else -> false
+    }
+    val isSepia = theme.mode == ThemeMode.SEPIA
+    LaunchedEffect(navigator, isNavigatorReady, highlights, isDarkTheme, isSepia) {
+        val fragment = navigator ?: return@LaunchedEffect
+        if (!isNavigatorReady || !fragment.isAdded) return@LaunchedEffect
+
+        val decorations = highlights.map { highlight ->
+            Decoration(
+                id = highlight.id,
+                locator = highlight.locator.toReadium(),
+                style = Decoration.Style.Highlight(
+                    tint = calculateHighlightTintColor(highlight.colorHex, isDarkTheme, isSepia),
+                    isActive = false
+                )
+            )
+        }
+        runCatching { fragment.applyDecorations(decorations, group = HIGHLIGHTS_GROUP) }
+    }
+
+    // 5. Observe the navigator's official current locator. It already carries the position and
+    //    total progression resolved by Readium's PositionsService.
+    LaunchedEffect(navigator, isNavigatorReady) {
+        val fragment = navigator ?: return@LaunchedEffect
+        if (!isNavigatorReady) return@LaunchedEffect
+
+        var lastKey: String? = null
+        fragment.currentLocator.collect { readiumLocator ->
+            val locator = readiumLocator.toDomain()
+            val progression = locator.locations.totalProgression
+                ?: locator.locations.progression
+                ?: return@collect
+            val key = "${locator.href}|${locator.locations.position}|$progression"
+            if (key != lastKey) {
+                lastKey = key
+                currentOnProgressChanged(progression.coerceIn(0f, 1f), locator)
+            }
+        }
+    }
+
     when {
         isLoading -> {
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -453,147 +419,117 @@ actual fun EpubNavigatorHost(
             val pub = publication!!
             val containerId = remember(book.id) { View.generateViewId() }
             val fragmentTag = remember(book.id) { "epub_nav_${book.id}" }
+            val configuredFragments = remember(book.id) {
+                Collections.newSetFromMap(WeakHashMap<EpubNavigatorFragment, Boolean>())
+            }
 
-            val activeDecorations = remember { mutableStateListOf<Decoration>() }
             var activeSelection by remember { mutableStateOf<ActiveSelection?>(null) }
-
             val selectionCallback = remember(scope) {
                 SelectionActionModeCallback(
                     scope = scope,
-                    fragmentProvider = { currentFragment },
-                    onSelectionActive = { sel ->
-                        activeSelection = sel
-                    },
-                    onSelectionDismissed = {
-                        activeSelection = null
+                    fragmentProvider = { navigator },
+                    onSelectionActive = { selection -> activeSelection = selection },
+                    onSelectionDismissed = { mode ->
+                        if (activeSelection?.actionMode == mode) {
+                            activeSelection = null
+                        }
                     }
                 )
             }
 
-            // Register FragmentLifecycleCallbacks to safely configure listeners AFTER fragment is STARTED
-            DisposableEffect(fragmentActivity, fragmentTag) {
-                val fm = fragmentActivity.supportFragmentManager
-                val lifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
-                    override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
-                        if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
-                            scope.launch {
-                                applyTypographyAndFontOverrides(f, typography, customFonts)
-                            }
+            fun dismissSelection() {
+                val selection = activeSelection ?: return
+                activeSelection = null
+                navigator?.clearSelection()
+                selection.actionMode?.finish()
+            }
+
+            fun attach(fragment: EpubNavigatorFragment) {
+                if (!configuredFragments.add(fragment)) return
+
+                fragment.addInputListener(
+                    DirectionalNavigationAdapter(navigator = fragment, animatedTransition = true)
+                )
+                fragment.addInputListener(object : InputListener {
+                    override fun onTap(event: TapEvent): Boolean {
+                        if (activeSelection != null) {
+                            dismissSelection()
+                            return true
+                        }
+                        controller.clearSearchHighlight?.invoke()
+                        currentOnTap()
+                        return true
+                    }
+                })
+                fragment.addDecorationListener(
+                    HIGHLIGHTS_GROUP,
+                    object : DecorableNavigator.Listener {
+                        override fun onDecorationActivated(
+                            event: DecorableNavigator.OnActivatedEvent
+                        ): Boolean {
+                            currentOnHighlightClicked(event.decoration.id)
+                            return true
                         }
                     }
+                )
+            }
 
+            DisposableEffect(fragmentActivity, fragmentTag, pub) {
+                val fragmentManager = fragmentActivity.supportFragmentManager
+
+                val lifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
                     override fun onFragmentStarted(fm: FragmentManager, f: Fragment) {
-                        if (f.tag == fragmentTag && f is EpubNavigatorFragment && f.isAdded && f.context != null) {
-                            if (!configuredFragments.contains(f)) {
-                                configuredFragments.add(f)
-                                f.addInputListener(
-                                    DirectionalNavigationAdapter(
-                                        navigator = f,
-                                        animatedTransition = true
-                                    )
-                                )
-                                f.addInputListener(object : InputListener {
-                                    override fun onTap(event: TapEvent): Boolean {
-                                        if (activeSelection != null) {
-                                            f.clearSelection()
-                                            activeSelection?.actionMode?.finish()
-                                            activeSelection = null
-                                            return true
-                                        }
-                                        controller.clearSearchHighlight?.invoke()
-                                        currentOnTap()
-                                        return true
-                                    }
-                                })
-                                f.addDecorationListener(
-                                    "highlights",
-                                    object : DecorableNavigator.Listener {
-                                        override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
-                                            currentOnHighlightClicked(event.decoration.id)
-                                            return true
-                                        }
-                                    }
-                                )
-                            }
-                            scope.launch {
-                                applyTypographyAndFontOverrides(f, typography, customFonts)
-                            }
+                        if (f.tag == fragmentTag && f is EpubNavigatorFragment) {
+                            attach(f)
+                            navigator = f
                             isNavigatorReady = true
-                            if (currentFragment !== f) {
-                                currentFragment = f
-                            }
                         }
                     }
 
                     override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
-                        if (f.tag == fragmentTag) {
+                        if (f.tag == fragmentTag && navigator === f) {
                             isNavigatorReady = false
                         }
                     }
 
                     override fun onFragmentDestroyed(fm: FragmentManager, f: Fragment) {
-                        if (f.tag == fragmentTag) {
+                        if (f.tag == fragmentTag && navigator === f) {
                             isNavigatorReady = false
-                            if (currentFragment === f) {
-                                currentFragment = null
-                            }
+                            navigator = null
+                            configuredFragments.remove(f)
                         }
                     }
                 }
 
-                fm.registerFragmentLifecycleCallbacks(lifecycleCallbacks, false)
+                fragmentManager.registerFragmentLifecycleCallbacks(lifecycleCallbacks, false)
 
-                val existing = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(containerId)) as? EpubNavigatorFragment
-                if (existing != null && existing.isAdded && existing.context != null &&
+                val existing = (fragmentManager.findFragmentByTag(fragmentTag)
+                    ?: fragmentManager.findFragmentById(containerId)) as? EpubNavigatorFragment
+                if (existing != null &&
+                    existing.isAdded &&
+                    existing.context != null &&
                     existing.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                 ) {
-                    if (!configuredFragments.contains(existing)) {
-                        configuredFragments.add(existing)
-                        existing.addInputListener(
-                            DirectionalNavigationAdapter(
-                                navigator = existing,
-                                animatedTransition = true
-                            )
-                        )
-                        existing.addInputListener(object : InputListener {
-                            override fun onTap(event: TapEvent): Boolean {
-                                if (activeSelection != null) {
-                                    existing.clearSelection()
-                                    activeSelection?.actionMode?.finish()
-                                    activeSelection = null
-                                    return true
-                                }
-                                controller.clearSearchHighlight?.invoke()
-                                currentOnTap()
-                                return true
-                            }
-                        })
-                        existing.addDecorationListener(
-                            "highlights",
-                            object : DecorableNavigator.Listener {
-                                override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
-                                    currentOnHighlightClicked(event.decoration.id)
-                                    return true
-                                }
-                            }
-                        )
-                    }
+                    attach(existing)
+                    navigator = existing
                     isNavigatorReady = true
-                    currentFragment = existing
                 }
 
                 onDispose {
-                    fm.unregisterFragmentLifecycleCallbacks(lifecycleCallbacks)
+                    fragmentManager.unregisterFragmentLifecycleCallbacks(lifecycleCallbacks)
                     if (!fragmentActivity.isFinishing && !fragmentActivity.isDestroyed) {
-                        val frag = fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(containerId)
-                        if (frag != null) {
+                        val fragment = fragmentManager.findFragmentByTag(fragmentTag)
+                            ?: fragmentManager.findFragmentById(containerId)
+                        if (fragment != null) {
                             runCatching {
-                                fm.beginTransaction().remove(frag).commitNowAllowingStateLoss()
+                                fragmentManager.beginTransaction()
+                                    .remove(fragment)
+                                    .commitNowAllowingStateLoss()
                             }
                         }
                     }
                     isNavigatorReady = false
-                    currentFragment = null
+                    navigator = null
                 }
             }
 
@@ -606,364 +542,128 @@ actual fun EpubNavigatorHost(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT
                             )
-                            var lastW = -1
-                            var lastH = -1
-                            doOnLayout { view ->
-                                if (view.width > 0 && view.height > 0 && (view.width != lastW || view.height != lastH)) {
-                                    val isFirstLayout = lastW == -1
-                                    lastW = view.width
-                                    lastH = view.height
-                                    if (isFirstLayout) {
-                                        runCatching {
-                                            val fm = fragmentActivity.supportFragmentManager
-                                            val frag = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
-                                            if (frag != null && frag.isAdded && frag.context != null) {
-                                                frag.view?.post {
-                                                    runCatching {
-                                                        val loc = frag.currentLocator.value
-                                                        frag.go(loc, animated = false)
-                                                        frag.view?.requestLayout()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
                     },
                     update = { view ->
                         runCatching {
-                            val fm = fragmentActivity.supportFragmentManager
-                            if (fm.isDestroyed || fragmentActivity.isFinishing) return@runCatching
+                            val fragmentManager = fragmentActivity.supportFragmentManager
+                            if (fragmentManager.isDestroyed || fragmentActivity.isFinishing) {
+                                return@runCatching
+                            }
 
-                            var fragment = (fm.findFragmentByTag(fragmentTag) ?: fm.findFragmentById(view.id)) as? EpubNavigatorFragment
+                            var fragment = (fragmentManager.findFragmentByTag(fragmentTag)
+                                ?: fragmentManager.findFragmentById(view.id)) as? EpubNavigatorFragment
 
-                            if (fragment != null && (!fragment.isAdded || fragment.isDetached || fragment.id != view.id)) {
-                                fm.beginTransaction().remove(fragment).commitNowAllowingStateLoss()
+                            if (fragment != null &&
+                                (!fragment.isAdded || fragment.isDetached || fragment.id != view.id)
+                            ) {
+                                fragmentManager.beginTransaction()
+                                    .remove(fragment)
+                                    .commitNowAllowingStateLoss()
                                 fragment = null
                             }
 
                             if (fragment == null) {
-                                val factory = EpubNavigatorFactory(pub)
-                                val fragmentFactory = factory.createFragmentFactory(
+                                val configuration = EpubNavigatorFragment.Configuration(
+                                    selectionActionModeCallback = selectionCallback,
+                                    shouldApplyInsetsPadding = false
+                                ).apply {
+                                    useReadiumCssFontSize = false
+                                    customFonts
+                                        .filter { File(it.path).isFile }
+                                        .forEach { font ->
+                                            addFontFamilyDeclaration(FontFamily(font.name)) {
+                                                addFontFace {
+                                                    addSource(ReadiumFontResources.url(font))
+                                                }
+                                            }
+                                        }
+                                }
+
+                                val factory = EpubNavigatorFactory(pub).createFragmentFactory(
                                     initialLocator = initialLocator?.toReadium(),
                                     initialPreferences = preferences,
-                                    configuration = EpubNavigatorFragment.Configuration(
-                                        selectionActionModeCallback = selectionCallback
-                                    )
+                                    configuration = configuration
                                 )
-                                fm.fragmentFactory = fragmentFactory
-                                fm.beginTransaction()
-                                    .replace(view.id, EpubNavigatorFragment::class.java, null, fragmentTag)
-                                    .commitNowAllowingStateLoss()
+                                // The factory is only needed to instantiate this fragment; restoring
+                                // it keeps the host FragmentManager untouched for other screens.
+                                val previousFactory = fragmentManager.fragmentFactory
+                                fragmentManager.fragmentFactory = factory
+                                try {
+                                    fragmentManager.beginTransaction()
+                                        .replace(
+                                            view.id,
+                                            EpubNavigatorFragment::class.java,
+                                            null,
+                                            fragmentTag
+                                        )
+                                        .commitNowAllowingStateLoss()
+                                } finally {
+                                    fragmentManager.fragmentFactory = previousFactory
+                                }
                             }
-                        }.onFailure { e ->
-                            errorMessage = "Failed to initialize reader: ${e.message}"
+                        }.onFailure { error ->
+                            errorMessage = "Failed to initialize reader: ${error.message}"
                         }
                     },
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Material 3 Floating Selection Menu
-                val density = LocalDensity.current
-                val currentSel = activeSelection
-                val rect = currentSel?.rect
-
-                val swatches = rememberThemeHarmonizedSwatches(theme, isSystemDark)
-                val menuWidth = (swatches.size * 34 + 110).dp
-                val menuHeight = 52.dp
-                val containerWidth = maxWidth
-                val containerHeight = maxHeight
-
-                val (rawMenuX, rawMenuY) = remember(rect, containerWidth, containerHeight, density, menuWidth) {
-                    if (rect != null) {
-                        val leftDp = with(density) { rect.left.toDp() }
-                        val rightDp = with(density) { rect.right.toDp() }
-                        val topDp = with(density) { rect.top.toDp() }
-                        val bottomDp = with(density) { rect.bottom.toDp() }
-
-                        val centerX = (leftDp + rightDp) / 2
-                        val x = (centerX - menuWidth / 2).coerceIn(12.dp, (containerWidth - menuWidth - 12.dp).coerceAtLeast(12.dp))
-
-                        val y = if (topDp >= menuHeight + 16.dp) {
-                            (topDp - menuHeight - 10.dp).coerceAtLeast(12.dp)
-                        } else {
-                            (bottomDp + 10.dp).coerceAtMost((containerHeight - menuHeight - 12.dp).coerceAtLeast(12.dp))
+                SelectionMenu(
+                    selection = activeSelection,
+                    theme = theme,
+                    isSystemInDarkTheme = isSystemDark,
+                    onHighlight = { colorHex ->
+                        val selection = activeSelection
+                        if (selection != null) {
+                            val id = "hl_${System.currentTimeMillis()}_${(1000..9999).random()}"
+                            currentOnAddHighlight(id, selection.domainLocator, colorHex)
+                            dismissSelection()
                         }
-                        x to y
-                    } else {
-                        val x = ((containerWidth - menuWidth) / 2).coerceAtLeast(12.dp)
-                        val y = 72.dp
-                        x to y
-                    }
-                }
-
-                val menuX by animateDpAsState(
-                    targetValue = rawMenuX,
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                    label = "selectionMenuX"
-                )
-                val menuY by animateDpAsState(
-                    targetValue = rawMenuY,
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                    label = "selectionMenuY"
-                )
-
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = currentSel != null,
-                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(150)) +
-                            androidx.compose.animation.scaleIn(initialScale = 0.88f, animationSpec = androidx.compose.animation.core.tween(150)),
-                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(100)) +
-                           androidx.compose.animation.scaleOut(targetScale = 0.88f, animationSpec = androidx.compose.animation.core.tween(100)),
-                    modifier = Modifier.offset(x = menuX, y = menuY)
-                ) {
-                    if (currentSel != null) {
-                        Material3SelectionMenu(
-                            selection = currentSel,
-                            swatches = swatches,
-                            onHighlight = { colorHex ->
-                                val id = "hl_${System.currentTimeMillis()}_${(1000..9999).random()}"
-                                currentOnAddHighlight(id, currentSel.domainLocator, colorHex)
-                                currentFragment?.clearSelection()
-                                currentSel.actionMode?.finish()
-                                activeSelection = null
-                            },
-                            onAddNote = {
-                                val text = currentSel.text.ifBlank {
-                                    currentSel.domainLocator.text?.highlight ?: ""
-                                }
-                                currentOnAddNoteRequested(currentSel.domainLocator, text)
-                                currentFragment?.clearSelection()
-                                currentSel.actionMode?.finish()
-                                activeSelection = null
-                            },
-                            onCopy = {
-                                val text = currentSel.text.ifBlank {
-                                    currentSel.domainLocator.text?.highlight ?: ""
-                                }
-                                if (text.isNotEmpty()) {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                    val clip = ClipData.newPlainText("KReader Selection", text)
-                                    clipboard?.setPrimaryClip(clip)
-                                }
-                                currentFragment?.clearSelection()
-                                currentSel.actionMode?.finish()
-                                activeSelection = null
+                    },
+                    onAddNote = {
+                        val selection = activeSelection
+                        if (selection != null) {
+                            val text = selection.text.ifBlank {
+                                selection.domainLocator.text?.highlight.orEmpty()
                             }
-                        )
-                    }
-                }
-            }
-
-            // Render Highlights as Decorations with theme-calibrated tint and deduplicated application
-            val isDarkTheme = when (theme.mode) {
-                ThemeMode.DARK -> true
-                ThemeMode.SYSTEM -> isSystemDark
-                else -> false
-            }
-            val isSepia = theme.mode == ThemeMode.SEPIA
-
-            var lastAppliedHighlightsKey by remember(book.id) { mutableStateOf("") }
-            LaunchedEffect(currentFragment, highlights, isNavigatorReady, isDarkTheme, isSepia) {
-                val frag = currentFragment ?: return@LaunchedEffect
-                if (isNavigatorReady && frag.isAdded && frag.context != null) {
-                    val currentKey = highlights.joinToString(";") { "${it.id}:${it.colorHex}:${it.locator.href}:${it.locator.locations.progression}" } + ":$isDarkTheme:$isSepia"
-                    if (currentKey != lastAppliedHighlightsKey) {
-                        runCatching {
-                            val decorations = highlights.map { h ->
-                                val tintColor = calculateHighlightTintColor(h.colorHex, isDarkTheme, isSepia)
-                                Decoration(
-                                    id = h.id,
-                                    locator = h.locator.toReadium(),
-                                    style = Decoration.Style.Highlight(tint = tintColor, isActive = false)
+                            currentOnAddNoteRequested(selection.domainLocator, text)
+                            dismissSelection()
+                        }
+                    },
+                    onCopy = {
+                        val selection = activeSelection
+                        if (selection != null) {
+                            val text = selection.text.ifBlank {
+                                selection.domainLocator.text?.highlight.orEmpty()
+                            }
+                            if (text.isNotEmpty()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                    as? ClipboardManager
+                                clipboard?.setPrimaryClip(
+                                    ClipData.newPlainText("KReader Selection", text)
                                 )
                             }
-                            activeDecorations.clear()
-                            activeDecorations.addAll(decorations)
-                            frag.applyDecorations(activeDecorations.toList(), group = "highlights")
-                            lastAppliedHighlightsKey = currentKey
+                            dismissSelection()
                         }
                     }
-                }
-            }
-
-            // Observe currentLocator for progress persistence (deferred until fragment is STARTED)
-            LaunchedEffect(currentFragment, isNavigatorReady) {
-                val frag = currentFragment ?: return@LaunchedEffect
-                if (!isNavigatorReady || !frag.isAdded || frag.context == null) return@LaunchedEffect
-                if (!frag.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@LaunchedEffect
-
-                var lastSpineHref: String? = null
-                var lastProgression: Float? = null
-                frag.currentLocator.collect { readiumLocator ->
-                    if (frag.isAdded && frag.context != null) {
-                        // Avoid redundant font re-injection on every page turn within the same chapter
-                        val currHref = readiumLocator.href.toString().substringBefore('#')
-                        if (currHref != lastSpineHref) {
-                            lastSpineHref = currHref
-                            applyTypographyAndFontOverrides(frag, typography, customFonts)
-                            kotlinx.coroutines.delay(100)
-                            applyTypographyAndFontOverrides(frag, typography, customFonts)
-                            if (activeDecorations.isNotEmpty()) {
-                                frag.applyDecorations(activeDecorations.toList(), group = "highlights")
-                            }
-                        }
-
-                        runCatching {
-                            val domainLocator = readiumLocator.toDomain()
-                            val prog: Float = domainLocator.locations.totalProgression
-                                ?: run {
-                                    val pub = publication
-                                    if (pub != null && pub.readingOrder.isNotEmpty()) {
-                                        val order = pub.readingOrder
-                                        val spineIndex = order.indexOfFirst { link ->
-                                            link.href.toString().substringBefore('#') == readiumLocator.href.toString().substringBefore('#')
-                                        }
-                                        if (spineIndex >= 0) {
-                                            val chapterProg = (readiumLocator.locations.progression ?: 0.0).coerceIn(0.0, 1.0)
-                                            ((spineIndex + chapterProg) / order.size).toFloat().coerceIn(0f, 1f)
-                                        } else null
-                                    } else null
-                                }
-                                ?: (domainLocator.locations.progression ?: 0f)
-
-                            val pos = domainLocator.locations.position
-                                ?: if (totalPositionsCount > 0 && prog > 0f) {
-                                    ((prog * totalPositionsCount).toInt() + 1).coerceIn(1, totalPositionsCount)
-                                } else null
-
-                            val updatedLocator = domainLocator.copy(
-                                locations = domainLocator.locations.copy(
-                                    totalProgression = prog,
-                                    position = pos ?: domainLocator.locations.position
-                                )
-                            )
-
-                            if (lastProgression != null && kotlin.math.abs(prog - (lastProgression ?: 0f)) > 0.0001f) {
-                                val isSearchJump = lastSearchProgression != null && kotlin.math.abs(prog - (lastSearchProgression ?: 0f)) < 0.005f
-                                if (!isSearchJump && System.currentTimeMillis() - lastSearchHighlightTimestamp > 3000L) {
-                                    controller.clearSearchHighlight?.invoke()
-                                }
-                            }
-                            lastProgression = prog
-                            currentOnProgressChanged(prog, updatedLocator)
-                        }
-                    }
-                }
+                )
             }
         }
     }
 }
 
-private val fontBase64Cache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+private const val SEARCH_RESULT_LIMIT = 100
 
-private suspend fun applyTypographyAndFontOverrides(
-    frag: EpubNavigatorFragment,
-    typography: ReaderTypography,
-    customFonts: List<CustomFont>
-) {
-    runCatching {
-        val js = withContext(Dispatchers.IO) {
-            val fontOverrideJs = if (typography.overrideFont && typography.fontFamily.isNotBlank() && !typography.fontFamily.equals("Default", ignoreCase = true)) {
-                val fontName = typography.fontFamily
-                val customFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                val fontFaceDef = if (customFont != null) {
-                    val file = File(customFont.path)
-                    if (file.exists() && file.length() > 0L) {
-                        val (format, base64) = fontBase64Cache.getOrPut(customFont.path) {
-                            val fontBytes = file.readBytes()
-                            val b64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
-                            val fmt = if (file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
-                            fmt to b64
-                        }
-                        "@font-face { font-family: '$fontName'; src: url('data:font/$format;charset=utf-8;base64,$base64'); }\n"
-                    } else ""
-                } else ""
-
-                val fontCssValue = when (fontName.lowercase()) {
-                    "serif" -> "serif !important"
-                    "sans-serif" -> "sans-serif !important"
-                    "monospace" -> "monospace !important"
-                    else -> "'$fontName', sans-serif !important"
-                }
-
-                """
-                (function() {
-                    var el = document.getElementById('kreader-override-font');
-                    if (!el) {
-                        el = document.createElement('style');
-                        el.id = 'kreader-override-font';
-                        (document.head || document.documentElement).appendChild(el);
-                    }
-                    el.textContent = `${fontFaceDef}body, h1, h2, h3, h4, h5, h6, p, a, div, span, li, blockquote, [class*="title"], [class*="chapter"], [class*="heading"] { font-family: $fontCssValue; }`;
-                })();
-                """.trimIndent()
-            } else {
-                """
-                (function() {
-                    var el = document.getElementById('kreader-override-font');
-                    if (el) el.remove();
-                    var customEl = document.getElementById('kreader-custom-font');
-                    if (customEl) customEl.remove();
-                })();
-                """.trimIndent()
-            }
-
-            val fontScale = (typography.fontSizeSp / 16.0f).coerceIn(0.5f, 3.0f)
-            val fontScaleRule = "--kreader-font-scale: $fontScale;"
-
-            val textAlignRule = when (typography.textAlignment) {
-                ReaderTypography.TextAlignment.JUSTIFY -> "text-align: justify !important;"
-                ReaderTypography.TextAlignment.START -> "text-align: start !important;"
-                ReaderTypography.TextAlignment.DEFAULT -> ""
-            }
-            val lineHeightRule = if (typography.lineHeightMultiplier != 1.4f) {
-                "line-height: ${typography.lineHeightMultiplier} !important;"
-            } else ""
-
-            val typographyOverrideJs = """
-            (function() {
-                var el = document.getElementById('kreader-typography-overrides');
-                if (!el) {
-                    el = document.createElement('style');
-                    el.id = 'kreader-typography-overrides';
-                    (document.head || document.documentElement).appendChild(el);
-                }
-                var bodyRules = '${if (lineHeightRule.isNotEmpty() || textAlignRule.isNotEmpty()) "body, p, li { $lineHeightRule $textAlignRule }" else ""}';
-                el.textContent = `:root, html { $fontScaleRule } ` + bodyRules;
-            })();
-            """.trimIndent()
-
-            val fontNormalizeJs = EpubStyleNormalizer.buildNormalizationScript(fontScale)
-
-            "$fontOverrideJs\n$typographyOverrideJs\n$fontNormalizeJs"
-        }
-
-        frag.evaluateJavascript(js)
-        frag.view?.let { root ->
-            findWebViews(root).forEach { wv ->
-                wv.evaluateJavascript(js, null)
-            }
-        }
-    }
-}
-
-private fun locatorCacheKey(loc: Locator): String {
-    return "${loc.href}__${loc.locations.progression}__${loc.locations.totalProgression}__${loc.locations.position}__${loc.text?.highlight}__${loc.text?.before}"
-}
-
-private fun findWebViews(view: View): List<WebView> {
-    val list = mutableListOf<WebView>()
-    if (view is WebView) {
-        list.add(view)
-    } else if (view is ViewGroup) {
-        for (i in 0 until view.childCount) {
-            list.addAll(findWebViews(view.getChildAt(i)))
-        }
-    }
-    return list
-}
+private fun searchDecoration(locator: org.readium.r2.shared.publication.Locator): Decoration =
+    Decoration(
+        id = SEARCH_DECORATION_ID,
+        locator = locator,
+        style = Decoration.Style.Highlight(
+            tint = android.graphics.Color.argb(160, 255, 179, 0),
+            isActive = true
+        )
+    )
 
 private data class SelectionRect(
     val left: Float,
@@ -987,7 +687,80 @@ private data class HighlightColorSwatch(
 )
 
 @Composable
-private fun rememberThemeHarmonizedSwatches(theme: ReaderTheme, isSystemInDarkTheme: Boolean): List<HighlightColorSwatch> {
+private fun SelectionMenu(
+    selection: ActiveSelection?,
+    theme: ReaderTheme,
+    isSystemInDarkTheme: Boolean,
+    onHighlight: (String) -> Unit,
+    onAddNote: () -> Unit,
+    onCopy: () -> Unit
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val swatches = rememberThemeHarmonizedSwatches(theme, isSystemInDarkTheme)
+        val menuWidth = (swatches.size * 34 + 110).dp
+        val menuHeight = 52.dp
+        val rect = selection?.rect
+
+        val (rawMenuX, rawMenuY) = remember(rect, maxWidth, maxHeight, density, menuWidth) {
+            if (rect != null) {
+                val leftDp = with(density) { rect.left.toDp() }
+                val rightDp = with(density) { rect.right.toDp() }
+                val topDp = with(density) { rect.top.toDp() }
+                val bottomDp = with(density) { rect.bottom.toDp() }
+
+                val centerX = (leftDp + rightDp) / 2
+                val x = (centerX - menuWidth / 2).coerceIn(
+                    12.dp,
+                    (maxWidth - menuWidth - 12.dp).coerceAtLeast(12.dp)
+                )
+                val y = if (topDp >= menuHeight + 16.dp) {
+                    (topDp - menuHeight - 10.dp).coerceAtLeast(12.dp)
+                } else {
+                    (bottomDp + 10.dp).coerceAtMost(
+                        (maxHeight - menuHeight - 12.dp).coerceAtLeast(12.dp)
+                    )
+                }
+                x to y
+            } else {
+                ((maxWidth - menuWidth) / 2).coerceAtLeast(12.dp) to 72.dp
+            }
+        }
+
+        val menuX by animateDpAsState(
+            targetValue = rawMenuX,
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            label = "selectionMenuX"
+        )
+        val menuY by animateDpAsState(
+            targetValue = rawMenuY,
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            label = "selectionMenuY"
+        )
+
+        AnimatedVisibility(
+            visible = selection != null,
+            enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.88f, animationSpec = tween(150)),
+            exit = fadeOut(tween(100)) + scaleOut(targetScale = 0.88f, animationSpec = tween(100)),
+            modifier = Modifier.offset(x = menuX, y = menuY)
+        ) {
+            if (selection != null) {
+                Material3SelectionMenu(
+                    swatches = swatches,
+                    onHighlight = onHighlight,
+                    onAddNote = onAddNote,
+                    onCopy = onCopy
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberThemeHarmonizedSwatches(
+    theme: ReaderTheme,
+    isSystemInDarkTheme: Boolean
+): List<HighlightColorSwatch> {
     val isDark = when (theme.mode) {
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme
@@ -1046,7 +819,7 @@ private class SelectionActionModeCallback(
     private val scope: CoroutineScope,
     private val fragmentProvider: () -> EpubNavigatorFragment?,
     private val onSelectionActive: (ActiveSelection) -> Unit,
-    private val onSelectionDismissed: () -> Unit
+    private val onSelectionDismissed: (ActionMode?) -> Unit
 ) : ActionMode.Callback {
 
     private var updateJob: Job? = null
@@ -1055,37 +828,41 @@ private class SelectionActionModeCallback(
         menu?.clear()
         mode?.title = ""
         mode?.subtitle = ""
-        fetchSelection(mode, debounceMs = 0L)
+        fetchSelection(mode, attempts = 12)
         return true
     }
 
     override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
         menu?.clear()
-        fetchSelection(mode, debounceMs = 16L)
+        fetchSelection(mode, attempts = 2)
         return false
     }
 
-    private fun fetchSelection(mode: ActionMode?, debounceMs: Long) {
+    private fun fetchSelection(mode: ActionMode?, attempts: Int) {
         updateJob?.cancel()
         updateJob = scope.launch {
-            if (debounceMs > 0) {
-                delay(debounceMs)
-            }
-            val fragment = fragmentProvider() ?: return@launch
-            val selection = fragment.currentSelection()
-            if (selection != null) {
-                val rect = selection.rect?.let { r ->
-                    SelectionRect(r.left, r.top, r.right, r.bottom)
-                }
-                onSelectionActive(
-                    ActiveSelection(
-                        readiumLocator = selection.locator,
-                        domainLocator = selection.locator.toDomain(),
-                        text = selection.locator.text.highlight ?: "",
-                        rect = rect,
-                        actionMode = mode
+            repeat(attempts) { attempt ->
+                val fragment = fragmentProvider() ?: return@launch
+                val selection = fragment.currentSelection()
+                if (selection != null) {
+                    val rect = selection.rect
+                    onSelectionActive(
+                        ActiveSelection(
+                            readiumLocator = selection.locator,
+                            domainLocator = selection.locator.toDomain(),
+                            text = selection.locator.text.highlight.orEmpty(),
+                            rect = rect?.let { SelectionRect(it.left, it.top, it.right, it.bottom) },
+                            actionMode = mode
+                        )
                     )
-                )
+                    // The selection is already known; a later handle movement refreshes the
+                    // position through onPrepareActionMode.
+                    if (rect != null) return@launch
+                }
+
+                if (attempt < attempts - 1) {
+                    delay(20)
+                }
             }
         }
     }
@@ -1094,13 +871,12 @@ private class SelectionActionModeCallback(
 
     override fun onDestroyActionMode(mode: ActionMode?) {
         updateJob?.cancel()
-        onSelectionDismissed()
+        onSelectionDismissed(mode)
     }
 }
 
 @Composable
 private fun Material3SelectionMenu(
-    selection: ActiveSelection,
     swatches: List<HighlightColorSwatch>,
     onHighlight: (colorHex: String) -> Unit,
     onAddNote: () -> Unit,
@@ -1112,9 +888,7 @@ private fun Material3SelectionMenu(
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = 8.dp
-        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp),
         modifier = modifier
     ) {
         Row(
@@ -1128,7 +902,10 @@ private fun Material3SelectionMenu(
                     shape = CircleShape,
                     color = swatch.color,
                     modifier = Modifier.size(28.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
                 ) {}
             }
 
@@ -1139,10 +916,7 @@ private fun Material3SelectionMenu(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
             )
 
-            IconButton(
-                onClick = onAddNote,
-                modifier = Modifier.size(36.dp)
-            ) {
+            IconButton(onClick = onAddNote, modifier = Modifier.size(36.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.Notes,
                     contentDescription = "Add note",
@@ -1150,10 +924,7 @@ private fun Material3SelectionMenu(
                 )
             }
 
-            IconButton(
-                onClick = onCopy,
-                modifier = Modifier.size(36.dp)
-            ) {
+            IconButton(onClick = onCopy, modifier = Modifier.size(36.dp)) {
                 Icon(
                     imageVector = Icons.Rounded.ContentCopy,
                     contentDescription = "Copy text",

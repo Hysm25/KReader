@@ -9,8 +9,27 @@ import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.navigator.preferences.Spread
+import org.readium.r2.navigator.preferences.TextAlign
 import org.readium.r2.shared.ExperimentalReadiumApi
 
+/**
+ * Maps KReader's reading preferences to the official Readium [EpubPreferences].
+ *
+ * Readium CSS applies user typography with two independent flags:
+ *
+ * - `publisherStyles = true` keeps author stylesheets authoritative but disables *all* advanced
+ *   user settings in the bundled Readium CSS 3.0 modules, including `--USER__lineHeight`,
+ *   `--USER__textAlign` and `--USER__typeScale`. Author stylesheets are still injected either way,
+ *   so disabling `publisherStyles` does not remove publisher CSS: it only lets the reading system
+ *   take control of typography.
+ * - `publisherStyles = false` (`advancedSettings = true`) is therefore required to make the
+ *   continuous line-height and alignment controls functional. A stable [typeScale] keeps `h1`-`h6`
+ *   proportional and hierarchical at every font size, while centered `<hr>`, RTL flow, images and
+ *   every other author rule remain untouched.
+ *
+ * Font size is *not* delegated to Readium CSS: the navigator is configured with
+ * `useReadiumCssFontSize = false` so `WebSettings.textZoom` scales fixed `px`/`pt` stylesheets too.
+ */
 @OptIn(ExperimentalReadiumApi::class)
 fun buildReadiumPreferences(
     theme: ReaderTheme,
@@ -33,10 +52,7 @@ fun buildReadiumPreferences(
             Color(0xFFFAFAFA.toInt())
         }
         ThemeMode.SYSTEM_LIGHT -> Color(0xFFFAFAFA.toInt())
-        ThemeMode.CUSTOM -> {
-            val parsed = parseHexColorInt(theme.backgroundColorHex, 0xFFFFFFFF.toInt())
-            Color(parsed)
-        }
+        ThemeMode.CUSTOM -> Color(parseHexColorInt(theme.backgroundColorHex, 0xFFFFFFFF.toInt()))
     }
 
     val textColor = when (theme.mode) {
@@ -53,46 +69,71 @@ fun buildReadiumPreferences(
             Color(0xFF1A1A1A.toInt())
         }
         ThemeMode.SYSTEM_LIGHT -> Color(0xFF1A1A1A.toInt())
-        ThemeMode.CUSTOM -> {
-            val parsed = parseHexColorInt(theme.textColorHex, 0xFF1A1A1A.toInt())
-            Color(parsed)
-        }
-    }
-
-    val progression = if (isRtl) {
-        ReadingProgression.RTL
-    } else {
-        ReadingProgression.LTR
-    }
-
-    val fontFamily = if (!typography.overrideFont || typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true)) {
-        null
-    } else {
-        FontFamily(typography.fontFamily)
+        ThemeMode.CUSTOM -> Color(parseHexColorInt(theme.textColorHex, 0xFF1A1A1A.toInt()))
     }
 
     val textAlign = when (typography.textAlignment) {
-        ReaderTypography.TextAlignment.JUSTIFY -> org.readium.r2.navigator.preferences.TextAlign.JUSTIFY
-        ReaderTypography.TextAlignment.START -> org.readium.r2.navigator.preferences.TextAlign.START
+        ReaderTypography.TextAlignment.JUSTIFY -> TextAlign.JUSTIFY
+        ReaderTypography.TextAlignment.START -> TextAlign.START
         ReaderTypography.TextAlignment.DEFAULT -> null
     }
 
-    val scaledMargin = (typography.paddingHorizontal.toDouble() / 16.0).coerceIn(0.15, 2.5)
+    // Readium's page margins are expressed as a factor of the root em gutter.
+    val pageMargins = (typography.paddingHorizontal.toDouble() / 16.0).coerceIn(0.0, 3.0)
 
     return EpubPreferences(
         backgroundColor = backgroundColor,
         textColor = textColor,
-        fontFamily = fontFamily,
+        fontFamily = readiumFontFamily(typography),
         textAlign = textAlign,
         fontSize = (typography.fontSizeSp / 16.0).toDouble().coerceIn(0.5, 3.0),
-        lineHeight = (typography.lineHeightMultiplier.toDouble()).coerceIn(1.0, 3.0),
+        lineHeight = typography.lineHeightMultiplier.toDouble().coerceIn(1.0, 3.0),
         columnCount = ColumnCount.ONE,
         spread = Spread.NEVER,
-        pageMargins = scaledMargin,
+        pageMargins = pageMargins,
         scroll = isScrollMode,
-        readingProgression = progression,
+        readingProgression = if (isRtl) ReadingProgression.RTL else ReadingProgression.LTR,
         ligatures = true,
-        publisherStyles = true
+        publisherStyles = false,
+        typeScale = HEADING_TYPE_SCALE
+    )
+}
+
+/**
+ * Ratio between consecutive heading levels when the reading system owns typography.
+ *
+ * Readium CSS derives `h3`, `h2` and `h1` from the body size with this ratio, so headings stay
+ * proportional to the text at every font size instead of collapsing to the body size.
+ */
+private const val HEADING_TYPE_SCALE = 1.25
+
+/**
+ * Resolves the font family that Readium CSS should enforce.
+ *
+ * Returns `null` when the override is disabled so that publisher fonts are left untouched, which
+ * makes the toggle yield 100% to the book. Built-in families and generic CSS families are passed
+ * through by their canonical names; imported families are declared by the EPUB navigator
+ * configuration.
+ */
+@OptIn(ExperimentalReadiumApi::class)
+fun readiumFontFamily(typography: ReaderTypography): FontFamily? {
+    if (!typography.overrideFont) return null
+
+    val name = typography.fontFamily.trim()
+    if (name.isEmpty() || name.equals("Default", ignoreCase = true)) return null
+
+    return FontFamily(
+        when (name.lowercase()) {
+            "serif" -> FontFamily.SERIF.name
+            "sans-serif", "sans serif" -> FontFamily.SANS_SERIF.name
+            "monospace" -> FontFamily.MONOSPACE.name
+            "cursive" -> FontFamily.CURSIVE.name
+            "fantasy" -> FontFamily.FANTASY.name
+            "accessible dfa", "accessibledfa" -> FontFamily.ACCESSIBLE_DFA.name
+            "ia writer duospace", "iawriterduospace" -> FontFamily.IA_WRITER_DUOSPACE.name
+            "opendyslexic" -> FontFamily.OPEN_DYSLEXIC.name
+            else -> name
+        }
     )
 }
 

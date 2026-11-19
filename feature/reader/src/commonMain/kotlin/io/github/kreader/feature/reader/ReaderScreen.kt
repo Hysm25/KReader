@@ -301,7 +301,7 @@ fun ReaderScreen(
                                     text = currentChapterTitle,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                     modifier = Modifier
@@ -314,7 +314,7 @@ fun ReaderScreen(
                                 text = pageIndicatorText,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
                                 maxLines = 1,
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
@@ -345,14 +345,14 @@ fun ReaderScreen(
                             .fillMaxSize()
                             .widthIn(max = 840.dp)
                             .padding(
-                                top = 36.dp + state.typography.paddingVertical.dp,
-                                bottom = 36.dp + state.typography.paddingVertical.dp
+                                top = 40.dp + state.typography.paddingVertical.dp,
+                                bottom = 40.dp + state.typography.paddingVertical.dp
                             )
                     ) {
                         // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
                         EpubNavigatorHost(
                             book = book,
-                            initialLocator = book.lastLocator,
+                            initialLocator = liveLocator ?: book.lastLocator,
                             theme = state.theme,
                             typography = state.typography,
                             isScrollMode = state.isScrollMode,

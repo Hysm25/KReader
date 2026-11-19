@@ -80,6 +80,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true
     }
+    testOptions {
+        unitTests {
+            // Readium preference types initialize `android.graphics.Color` constants at class load.
+            // Returning default values keeps those pure JVM unit tests independent of Robolectric.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
