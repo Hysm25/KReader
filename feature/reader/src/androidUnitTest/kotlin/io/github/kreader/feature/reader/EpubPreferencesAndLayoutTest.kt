@@ -22,39 +22,57 @@ import kotlin.test.assertTrue
 class EpubPreferencesAndLayoutTest {
 
     @Test
-    fun testAdvancedTypographyIsEnabledSoLineHeightAndAlignmentActuallyApply() {
-        val preferences = buildReadiumPreferences(
-            theme = ReaderTheme(mode = ThemeMode.LIGHT),
-            typography = ReaderTypography(
-                fontSizeSp = 20f,
-                lineHeightMultiplier = 1.8f,
-                paddingHorizontal = 24,
-                textAlignment = ReaderTypography.TextAlignment.JUSTIFY
-            ),
-            isScrollMode = false,
-            isRtl = false
+    fun testEpubPreferences_publisherStylesPreservesNativeHeadingScaleAndAllowsUserOverrides() {
+        val theme = ReaderTheme(mode = ThemeMode.LIGHT)
+        val typography = ReaderTypography(
+            fontSizeSp = 20f,
+            lineHeightMultiplier = 1.8f,
+            paddingHorizontal = 24,
+            textAlignment = ReaderTypography.TextAlignment.JUSTIFY,
+            fontFamily = "Cinzel",
+            overrideFont = true
         )
 
-        // Bundled Readium CSS 3.0 modules gate `--USER__lineHeight`, `--USER__textAlign` and
-        // `--USER__typeScale` behind `readium-advanced-on`, which is emitted from
-        // `advancedSettings = !publisherStyles`. Keeping publisherStyles enabled would make the
-        // line-height and alignment controls silently inert.
-        assertEquals(
-            false,
-            preferences.publisherStyles,
-            "Advanced Readium CSS settings are required for live line-height and alignment"
+        val preferences = buildReadiumPreferences(
+            theme = theme,
+            typography = typography,
+            isScrollMode = false,
+            isRtl = false,
+            isSystemInDarkTheme = false
         )
-        assertEquals(
-            1.25,
-            preferences.typeScale ?: 0.0,
-            0.001,
-            "A stable type scale keeps h1-h6 proportional and hierarchical"
-        )
+
+        // publisherStyles MUST be true so ReadiumCSS honors native EPUB CSS heading sizes (h1-h6), centered <hr>, and publisher styling proportions
         assertTrue(
-            (preferences.lineHeight ?: 0.0) > 1.0,
-            "Line height must be forwarded to Readium CSS"
+            preferences.publisherStyles ?: false,
+            "publisherStyles must be explicitly true so ReadiumCSS honors author heading scale and layout styling"
         )
+        assertNull(
+            preferences.typeScale,
+            "typeScale must be null so Readium does not distort EPUB original heading scale"
+        )
+
+        // Font size scaled relative to 16sp
+        assertEquals(1.25, preferences.fontSize ?: 0.0, 0.01)
+
+        // Line height applied
+        assertEquals(1.8, preferences.lineHeight ?: 0.0, 0.01)
+
+        // Horizontal margin scaled
+        assertEquals(1.5, preferences.pageMargins ?: 0.0, 0.01)
+
+        // Text alignment justified
         assertEquals(TextAlign.JUSTIFY, preferences.textAlign)
+
+        // Font family set when overrideFont is true
+        assertEquals("Cinzel", preferences.fontFamily?.name)
+
+        // Reading progression LTR
+        assertEquals(ReadingProgression.LTR, preferences.readingProgression)
+
+        // Single column, no spread
+        assertEquals(ColumnCount.ONE, preferences.columnCount)
+        assertEquals(Spread.NEVER, preferences.spread)
+        assertFalse(preferences.scroll ?: true)
     }
 
     @Test
@@ -82,6 +100,8 @@ class EpubPreferencesAndLayoutTest {
         assertEquals(ColumnCount.ONE, preferences.columnCount)
         assertEquals(Spread.NEVER, preferences.spread)
         assertFalse(preferences.scroll ?: true)
+        assertTrue(preferences.publisherStyles ?: false)
+        assertNull(preferences.typeScale)
     }
 
     @Test
@@ -96,6 +116,7 @@ class EpubPreferencesAndLayoutTest {
             disabled.fontFamily,
             "Disabling the override must yield entirely to publisher fonts"
         )
+        assertTrue(disabled.publisherStyles ?: false)
 
         val enabled = buildReadiumPreferences(
             theme = ReaderTheme(mode = ThemeMode.LIGHT),
@@ -104,7 +125,112 @@ class EpubPreferencesAndLayoutTest {
             isRtl = false
         )
         assertEquals("Cinzel", enabled.fontFamily?.name)
-        assertEquals(false, enabled.publisherStyles)
+        assertTrue(enabled.publisherStyles ?: false)
+    }
+
+    @Test
+    fun testTypographyOverrides_fontOverrideAppliesToAllElementsWhileYieldingWhenDisabled() {
+        val defaultTypography = ReaderTypography(fontFamily = "Default", overrideFont = false)
+        val defaultPrefs = buildReadiumPreferences(
+            theme = ReaderTheme(mode = ThemeMode.LIGHT),
+            typography = defaultTypography,
+            isScrollMode = false,
+            isRtl = false
+        )
+        // Disabled override yields 100% to publisher fonts
+        assertNull(defaultPrefs.fontFamily)
+        assertTrue(defaultPrefs.publisherStyles ?: false)
+
+        val overriddenTypography = ReaderTypography(fontFamily = "Amiri", overrideFont = true)
+        val overriddenPrefs = buildReadiumPreferences(
+            theme = ReaderTheme(mode = ThemeMode.LIGHT),
+            typography = overriddenTypography,
+            isScrollMode = false,
+            isRtl = false
+        )
+        // Enabled override specifies fontFamily for Readium while publisherStyles = true preserves heading size scale
+        assertEquals("Amiri", overriddenPrefs.fontFamily?.name)
+        assertTrue(overriddenPrefs.publisherStyles ?: false)
+    }
+
+    @Test
+    fun testFontSizeScaling_withHardcodedPxAndPtStylesheets() {
+        val samplePublisherCss = """
+            p {
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            h1.chapter-title {
+                font-size: 24px;
+                text-align: center;
+            }
+            h2.section-header {
+                font-size: 20px;
+            }
+            span.footnote {
+                font-size: 10pt;
+            }
+            .calibre_1 {
+                font-size: 11pt !important;
+            }
+            hr.divider {
+                width: 40%;
+                margin-left: auto;
+                margin-right: auto;
+                border: 1px solid #ccc;
+            }
+        """.trimIndent()
+
+        // 1. Normalize CSS to replace hardcoded absolute sizes with dynamic calc using --kreader-font-scale
+        val normalizedCss = EpubStyleNormalizer.normalizeCssAbsoluteFontSizes(samplePublisherCss)
+
+        assertTrue(normalizedCss.contains("font-size: calc(14px * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(24px * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(20px * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(10pt * var(--kreader-font-scale, 1))"))
+        assertTrue(normalizedCss.contains("font-size: calc(11pt * var(--kreader-font-scale, 1)) !important"))
+
+        // Centered <hr> and other properties remain intact
+        assertTrue(normalizedCss.contains("margin-left: auto;"))
+        assertTrue(normalizedCss.contains("margin-right: auto;"))
+        assertTrue(normalizedCss.contains("line-height: 1.5;"))
+        assertTrue(normalizedCss.contains("text-align: center;"))
+
+        // 2. Test scaling calculations at 20sp (scale 1.25)
+        val scaleUp = 20f / 16f
+        val scaledP = EpubStyleNormalizer.computeScaledFontSize("14px", scaleUp)
+        val scaledH1 = EpubStyleNormalizer.computeScaledFontSize("24px", scaleUp)
+        val scaledH2 = EpubStyleNormalizer.computeScaledFontSize("20px", scaleUp)
+        val scaledFootnote = EpubStyleNormalizer.computeScaledFontSize("10pt", scaleUp)
+        val scaledCalibre = EpubStyleNormalizer.computeScaledFontSize("11pt", scaleUp)
+
+        assertEquals("17.5px", scaledP)
+        assertEquals("30px", scaledH1)
+        assertEquals("25px", scaledH2)
+        assertEquals("12.5pt", scaledFootnote)
+        assertEquals("13.75pt", scaledCalibre)
+
+        // Verify proportional heading-to-body ratio is strictly preserved
+        val originalRatio = 24f / 14f
+        val scaledRatio = 30f / 17.5f
+        assertEquals(originalRatio, scaledRatio, 0.001f)
+
+        // 3. Test scaling calculations at 12sp (scale 0.75)
+        val scaleDown = 12f / 16f
+        assertEquals("10.5px", EpubStyleNormalizer.computeScaledFontSize("14px", scaleDown))
+        assertEquals("18px", EpubStyleNormalizer.computeScaledFontSize("24px", scaleDown))
+        val scaledDownRatio = 18f / 10.5f
+        assertEquals(originalRatio, scaledDownRatio, 0.001f)
+    }
+
+    @Test
+    fun testFontSizeScaling_normalizationScriptIncludesStyleSheetAndInlineDOMTraversal() {
+        val script = EpubStyleNormalizer.buildNormalizationScript(1.25f)
+        assertTrue(script.contains("--kreader-font-scale"))
+        assertTrue(script.contains("document.styleSheets"))
+        assertTrue(script.contains("processRules"))
+        assertTrue(script.contains("querySelectorAll('[style*=\"font-size\"]')"))
+        assertTrue(script.contains("calc("))
     }
 
     @Test

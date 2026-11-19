@@ -10,6 +10,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -233,6 +234,18 @@ actual fun EpubNavigatorHost(
             .onSuccess { submittedPreferences = preferences }
     }
 
+    // Apply font override across all text elements (including h1-h6 headings) and typography customizations
+    var lastAppliedOverrideKey by remember(book.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(navigator, isNavigatorReady, typography, customFonts) {
+        val fragment = navigator ?: return@LaunchedEffect
+        if (!isNavigatorReady || !fragment.isAdded || fragment.context == null) return@LaunchedEffect
+        val key = "${typography.overrideFont}:${typography.fontFamily}:${typography.fontSizeSp}:${typography.lineHeightMultiplier}:${typography.textAlignment}"
+        if (key != lastAppliedOverrideKey) {
+            applyTypographyAndFontOverrides(fragment, typography, customFonts)
+            lastAppliedOverrideKey = key
+        }
+    }
+
     // 3. Wire the imperative controller to official navigator APIs.
     DisposableEffect(navigator, publication, isNavigatorReady) {
         val fragment = navigator
@@ -383,6 +396,7 @@ actual fun EpubNavigatorHost(
 
     // 5. Observe the navigator's official current locator. It already carries the position and
     //    total progression resolved by Readium's PositionsService.
+    var lastSpineHref by remember(book.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(navigator, isNavigatorReady) {
         val fragment = navigator ?: return@LaunchedEffect
         if (!isNavigatorReady) return@LaunchedEffect
@@ -390,6 +404,11 @@ actual fun EpubNavigatorHost(
         var lastKey: String? = null
         fragment.currentLocator.collect { readiumLocator ->
             val locator = readiumLocator.toDomain()
+            val currHref = locator.href.substringBefore('#')
+            if (currHref != lastSpineHref) {
+                lastSpineHref = currHref
+                applyTypographyAndFontOverrides(fragment, typography, customFonts)
+            }
             val progression = locator.locations.totalProgression
                 ?: locator.locations.progression
                 ?: return@collect
@@ -483,6 +502,9 @@ actual fun EpubNavigatorHost(
                             attach(f)
                             navigator = f
                             isNavigatorReady = true
+                            scope.launch {
+                                applyTypographyAndFontOverrides(f, typography, customFonts)
+                            }
                         }
                     }
 
@@ -513,6 +535,9 @@ actual fun EpubNavigatorHost(
                     attach(existing)
                     navigator = existing
                     isNavigatorReady = true
+                    scope.launch {
+                        applyTypographyAndFontOverrides(existing, typography, customFonts)
+                    }
                 }
 
                 onDispose {
@@ -948,4 +973,118 @@ private inline fun <reified T> Any?.unwrapReadium(): T? {
     if (this is T) return this
     if (this is Try.Success<*, *>) return this.value as? T
     return null
+}
+
+private fun findWebViews(view: View): List<WebView> {
+    val result = mutableListOf<WebView>()
+    if (view is WebView) {
+        result.add(view)
+    } else if (view is ViewGroup) {
+        for (i in 0 until view.childCount) {
+            result.addAll(findWebViews(view.getChildAt(i)))
+        }
+    }
+    return result
+}
+
+private suspend fun applyTypographyAndFontOverrides(
+    frag: EpubNavigatorFragment,
+    typography: ReaderTypography,
+    customFonts: List<CustomFont>
+) {
+    runCatching {
+        val js = withContext(Dispatchers.IO) {
+            val fontOverrideJs = if (typography.overrideFont && typography.fontFamily.isNotBlank() && !typography.fontFamily.equals("Default", ignoreCase = true)) {
+                val fontName = typography.fontFamily
+                val customFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
+                val fontFaceDef = if (customFont != null) {
+                    val file = File(customFont.path)
+                    if (file.exists() && file.length() > 0L) {
+                        val fontUrl = ReadiumFontResources.url(customFont)
+                        "@font-face { font-family: '$fontName'; src: url('$fontUrl'); }\n"
+                    } else ""
+                } else ""
+
+                val fontCssValue = when (fontName.lowercase()) {
+                    "serif" -> "serif !important"
+                    "sans-serif", "sans serif" -> "sans-serif !important"
+                    "monospace" -> "monospace !important"
+                    "cursive" -> "cursive !important"
+                    "fantasy" -> "fantasy !important"
+                    "accessible dfa", "accessibledfa" -> "'Accessible-DFA', sans-serif !important"
+                    "ia writer duospace", "iawriterduospace" -> "'IA Writer Duospace', monospace !important"
+                    "opendyslexic" -> "'OpenDyslexic', sans-serif !important"
+                    else -> "'$fontName', sans-serif !important"
+                }
+
+                """
+                (function() {
+                    var el = document.getElementById('kreader-font-override');
+                    if (!el) {
+                        el = document.createElement('style');
+                        el.id = 'kreader-font-override';
+                        (document.head || document.documentElement).appendChild(el);
+                    }
+                    el.textContent = `${fontFaceDef}body, h1, h2, h3, h4, h5, h6, p, div, span, li, blockquote, a { font-family: $fontCssValue; }`;
+                })();
+                """.trimIndent()
+            } else {
+                """
+                (function() {
+                    var el = document.getElementById('kreader-font-override');
+                    if (el) el.remove();
+                })();
+                """.trimIndent()
+            }
+
+            val textAlignRule = when (typography.textAlignment) {
+                ReaderTypography.TextAlignment.JUSTIFY -> "text-align: justify !important;"
+                ReaderTypography.TextAlignment.START -> "text-align: start !important;"
+                ReaderTypography.TextAlignment.DEFAULT -> ""
+            }
+
+            val lineHeightRule = if (typography.lineHeightMultiplier > 0f) {
+                "line-height: ${typography.lineHeightMultiplier} !important;"
+            } else ""
+
+            val typographyOverrideJs = if (textAlignRule.isNotEmpty() || lineHeightRule.isNotEmpty()) {
+                """
+                (function() {
+                    var el = document.getElementById('kreader-typography-overrides');
+                    if (!el) {
+                        el = document.createElement('style');
+                        el.id = 'kreader-typography-overrides';
+                        (document.head || document.documentElement).appendChild(el);
+                    }
+                    el.textContent = `body, p, li, blockquote, div { $lineHeightRule $textAlignRule }`;
+                })();
+                """.trimIndent()
+            } else {
+                """
+                (function() {
+                    var el = document.getElementById('kreader-typography-overrides');
+                    if (el) el.remove();
+                })();
+                """.trimIndent()
+            }
+
+            val fontScale = (typography.fontSizeSp / 16.0f).coerceIn(0.5f, 3.0f)
+            val fontNormalizeJs = EpubStyleNormalizer.buildNormalizationScript(fontScale)
+
+            "$fontOverrideJs\n$typographyOverrideJs\n$fontNormalizeJs"
+        }
+
+        frag.evaluateJavascript(js)
+        withContext(Dispatchers.Main) {
+            frag.view?.let { root ->
+                findWebViews(root).forEach { wv ->
+                    wv.evaluateJavascript(js, null)
+                    val zoomPercent = (typography.fontSizeSp / 16.0f * 100).toInt().coerceIn(50, 300)
+                    if (wv.settings.textZoom != zoomPercent) {
+                        wv.settings.textZoom = zoomPercent
+                    }
+                }
+            }
+        }
+    }
 }

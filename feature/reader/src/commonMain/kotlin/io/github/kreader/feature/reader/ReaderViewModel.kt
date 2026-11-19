@@ -285,7 +285,9 @@ class ReaderViewModel(
         _uiState.update { it.copy(theme = newTheme) }
         scope.launch {
             bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                (current ?: ReaderPreferencesOverride()).copy(theme = newTheme)
+                val themeOverride = newTheme.takeIf { it != globalPreferences.theme }
+                val override = (current ?: ReaderPreferencesOverride()).copy(theme = themeOverride)
+                override.takeUnless { it.isEmpty() }
             }
         }
     }
@@ -317,7 +319,10 @@ class ReaderViewModel(
                     overrideFont = newTypography.overrideFont
                         .takeIf { it != global.overrideFont }
                 )
-                (current ?: ReaderPreferencesOverride()).copy(typography = typography)
+                val override = (current ?: ReaderPreferencesOverride()).copy(
+                    typography = typography.takeUnless { it.isEmpty() }
+                )
+                override.takeUnless { it.isEmpty() }
             }
         }
     }
@@ -326,7 +331,9 @@ class ReaderViewModel(
         _uiState.update { it.copy(isScrollMode = isScroll) }
         scope.launch {
             bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                (current ?: ReaderPreferencesOverride()).copy(isScrollMode = isScroll)
+                val scrollOverride = isScroll.takeIf { it != globalPreferences.isScrollMode }
+                val override = (current ?: ReaderPreferencesOverride()).copy(isScrollMode = scrollOverride)
+                override.takeUnless { it.isEmpty() }
             }
         }
     }
@@ -361,7 +368,9 @@ class ReaderViewModel(
         _uiState.update { it.copy(keepScreenOn = enabled) }
         scope.launch {
             bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                (current ?: ReaderPreferencesOverride()).copy(keepScreenOn = enabled)
+                val keepOverride = enabled.takeIf { it != globalPreferences.keepScreenOn }
+                val override = (current ?: ReaderPreferencesOverride()).copy(keepScreenOn = keepOverride)
+                override.takeUnless { it.isEmpty() }
             }
         }
     }
@@ -370,7 +379,9 @@ class ReaderViewModel(
         _uiState.update { it.copy(orientationLock = lock) }
         scope.launch {
             bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                (current ?: ReaderPreferencesOverride()).copy(orientationLock = lock)
+                val orientOverride = lock.takeIf { it != globalPreferences.orientationLock }
+                val override = (current ?: ReaderPreferencesOverride()).copy(orientationLock = orientOverride)
+                override.takeUnless { it.isEmpty() }
             }
         }
     }
@@ -379,13 +390,7 @@ class ReaderViewModel(
         scope.launch {
             bookRepository.addCustomFont(font)
             val updatedTypography = _uiState.value.typography.copy(fontFamily = font.name, overrideFont = true)
-            _uiState.update { it.copy(typography = updatedTypography) }
-            bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                val prevTypo = current?.typography ?: ReaderTypographyOverride()
-                (current ?: ReaderPreferencesOverride()).copy(
-                    typography = prevTypo.copy(fontFamily = font.name, overrideFont = true)
-                )
-            }
+            changeTypography(updatedTypography)
         }
     }
 
@@ -393,14 +398,8 @@ class ReaderViewModel(
         scope.launch {
             bookRepository.deleteCustomFont(fontName)
             if (_uiState.value.typography.fontFamily.equals(fontName, ignoreCase = true)) {
-                val updatedTypography = _uiState.value.typography.copy(fontFamily = "Default")
-                _uiState.update { it.copy(typography = updatedTypography) }
-                bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                    val prevTypo = current?.typography ?: ReaderTypographyOverride()
-                    (current ?: ReaderPreferencesOverride()).copy(
-                        typography = prevTypo.copy(fontFamily = "Default")
-                    )
-                }
+                val updatedTypography = _uiState.value.typography.copy(fontFamily = "Default", overrideFont = false)
+                changeTypography(updatedTypography)
             }
         }
     }

@@ -13,22 +13,12 @@ import org.readium.r2.navigator.preferences.TextAlign
 import org.readium.r2.shared.ExperimentalReadiumApi
 
 /**
- * Maps KReader's reading preferences to the official Readium [EpubPreferences].
+ * Maps KReader's reading preferences to Readium [EpubPreferences].
  *
- * Readium CSS applies user typography with two independent flags:
- *
- * - `publisherStyles = true` keeps author stylesheets authoritative but disables *all* advanced
- *   user settings in the bundled Readium CSS 3.0 modules, including `--USER__lineHeight`,
- *   `--USER__textAlign` and `--USER__typeScale`. Author stylesheets are still injected either way,
- *   so disabling `publisherStyles` does not remove publisher CSS: it only lets the reading system
- *   take control of typography.
- * - `publisherStyles = false` (`advancedSettings = true`) is therefore required to make the
- *   continuous line-height and alignment controls functional. A stable [typeScale] keeps `h1`-`h6`
- *   proportional and hierarchical at every font size, while centered `<hr>`, RTL flow, images and
- *   every other author rule remain untouched.
- *
- * Font size is *not* delegated to Readium CSS: the navigator is configured with
- * `useReadiumCssFontSize = false` so `WebSettings.textZoom` scales fixed `px`/`pt` stylesheets too.
+ * Keeps publisher styles authoritative (`publisherStyles = true`, `typeScale = null`) so the EPUB's
+ * original CSS (heading proportions h1–h6, centered <hr> dividers, blockquotes, and Arabic RTL layout)
+ * renders faithfully without artificial scale distortion. User typography overrides (font size,
+ * override font, line height, text alignment, margins) are scaled and applied reliably across all publications.
  */
 @OptIn(ExperimentalReadiumApi::class)
 fun buildReadiumPreferences(
@@ -94,18 +84,10 @@ fun buildReadiumPreferences(
         scroll = isScrollMode,
         readingProgression = if (isRtl) ReadingProgression.RTL else ReadingProgression.LTR,
         ligatures = true,
-        publisherStyles = false,
-        typeScale = HEADING_TYPE_SCALE
+        publisherStyles = true,
+        typeScale = null
     )
 }
-
-/**
- * Ratio between consecutive heading levels when the reading system owns typography.
- *
- * Readium CSS derives `h3`, `h2` and `h1` from the body size with this ratio, so headings stay
- * proportional to the text at every font size instead of collapsing to the body size.
- */
-private const val HEADING_TYPE_SCALE = 1.25
 
 /**
  * Resolves the font family that Readium CSS should enforce.

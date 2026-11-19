@@ -432,7 +432,8 @@ class JsonVaultBookRepository(
                 letterSpacingSp = preferences.typography.letterSpacingSp.takeIf { it != global.typography.letterSpacingSp },
                 textAlignment = preferences.typography.textAlignment.takeIf { it != global.typography.textAlignment },
                 paddingHorizontal = preferences.typography.paddingHorizontal.takeIf { it != global.typography.paddingHorizontal },
-                paddingVertical = preferences.typography.paddingVertical.takeIf { it != global.typography.paddingVertical }
+                paddingVertical = preferences.typography.paddingVertical.takeIf { it != global.typography.paddingVertical },
+                overrideFont = preferences.typography.overrideFont.takeIf { it != global.typography.overrideFont }
             )
             val override = ReaderPreferencesOverride(
                 theme = preferences.theme.takeIf { it != global.theme },
@@ -445,7 +446,7 @@ class JsonVaultBookRepository(
                 keepScreenOn = preferences.keepScreenOn.takeIf { it != global.keepScreenOn },
                 orientationLock = preferences.orientationLock.takeIf { it != global.orientationLock }
             )
-            updateBookPreferencesOverride(bookId) { override }
+            updateBookPreferencesOverride(bookId) { override.takeUnless { it.isEmpty() } }
         } else {
             saveReaderPreferences(preferences)
             resetPreferences(bookId)

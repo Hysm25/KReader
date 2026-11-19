@@ -1371,7 +1371,12 @@ fun ReaderSettingsSheet(
                                     Switch(
                                         checked = typography.overrideFont,
                                         onCheckedChange = { checked ->
-                                            onTypographyChange(typography.copy(overrideFont = checked))
+                                            val targetFamily = if (checked && (typography.fontFamily.isBlank() || typography.fontFamily.equals("Default", ignoreCase = true))) {
+                                                "Serif"
+                                            } else {
+                                                typography.fontFamily
+                                            }
+                                            onTypographyChange(typography.copy(overrideFont = checked, fontFamily = targetFamily))
                                         }
                                     )
                                 }
@@ -1554,9 +1559,16 @@ fun ReaderSettingsSheet(
                                         value = tempLineHeight,
                                         onValueChange = {
                                             tempLineHeight = it
-                                            onTypographyChange(
-                                                typography.copy(lineHeightMultiplier = it)
-                                            )
+                                            val rounded = kotlin.math.round(it * 10f) / 10f
+                                            if (rounded != typography.lineHeightMultiplier) {
+                                                onTypographyChange(
+                                                    typography.copy(lineHeightMultiplier = rounded)
+                                                )
+                                            }
+                                        },
+                                        onValueChangeFinished = {
+                                            val finalVal = kotlin.math.round(tempLineHeight * 10f) / 10f
+                                            onTypographyChange(typography.copy(lineHeightMultiplier = finalVal))
                                         },
                                         valueRange = 1.0f..2.5f,
                                         modifier = Modifier.fillMaxWidth()
@@ -1695,9 +1707,15 @@ fun ReaderSettingsSheet(
                                             value = tempHorizontalPadding,
                                             onValueChange = {
                                                 tempHorizontalPadding = it
-                                                onTypographyChange(
-                                                    typography.copy(paddingHorizontal = it.toInt())
-                                                )
+                                                val intVal = it.toInt()
+                                                if (intVal != typography.paddingHorizontal) {
+                                                    onTypographyChange(
+                                                        typography.copy(paddingHorizontal = intVal)
+                                                    )
+                                                }
+                                            },
+                                            onValueChangeFinished = {
+                                                onTypographyChange(typography.copy(paddingHorizontal = tempHorizontalPadding.toInt()))
                                             },
                                             valueRange = 0f..48f,
                                             modifier = Modifier.fillMaxWidth()
@@ -1733,9 +1751,15 @@ fun ReaderSettingsSheet(
                                             value = tempVerticalPadding,
                                             onValueChange = {
                                                 tempVerticalPadding = it
-                                                onTypographyChange(
-                                                    typography.copy(paddingVertical = it.toInt())
-                                                )
+                                                val intVal = it.toInt()
+                                                if (intVal != typography.paddingVertical) {
+                                                    onTypographyChange(
+                                                        typography.copy(paddingVertical = intVal)
+                                                    )
+                                                }
+                                            },
+                                            onValueChangeFinished = {
+                                                onTypographyChange(typography.copy(paddingVertical = tempVerticalPadding.toInt()))
                                             },
                                             valueRange = 0f..32f,
                                             modifier = Modifier.fillMaxWidth()

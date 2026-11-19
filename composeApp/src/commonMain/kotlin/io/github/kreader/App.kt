@@ -133,7 +133,7 @@ fun App() {
                             bookRepository.addCustomFont(font)
                             bookRepository.saveReaderPreferences(
                                 persistedPreferences.copy(
-                                    typography = persistedPreferences.typography.copy(fontFamily = font.name)
+                                    typography = persistedPreferences.typography.copy(fontFamily = font.name, overrideFont = true)
                                 )
                             )
                         }
@@ -144,7 +144,7 @@ fun App() {
                             if (persistedPreferences.typography.fontFamily.equals(fontName, ignoreCase = true)) {
                                 bookRepository.saveReaderPreferences(
                                     persistedPreferences.copy(
-                                        typography = persistedPreferences.typography.copy(fontFamily = "Default")
+                                        typography = persistedPreferences.typography.copy(fontFamily = "Default", overrideFont = false)
                                     )
                                 )
                             }
