@@ -26,6 +26,12 @@ actual class VaultStorage(private val context: Context) {
     actual var onVaultContentChanged: (() -> Unit)? = null
 
     private var treeContentObserver: ContentObserver? = null
+    @Volatile
+    private var suppressObserverUntilMs: Long = 0L
+
+    private fun markSelfWrite(windowMs: Long = 2000L) {
+        suppressObserverUntilMs = System.currentTimeMillis() + windowMs
+    }
 
     init {
         registerVaultContentObserver(_activeVaultUriOrPath.value)
@@ -40,6 +46,8 @@ actual class VaultStorage(private val context: Context) {
                 private var lastTriggerTime = 0L
                 override fun onChange(selfChange: Boolean, uri: Uri?) {
                     val now = System.currentTimeMillis()
+                    if (now < suppressObserverUntilMs) return
+                    if (uri?.toString()?.contains(".kreader") == true) return
                     if (now - lastTriggerTime > 800L) {
                         lastTriggerTime = now
                         onVaultContentChanged?.invoke()
@@ -202,6 +210,7 @@ actual class VaultStorage(private val context: Context) {
     actual suspend fun writeConfig(fileName: String, content: String): Unit {
         val mutex = getFileMutex(fileName)
         mutex.withLock {
+            markSelfWrite()
             withContext(Dispatchers.IO) {
                 val cachedUri = configFileUriCache[fileName]
                 if (cachedUri != null) {
@@ -255,6 +264,7 @@ actual class VaultStorage(private val context: Context) {
     }
 
     actual suspend fun saveCover(coverName: String, bytes: ByteArray): String? = coverMutex.withLock {
+        markSelfWrite()
         withContext(Dispatchers.IO) {
             // 1. Save inside vault .kreader/covers/
             runCatching {
@@ -346,6 +356,7 @@ actual class VaultStorage(private val context: Context) {
     }
 
     actual suspend fun saveFont(fontFileName: String, bytes: ByteArray): String? = withContext(Dispatchers.IO) {
+        markSelfWrite()
         // 1. Save in vault .kreader/fonts/
         runCatching {
             val fontsDir = getOrCreateSubDir("fonts")
@@ -410,6 +421,7 @@ actual class VaultStorage(private val context: Context) {
     }
 
     actual suspend fun deleteFont(fontFileName: String): Boolean = withContext(Dispatchers.IO) {
+        markSelfWrite()
         runCatching {
             val localFontsDir = File(context.filesDir, "fonts")
             localFontsDir.listFiles()?.forEach { file ->
@@ -436,6 +448,7 @@ actual class VaultStorage(private val context: Context) {
     }
 
     actual suspend fun exportMarkdown(fileName: String, markdownContent: String): String? = withContext(Dispatchers.IO) {
+        markSelfWrite()
         runCatching {
             val root = getRootDoc() ?: return@withContext null
             val notesDir = root.findFile("KReader Notes") ?: root.createDirectory("KReader Notes") ?: root

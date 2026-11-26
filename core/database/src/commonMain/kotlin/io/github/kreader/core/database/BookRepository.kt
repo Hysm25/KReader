@@ -2,7 +2,6 @@ package io.github.kreader.core.database
 
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
-import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
@@ -25,6 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -57,6 +58,7 @@ interface BookRepository {
     fun observeReaderPreferences(): Flow<ReaderPreferences>
     suspend fun getReaderPreferences(): ReaderPreferences
     suspend fun saveReaderPreferences(preferences: ReaderPreferences)
+    suspend fun updateReaderPreferences(transform: (ReaderPreferences) -> ReaderPreferences)
     fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences>
     suspend fun getEffectivePreferences(bookId: String): ReaderPreferences
     suspend fun updateBookPreferencesOverride(bookId: String, update: (ReaderPreferencesOverride?) -> ReaderPreferencesOverride?)
@@ -95,13 +97,17 @@ class JsonVaultBookRepository(
     private val _workspace = MutableStateFlow(VaultWorkspace())
     private val _annotations = MutableStateFlow(VaultAnnotations())
     private val _customThemes = MutableStateFlow<List<CustomTheme>>(emptyList())
+    private val workspaceMutex = Mutex()
+    private val annotationsMutex = Mutex()
+    private val prefsMutex = Mutex()
     private var saveWorkspaceJob: Job? = null
 
-    private fun scheduleSaveWorkspace(workspace: VaultWorkspace) {
+    private fun scheduleSaveWorkspace() {
         saveWorkspaceJob?.cancel()
         saveWorkspaceJob = scope.launch(ioDispatcher) {
             delay(1000)
-            vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(workspace))
+            val snapshot = workspaceMutex.withLock { _workspace.value }
+            vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(snapshot))
         }
     }
 
@@ -129,6 +135,7 @@ class JsonVaultBookRepository(
     }
 
     override fun clearVault() {
+        saveWorkspaceJob?.cancel()
         vaultStorage.setActiveVault(null)
         _activeVaultName.value = null
         _books.value = emptyList()
@@ -141,29 +148,35 @@ class JsonVaultBookRepository(
         _activeVaultName.value = vaultStorage.getVaultName()
 
         // 1. Load appearance.json
-        val appearanceJson = vaultStorage.readConfig(APPEARANCE_FILE)
-        var loadedPrefs = if (!appearanceJson.isNullOrBlank()) {
-            runCatching { json.decodeFromString<ReaderPreferences>(appearanceJson) }.getOrDefault(ReaderPreferences())
-        } else {
-            val def = ReaderPreferences()
-            vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(def))
-            def
-        }
+        val loadedPrefs = prefsMutex.withLock {
+            val appearanceJson = vaultStorage.readConfig(APPEARANCE_FILE)
+            var prefs = if (!appearanceJson.isNullOrBlank()) {
+                runCatching { json.decodeFromString<ReaderPreferences>(appearanceJson) }.getOrDefault(ReaderPreferences())
+            } else {
+                val def = ReaderPreferences()
+                vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(def))
+                def
+            }
 
-        // 1b. Restore custom fonts from .kreader/fonts/ in vault
-        val scannedFonts = vaultStorage.listFonts()
-        if (scannedFonts.isNotEmpty()) {
-            val existingFontsMap = loadedPrefs.customFonts.associateBy { it.name.lowercase() }
-            val mergedFonts = scannedFonts.map { sf ->
-                existingFontsMap[sf.name.lowercase()] ?: sf
+            // 1b. Restore custom fonts from .kreader/fonts/ in vault
+            val scannedFonts = vaultStorage.listFonts()
+            if (scannedFonts.isNotEmpty()) {
+                val existingFontsMap = prefs.customFonts.associateBy { it.name.lowercase() }
+                val mergedFonts = scannedFonts.map { sf ->
+                    existingFontsMap[sf.name.lowercase()] ?: sf
+                }
+                val remainingPrefsFonts = prefs.customFonts.filterNot { ef ->
+                    scannedFonts.any { it.name.equals(ef.name, ignoreCase = true) }
+                }
+                val combinedFonts = mergedFonts + remainingPrefsFonts
+                if (combinedFonts != prefs.customFonts) {
+                    prefs = prefs.copy(customFonts = combinedFonts)
+                    vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(prefs))
+                }
             }
-            val remainingPrefsFonts = loadedPrefs.customFonts.filterNot { ef ->
-                scannedFonts.any { it.name.equals(ef.name, ignoreCase = true) }
-            }
-            loadedPrefs = loadedPrefs.copy(customFonts = mergedFonts + remainingPrefsFonts)
-            vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(loadedPrefs))
+            _preferences.value = prefs
+            prefs
         }
-        _preferences.value = loadedPrefs
 
         // 1c. Load themes.json
         val themesJson = vaultStorage.readConfig(THEMES_FILE)
@@ -177,23 +190,29 @@ class JsonVaultBookRepository(
         }
         _customThemes.value = loadedThemes
 
-        // 2. Load workspace.json
-        val workspaceJson = vaultStorage.readConfig(WORKSPACE_FILE)
-        val loadedWorkspace = if (!workspaceJson.isNullOrBlank()) {
-            runCatching { json.decodeFromString<VaultWorkspace>(workspaceJson) }.getOrDefault(VaultWorkspace())
-        } else {
-            VaultWorkspace()
+        // 2. Load workspace.json (preserve pending in-memory edits if a debounced save is in flight)
+        workspaceMutex.withLock {
+            if (saveWorkspaceJob?.isActive != true) {
+                val workspaceJson = vaultStorage.readConfig(WORKSPACE_FILE)
+                val loadedWorkspace = if (!workspaceJson.isNullOrBlank()) {
+                    runCatching { json.decodeFromString<VaultWorkspace>(workspaceJson) }.getOrDefault(VaultWorkspace())
+                } else {
+                    VaultWorkspace()
+                }
+                _workspace.value = loadedWorkspace
+            }
         }
-        _workspace.value = loadedWorkspace
 
         // 3. Load annotations.json
-        val annotationsJson = vaultStorage.readConfig(ANNOTATIONS_FILE)
-        val loadedAnnotations = if (!annotationsJson.isNullOrBlank()) {
-            runCatching { json.decodeFromString<VaultAnnotations>(annotationsJson) }.getOrDefault(VaultAnnotations())
-        } else {
-            VaultAnnotations()
+        annotationsMutex.withLock {
+            val annotationsJson = vaultStorage.readConfig(ANNOTATIONS_FILE)
+            val loadedAnnotations = if (!annotationsJson.isNullOrBlank()) {
+                runCatching { json.decodeFromString<VaultAnnotations>(annotationsJson) }.getOrDefault(VaultAnnotations())
+            } else {
+                VaultAnnotations()
+            }
+            _annotations.value = loadedAnnotations
         }
-        _annotations.value = loadedAnnotations
 
         // 4. Scan EPUBs in vault
         refreshVaultInternal()
@@ -287,21 +306,24 @@ class JsonVaultBookRepository(
         }
 
         // 2. Update workspace.json
-        val currentWorkspace = _workspace.value
-        val updatedBooks = currentWorkspace.books.toMutableMap()
-        val existingRecord = updatedBooks[bookId]
-        updatedBooks[bookId] = (existingRecord ?: BookProgressRecord(relativePath = bookId)).copy(
-            totalProgression = progression,
-            lastReadTimestamp = timestamp,
-            lastLocator = locator
-        )
-        val newWorkspace = currentWorkspace.copy(books = updatedBooks)
-        _workspace.value = newWorkspace
+        workspaceMutex.withLock {
+            val currentWorkspace = _workspace.value
+            val updatedBooks = currentWorkspace.books.toMutableMap()
+            val existingRecord = updatedBooks[bookId]
+            updatedBooks[bookId] = (existingRecord ?: BookProgressRecord(relativePath = bookId)).copy(
+                totalProgression = progression,
+                lastReadTimestamp = timestamp,
+                lastLocator = locator
+            )
+            _workspace.value = currentWorkspace.copy(books = updatedBooks)
+        }
 
-        scheduleSaveWorkspace(newWorkspace)
+        scheduleSaveWorkspace()
     }
 
     override suspend fun deleteBook(id: String): Unit = withContext(ioDispatcher) {
+        saveWorkspaceJob?.cancel()
+
         // 1. Delete physical file from vault
         vaultStorage.deleteEpub(id)
 
@@ -311,18 +333,24 @@ class JsonVaultBookRepository(
         vaultStorage.deleteCover(coverFileName)
 
         // 3. Remove from workspace.json
-        val updatedWorkspace = _workspace.value.copy(
-            books = _workspace.value.books.filterKeys { it != id }
-        )
-        _workspace.value = updatedWorkspace
+        val updatedWorkspace = workspaceMutex.withLock {
+            val updated = _workspace.value.copy(
+                books = _workspace.value.books.filterKeys { it != id }
+            )
+            _workspace.value = updated
+            updated
+        }
         vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(updatedWorkspace))
 
         // 4. Remove from annotations.json
-        val updatedAnnotations = _annotations.value.copy(
-            bookmarks = _annotations.value.bookmarks.filterKeys { it != id },
-            highlights = _annotations.value.highlights.filterKeys { it != id }
-        )
-        _annotations.value = updatedAnnotations
+        val updatedAnnotations = annotationsMutex.withLock {
+            val updated = _annotations.value.copy(
+                bookmarks = _annotations.value.bookmarks.filterKeys { it != id },
+                highlights = _annotations.value.highlights.filterKeys { it != id }
+            )
+            _annotations.value = updated
+            updated
+        }
         vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updatedAnnotations))
 
         // 5. Remove from in-memory books
@@ -334,26 +362,28 @@ class JsonVaultBookRepository(
     }
 
     override suspend fun saveBookmark(bookmark: Bookmark): Unit = withContext(ioDispatcher) {
-        val current = _annotations.value
-        val bookMap = current.bookmarks.toMutableMap()
-        val list = (bookMap[bookmark.bookId] ?: emptyList()).filterNot { it.id == bookmark.id } + bookmark
-        bookMap[bookmark.bookId] = list
-        val updated = current.copy(bookmarks = bookMap)
-        _annotations.value = updated
+        val updated = annotationsMutex.withLock {
+            val current = _annotations.value
+            val bookMap = current.bookmarks.toMutableMap()
+            val list = (bookMap[bookmark.bookId] ?: emptyList()).filterNot { it.id == bookmark.id } + bookmark
+            bookMap[bookmark.bookId] = list
+            current.copy(bookmarks = bookMap).also { _annotations.value = it }
+        }
         vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
     override suspend fun deleteBookmark(id: String): Unit = withContext(ioDispatcher) {
-        val current = _annotations.value
-        val bookMap = current.bookmarks.toMutableMap()
-        for ((key, list) in bookMap) {
-            if (list.any { it.id == id }) {
-                bookMap[key] = list.filterNot { it.id == id }
-                break
+        val updated = annotationsMutex.withLock {
+            val current = _annotations.value
+            val bookMap = current.bookmarks.toMutableMap()
+            for ((key, list) in bookMap) {
+                if (list.any { it.id == id }) {
+                    bookMap[key] = list.filterNot { it.id == id }
+                    break
+                }
             }
+            current.copy(bookmarks = bookMap).also { _annotations.value = it }
         }
-        val updated = current.copy(bookmarks = bookMap)
-        _annotations.value = updated
         vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
@@ -362,26 +392,28 @@ class JsonVaultBookRepository(
     }
 
     override suspend fun saveHighlight(highlight: Highlight): Unit = withContext(ioDispatcher) {
-        val current = _annotations.value
-        val bookMap = current.highlights.toMutableMap()
-        val list = (bookMap[highlight.bookId] ?: emptyList()).filterNot { it.id == highlight.id } + highlight
-        bookMap[highlight.bookId] = list
-        val updated = current.copy(highlights = bookMap)
-        _annotations.value = updated
+        val updated = annotationsMutex.withLock {
+            val current = _annotations.value
+            val bookMap = current.highlights.toMutableMap()
+            val list = (bookMap[highlight.bookId] ?: emptyList()).filterNot { it.id == highlight.id } + highlight
+            bookMap[highlight.bookId] = list
+            current.copy(highlights = bookMap).also { _annotations.value = it }
+        }
         vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
     override suspend fun deleteHighlight(id: String): Unit = withContext(ioDispatcher) {
-        val current = _annotations.value
-        val bookMap = current.highlights.toMutableMap()
-        for ((key, list) in bookMap) {
-            if (list.any { it.id == id }) {
-                bookMap[key] = list.filterNot { it.id == id }
-                break
+        val updated = annotationsMutex.withLock {
+            val current = _annotations.value
+            val bookMap = current.highlights.toMutableMap()
+            for ((key, list) in bookMap) {
+                if (list.any { it.id == id }) {
+                    bookMap[key] = list.filterNot { it.id == id }
+                    break
+                }
             }
+            current.copy(highlights = bookMap).also { _annotations.value = it }
         }
-        val updated = current.copy(highlights = bookMap)
-        _annotations.value = updated
         vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
@@ -392,8 +424,21 @@ class JsonVaultBookRepository(
     }
 
     override suspend fun saveReaderPreferences(preferences: ReaderPreferences): Unit = withContext(ioDispatcher) {
-        _preferences.value = preferences
+        prefsMutex.withLock {
+            _preferences.value = preferences
+        }
         vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(preferences))
+    }
+
+    override suspend fun updateReaderPreferences(
+        transform: (ReaderPreferences) -> ReaderPreferences
+    ): Unit = withContext(ioDispatcher) {
+        val updated = prefsMutex.withLock {
+            val next = transform(_preferences.value)
+            _preferences.value = next
+            next
+        }
+        vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(updated))
     }
 
     override fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences> =
@@ -412,13 +457,15 @@ class JsonVaultBookRepository(
         bookId: String,
         update: (ReaderPreferencesOverride?) -> ReaderPreferencesOverride?
     ): Unit = withContext(ioDispatcher) {
-        val currentWorkspace = _workspace.value
-        val existingRecord = currentWorkspace.books[bookId] ?: BookProgressRecord(relativePath = bookId)
-        val updatedOverride = update(existingRecord.preferencesOverride)?.takeUnless { it.isEmpty() }
-        val updatedBooks = currentWorkspace.books.toMutableMap()
-        updatedBooks[bookId] = existingRecord.copy(preferencesOverride = updatedOverride)
-        val newWorkspace = currentWorkspace.copy(books = updatedBooks)
-        _workspace.value = newWorkspace
+        saveWorkspaceJob?.cancel()
+        val newWorkspace = workspaceMutex.withLock {
+            val currentWorkspace = _workspace.value
+            val existingRecord = currentWorkspace.books[bookId] ?: BookProgressRecord(relativePath = bookId)
+            val updatedOverride = update(existingRecord.preferencesOverride)?.takeUnless { it.isEmpty() }
+            val updatedBooks = currentWorkspace.books.toMutableMap()
+            updatedBooks[bookId] = existingRecord.copy(preferencesOverride = updatedOverride)
+            currentWorkspace.copy(books = updatedBooks).also { _workspace.value = it }
+        }
         vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
     }
 
@@ -454,42 +501,48 @@ class JsonVaultBookRepository(
     }
 
     override suspend fun resetPreferences(bookId: String): Unit = withContext(ioDispatcher) {
-        val currentWorkspace = _workspace.value
-        val updatedBooks = currentWorkspace.books.toMutableMap()
-        val existingRecord = updatedBooks[bookId]
-        if (existingRecord?.preferencesOverride != null) {
-            updatedBooks[bookId] = existingRecord.copy(preferencesOverride = null)
-            val newWorkspace = currentWorkspace.copy(books = updatedBooks)
-            _workspace.value = newWorkspace
+        saveWorkspaceJob?.cancel()
+        val newWorkspace = workspaceMutex.withLock {
+            val currentWorkspace = _workspace.value
+            val updatedBooks = currentWorkspace.books.toMutableMap()
+            val existingRecord = updatedBooks[bookId]
+            if (existingRecord?.preferencesOverride != null) {
+                updatedBooks[bookId] = existingRecord.copy(preferencesOverride = null)
+                currentWorkspace.copy(books = updatedBooks).also { _workspace.value = it }
+            } else null
+        }
+        if (newWorkspace != null) {
             vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
         }
     }
 
     override suspend fun resetGlobalPreferences(): Unit = withContext(ioDispatcher) {
-        val defaultPrefs = ReaderPreferences()
-        _preferences.value = defaultPrefs
+        val defaultPrefs = prefsMutex.withLock {
+            val existingFonts = _preferences.value.customFonts
+            ReaderPreferences(customFonts = existingFonts).also { _preferences.value = it }
+        }
         vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(defaultPrefs))
     }
 
     override suspend fun addCustomFont(font: CustomFont): Unit = withContext(ioDispatcher) {
         val persisted = vaultStorage.persistFont(font)
-        val current = getReaderPreferences()
-        val updatedList = current.customFonts.filterNot { it.name.equals(persisted.name, ignoreCase = true) } + persisted
-        val updated = current.copy(customFonts = updatedList)
-        saveReaderPreferences(updated)
+        updateReaderPreferences { current ->
+            val updatedList = current.customFonts.filterNot { it.name.equals(persisted.name, ignoreCase = true) } + persisted
+            current.copy(customFonts = updatedList)
+        }
     }
 
     override suspend fun deleteCustomFont(fontName: String): Unit = withContext(ioDispatcher) {
         vaultStorage.deleteFont(fontName)
-        val current = getReaderPreferences()
-        val updatedList = current.customFonts.filterNot { it.name.equals(fontName, ignoreCase = true) }
-        val newTypography = if (current.typography.fontFamily.equals(fontName, ignoreCase = true)) {
-            current.typography.copy(fontFamily = "Default")
-        } else {
-            current.typography
+        updateReaderPreferences { current ->
+            val updatedList = current.customFonts.filterNot { it.name.equals(fontName, ignoreCase = true) }
+            val newTypography = if (current.typography.fontFamily.equals(fontName, ignoreCase = true)) {
+                current.typography.copy(fontFamily = "Default", overrideFont = false)
+            } else {
+                current.typography
+            }
+            current.copy(customFonts = updatedList, typography = newTypography)
         }
-        val updated = current.copy(customFonts = updatedList, typography = newTypography)
-        saveReaderPreferences(updated)
     }
 
     override suspend fun exportBookToMarkdown(bookId: String): String? = withContext(ioDispatcher) {

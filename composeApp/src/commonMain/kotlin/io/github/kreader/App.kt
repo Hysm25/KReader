@@ -97,30 +97,36 @@ fun App() {
                     customFonts = persistedPreferences.customFonts,
                     customThemes = customThemes,
                     keepScreenOn = persistedPreferences.keepScreenOn,
+                    volumeKeyNavigation = persistedPreferences.volumeKeyNavigation,
                     orientationLock = persistedPreferences.orientationLock,
                     onThemeChange = { newTheme ->
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(theme = newTheme))
+                            bookRepository.updateReaderPreferences { it.copy(theme = newTheme) }
                         }
                     },
                     onTypographyChange = { newTypo ->
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(typography = newTypo))
+                            bookRepository.updateReaderPreferences { it.copy(typography = newTypo) }
                         }
                     },
                     onScrollModeChange = { isScroll ->
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(isScrollMode = isScroll))
+                            bookRepository.updateReaderPreferences { it.copy(isScrollMode = isScroll) }
                         }
                     },
                     onKeepScreenOnChange = { enabled ->
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(keepScreenOn = enabled))
+                            bookRepository.updateReaderPreferences { it.copy(keepScreenOn = enabled) }
+                        }
+                    },
+                    onVolumeKeyNavigationChange = { enabled ->
+                        scope.launch {
+                            bookRepository.updateReaderPreferences { it.copy(volumeKeyNavigation = enabled) }
                         }
                     },
                     onOrientationLockChange = { lock ->
                         scope.launch {
-                            bookRepository.saveReaderPreferences(persistedPreferences.copy(orientationLock = lock))
+                            bookRepository.updateReaderPreferences { it.copy(orientationLock = lock) }
                         }
                     },
                     onResetToDefaults = {
@@ -131,23 +137,16 @@ fun App() {
                     onImportCustomFont = { font ->
                         scope.launch {
                             bookRepository.addCustomFont(font)
-                            bookRepository.saveReaderPreferences(
-                                persistedPreferences.copy(
-                                    typography = persistedPreferences.typography.copy(fontFamily = font.name, overrideFont = true)
+                            bookRepository.updateReaderPreferences { current ->
+                                current.copy(
+                                    typography = current.typography.copy(fontFamily = font.name, overrideFont = true)
                                 )
-                            )
+                            }
                         }
                     },
                     onDeleteCustomFont = { fontName ->
                         scope.launch {
                             bookRepository.deleteCustomFont(fontName)
-                            if (persistedPreferences.typography.fontFamily.equals(fontName, ignoreCase = true)) {
-                                bookRepository.saveReaderPreferences(
-                                    persistedPreferences.copy(
-                                        typography = persistedPreferences.typography.copy(fontFamily = "Default", overrideFont = false)
-                                    )
-                                )
-                            }
                         }
                     },
                     onSaveCustomTheme = { newTheme ->
@@ -200,11 +199,12 @@ fun App() {
                     onProgressChanged = { prog, loc -> readerViewModel.updateProgress(prog, loc) },
                     onTableOfContentsLoaded = { toc -> readerViewModel.setTableOfContents(toc) },
                     onPageCountLoaded = { count -> readerViewModel.setTotalPageCount(count) },
-                    customFonts = readerViewModel.customFonts,
+                    customFonts = readerUiState.customFonts,
                     customThemes = readerUiState.customThemes,
                     onSaveCustomTheme = { theme -> readerViewModel.saveCustomTheme(theme) },
                     onDeleteCustomTheme = { id -> readerViewModel.deleteCustomTheme(id) },
                     onKeepScreenOnChange = { enabled -> readerViewModel.changeKeepScreenOn(enabled) },
+                    onVolumeKeyNavigationChange = { enabled -> readerViewModel.changeVolumeKeyNavigation(enabled) },
                     onOrientationLockChange = { lock -> readerViewModel.changeOrientationLock(lock) },
                     onImportCustomFont = { font -> readerViewModel.importCustomFont(font) },
                     onDeleteCustomFont = { name -> readerViewModel.deleteCustomFont(name) },

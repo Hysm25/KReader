@@ -1,5 +1,6 @@
 package io.github.kreader.feature.reader
 
+import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
@@ -411,6 +412,26 @@ class EpubPreferencesAndLayoutTest {
         )
 
         assertNotNull(findMatchingBookmark(bookmarks, current, totalProgression = 0.6f))
+    }
+
+    @Test
+    fun testFindTocTitleForHrefMatchesNestedChaptersAndFragments() {
+        val toc = listOf(
+            TocItem(
+                title = "Part I",
+                locator = Locator(href = "OEBPS/part1.xhtml", type = "application/xhtml+xml"),
+                children = listOf(
+                    TocItem(
+                        title = "Chapter 1: Dawn",
+                        locator = Locator(href = "OEBPS/ch1.xhtml#sec1", type = "application/xhtml+xml")
+                    )
+                )
+            )
+        )
+
+        assertEquals("Chapter 1: Dawn", findTocTitleForHref(toc, "/OEBPS/ch1.xhtml#para3"))
+        assertEquals("Part I", findTocTitleForHref(toc, "OEBPS/part1.xhtml"))
+        assertNull(findTocTitleForHref(toc, "OEBPS/missing.xhtml"))
     }
 
     private fun bookmark(

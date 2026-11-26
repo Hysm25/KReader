@@ -374,7 +374,7 @@ fun DesktopReaderLayout(
                         if (book != null) {
                             EpubNavigatorHost(
                                 book = book,
-                                initialLocator = book.lastLocator,
+                                initialLocator = liveLocator ?: book.lastLocator,
                                 theme = state.theme,
                                 typography = state.typography,
                                 isScrollMode = state.isScrollMode,

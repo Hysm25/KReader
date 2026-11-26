@@ -14,6 +14,7 @@ import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -48,7 +49,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -58,6 +58,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
@@ -145,6 +147,8 @@ actual fun EpubNavigatorHost(
     val currentOnTableOfContentsLoaded by rememberUpdatedState(onTableOfContentsLoaded)
     val currentOnDirectionDetected by rememberUpdatedState(onDirectionDetected)
     val currentOnPageCountLoaded by rememberUpdatedState(onPageCountLoaded)
+    val currentTypography by rememberUpdatedState(typography)
+    val currentCustomFonts by rememberUpdatedState(customFonts)
 
     var publication by remember(book.id) { mutableStateOf<Publication?>(null) }
     var navigator by remember(book.id) { mutableStateOf<EpubNavigatorFragment?>(null) }
@@ -222,7 +226,7 @@ actual fun EpubNavigatorHost(
     }
 
     // 2. Submit official Readium preferences whenever they change.
-    var submittedPreferences by remember(book.id) {
+    var submittedPreferences by remember(book.id, navigator) {
         mutableStateOf<org.readium.r2.navigator.epub.EpubPreferences?>(null)
     }
     LaunchedEffect(navigator, isNavigatorReady, preferences) {
@@ -235,7 +239,7 @@ actual fun EpubNavigatorHost(
     }
 
     // Apply font override across all text elements (including h1-h6 headings) and typography customizations
-    var lastAppliedOverrideKey by remember(book.id) { mutableStateOf<String?>(null) }
+    var lastAppliedOverrideKey by remember(book.id, navigator) { mutableStateOf<String?>(null) }
     LaunchedEffect(navigator, isNavigatorReady, typography, customFonts) {
         val fragment = navigator ?: return@LaunchedEffect
         if (!isNavigatorReady || !fragment.isAdded || fragment.context == null) return@LaunchedEffect
@@ -396,7 +400,7 @@ actual fun EpubNavigatorHost(
 
     // 5. Observe the navigator's official current locator. It already carries the position and
     //    total progression resolved by Readium's PositionsService.
-    var lastSpineHref by remember(book.id) { mutableStateOf<String?>(null) }
+    var lastSpineHref by remember(book.id, navigator) { mutableStateOf<String?>(null) }
     LaunchedEffect(navigator, isNavigatorReady) {
         val fragment = navigator ?: return@LaunchedEffect
         if (!isNavigatorReady) return@LaunchedEffect
@@ -407,7 +411,7 @@ actual fun EpubNavigatorHost(
             val currHref = locator.href.substringBefore('#')
             if (currHref != lastSpineHref) {
                 lastSpineHref = currHref
-                applyTypographyAndFontOverrides(fragment, typography, customFonts)
+                applyTypographyAndFontOverrides(fragment, currentTypography, currentCustomFonts)
             }
             val progression = locator.locations.totalProgression
                 ?: locator.locations.progression
@@ -503,7 +507,7 @@ actual fun EpubNavigatorHost(
                             navigator = f
                             isNavigatorReady = true
                             scope.launch {
-                                applyTypographyAndFontOverrides(f, typography, customFonts)
+                                applyTypographyAndFontOverrides(f, currentTypography, currentCustomFonts)
                             }
                         }
                     }
@@ -536,7 +540,7 @@ actual fun EpubNavigatorHost(
                     navigator = existing
                     isNavigatorReady = true
                     scope.launch {
-                        applyTypographyAndFontOverrides(existing, typography, customFonts)
+                        applyTypographyAndFontOverrides(existing, currentTypography, currentCustomFonts)
                     }
                 }
 
@@ -636,6 +640,8 @@ actual fun EpubNavigatorHost(
 
                 SelectionMenu(
                     selection = activeSelection,
+                    maxWidth = maxWidth,
+                    maxHeight = maxHeight,
                     theme = theme,
                     isSystemInDarkTheme = isSystemDark,
                     onHighlight = { colorHex ->
@@ -714,69 +720,80 @@ private data class HighlightColorSwatch(
 @Composable
 private fun SelectionMenu(
     selection: ActiveSelection?,
+    maxWidth: Dp,
+    maxHeight: Dp,
     theme: ReaderTheme,
     isSystemInDarkTheme: Boolean,
     onHighlight: (String) -> Unit,
     onAddNote: () -> Unit,
     onCopy: () -> Unit
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val density = LocalDensity.current
-        val swatches = rememberThemeHarmonizedSwatches(theme, isSystemInDarkTheme)
-        val menuWidth = (swatches.size * 34 + 110).dp
-        val menuHeight = 52.dp
-        val rect = selection?.rect
+    val density = LocalDensity.current
+    val swatches = rememberThemeHarmonizedSwatches(theme, isSystemInDarkTheme)
+    val menuWidth = (swatches.size * 34 + 110).dp
+    val menuHeight = 52.dp
+    val rect = selection?.rect
 
-        val (rawMenuX, rawMenuY) = remember(rect, maxWidth, maxHeight, density, menuWidth) {
-            if (rect != null) {
-                val leftDp = with(density) { rect.left.toDp() }
-                val rightDp = with(density) { rect.right.toDp() }
-                val topDp = with(density) { rect.top.toDp() }
-                val bottomDp = with(density) { rect.bottom.toDp() }
+    val (rawMenuX, rawMenuY) = remember(rect, maxWidth, maxHeight, density, menuWidth) {
+        if (rect != null) {
+            val leftDp = with(density) { rect.left.toDp() }
+            val rightDp = with(density) { rect.right.toDp() }
+            val topDp = with(density) { rect.top.toDp() }
+            val bottomDp = with(density) { rect.bottom.toDp() }
 
-                val centerX = (leftDp + rightDp) / 2
-                val x = (centerX - menuWidth / 2).coerceIn(
-                    12.dp,
-                    (maxWidth - menuWidth - 12.dp).coerceAtLeast(12.dp)
-                )
-                val y = if (topDp >= menuHeight + 16.dp) {
-                    (topDp - menuHeight - 10.dp).coerceAtLeast(12.dp)
-                } else {
-                    (bottomDp + 10.dp).coerceAtMost(
-                        (maxHeight - menuHeight - 12.dp).coerceAtLeast(12.dp)
-                    )
-                }
-                x to y
+            val centerX = (leftDp + rightDp) / 2
+            val x = (centerX - menuWidth / 2).coerceIn(
+                12.dp,
+                (maxWidth - menuWidth - 12.dp).coerceAtLeast(12.dp)
+            )
+            val y = if (topDp >= menuHeight + 16.dp) {
+                (topDp - menuHeight - 10.dp).coerceAtLeast(12.dp)
             } else {
-                ((maxWidth - menuWidth) / 2).coerceAtLeast(12.dp) to 72.dp
-            }
-        }
-
-        val menuX by animateDpAsState(
-            targetValue = rawMenuX,
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-            label = "selectionMenuX"
-        )
-        val menuY by animateDpAsState(
-            targetValue = rawMenuY,
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-            label = "selectionMenuY"
-        )
-
-        AnimatedVisibility(
-            visible = selection != null,
-            enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.88f, animationSpec = tween(150)),
-            exit = fadeOut(tween(100)) + scaleOut(targetScale = 0.88f, animationSpec = tween(100)),
-            modifier = Modifier.offset(x = menuX, y = menuY)
-        ) {
-            if (selection != null) {
-                Material3SelectionMenu(
-                    swatches = swatches,
-                    onHighlight = onHighlight,
-                    onAddNote = onAddNote,
-                    onCopy = onCopy
+                (bottomDp + 10.dp).coerceAtMost(
+                    (maxHeight - menuHeight - 12.dp).coerceAtLeast(12.dp)
                 )
             }
+            x to y
+        } else {
+            ((maxWidth - menuWidth) / 2).coerceAtLeast(12.dp) to 72.dp
+        }
+    }
+
+    var wasVisible by remember { mutableStateOf(false) }
+    val isVisible = selection != null
+    val positionSpec = if (wasVisible && isVisible) {
+        spring<Dp>(stiffness = Spring.StiffnessMediumLow)
+    } else {
+        snap()
+    }
+    LaunchedEffect(isVisible) {
+        wasVisible = isVisible
+    }
+
+    val menuX by animateDpAsState(
+        targetValue = rawMenuX,
+        animationSpec = positionSpec,
+        label = "selectionMenuX"
+    )
+    val menuY by animateDpAsState(
+        targetValue = rawMenuY,
+        animationSpec = positionSpec,
+        label = "selectionMenuY"
+    )
+
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.88f, animationSpec = tween(150)),
+        exit = fadeOut(tween(100)) + scaleOut(targetScale = 0.88f, animationSpec = tween(100)),
+        modifier = Modifier.offset { IntOffset(menuX.roundToPx(), menuY.roundToPx()) }
+    ) {
+        if (selection != null) {
+            Material3SelectionMenu(
+                swatches = swatches,
+                onHighlight = onHighlight,
+                onAddNote = onAddNote,
+                onCopy = onCopy
+            )
         }
     }
 }
@@ -871,18 +888,18 @@ private class SelectionActionModeCallback(
                 val selection = fragment.currentSelection()
                 if (selection != null) {
                     val rect = selection.rect
-                    onSelectionActive(
-                        ActiveSelection(
-                            readiumLocator = selection.locator,
-                            domainLocator = selection.locator.toDomain(),
-                            text = selection.locator.text.highlight.orEmpty(),
-                            rect = rect?.let { SelectionRect(it.left, it.top, it.right, it.bottom) },
-                            actionMode = mode
+                    if (rect != null || attempt == attempts - 1) {
+                        onSelectionActive(
+                            ActiveSelection(
+                                readiumLocator = selection.locator,
+                                domainLocator = selection.locator.toDomain(),
+                                text = selection.locator.text.highlight.orEmpty(),
+                                rect = rect?.let { SelectionRect(it.left, it.top, it.right, it.bottom) },
+                                actionMode = mode
+                            )
                         )
-                    )
-                    // The selection is already known; a later handle movement refreshes the
-                    // position through onPrepareActionMode.
-                    if (rect != null) return@launch
+                        return@launch
+                    }
                 }
 
                 if (attempt < attempts - 1) {
@@ -996,12 +1013,19 @@ private suspend fun applyTypographyAndFontOverrides(
         val js = withContext(Dispatchers.IO) {
             val fontOverrideJs = if (typography.overrideFont && typography.fontFamily.isNotBlank() && !typography.fontFamily.equals("Default", ignoreCase = true)) {
                 val fontName = typography.fontFamily
+                val escapedFontName = fontName
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("`", "\\`")
+                    .replace("$", "\\$")
                 val customFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
                 val fontFaceDef = if (customFont != null) {
                     val file = File(customFont.path)
                     if (file.exists() && file.length() > 0L) {
-                        val fontUrl = ReadiumFontResources.url(customFont)
-                        "@font-face { font-family: '$fontName'; src: url('$fontUrl'); }\n"
+                        val fontUrl = ReadiumFontResources.url(customFont).toString()
+                            .replace("\\", "\\\\")
+                            .replace("'", "\\'")
+                        "@font-face { font-family: '$escapedFontName'; src: url('$fontUrl'); }\n"
                     } else ""
                 } else ""
 
@@ -1014,7 +1038,7 @@ private suspend fun applyTypographyAndFontOverrides(
                     "accessible dfa", "accessibledfa" -> "'Accessible-DFA', sans-serif !important"
                     "ia writer duospace", "iawriterduospace" -> "'IA Writer Duospace', monospace !important"
                     "opendyslexic" -> "'OpenDyslexic', sans-serif !important"
-                    else -> "'$fontName', sans-serif !important"
+                    else -> "'$escapedFontName', sans-serif !important"
                 }
 
                 """
@@ -1025,7 +1049,7 @@ private suspend fun applyTypographyAndFontOverrides(
                         el.id = 'kreader-font-override';
                         (document.head || document.documentElement).appendChild(el);
                     }
-                    el.textContent = `${fontFaceDef}body, h1, h2, h3, h4, h5, h6, p, div, span, li, blockquote, a { font-family: $fontCssValue; }`;
+                    el.textContent = `${fontFaceDef}body, h1, h2, h3, h4, h5, h6, p, div, span, li, blockquote, a, em, strong, i, b, td, th, figcaption { font-family: $fontCssValue; }`;
                 })();
                 """.trimIndent()
             } else {

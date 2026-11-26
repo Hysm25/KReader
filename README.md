@@ -4,12 +4,11 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose Multiplatform](https://img.shields.io/badge/Compose_Multiplatform-1.7.1-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/lp/compose-multiplatform/)
 [![Readium](https://img.shields.io/badge/Readium_Kotlin_Toolkit-3.0.0-0284C7.svg)](https://readium.org)
-[![Arch Linux](https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793D1.svg?logo=archlinux&logoColor=white)](https://archlinux.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## System Overview
 
-**KReader** is a modern, local-first EPUB reader for **Android** and **Linux Desktop (Arch Linux / CachyOS)** built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**.
+**KReader** is a modern, local-first EPUB reader for **Android** and **Desktop** built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**.
 
 Built on an **Obsidian-style folder vault** philosophy, KReader allows you to open and manage your books directly inside any folder on your device or storage. Books remain in place—never duplicated into proprietary app databases or hidden sandboxes. All reading progress, preferences, and annotations are saved in clean, human-readable JSON files inside a portable `.kreader/` configuration directory.
 
@@ -22,11 +21,9 @@ KReader/
 │   └── engine-api/             # Reader engine contracts, navigation controller & key dispatcher
 ├── engine/
 │   └── epub-adapter/           # Readium 3.0 (Android) & Pure Compose Block AST engine (Desktop)
-├── feature/
-│   ├── library/                # Library screen, vault onboarding, book grid, metadata extraction
-│   └── reader/                 # Reader screen, ReaderViewModel, navigator hosts (Android Readium & Desktop AST)
-└── packaging/
-    └── arch/                   # Arch Linux PKGBUILD, launcher script, desktop entry & icons
+└── feature/
+    ├── library/                # Library screen, vault onboarding, book grid, metadata extraction
+    └── reader/                 # Reader screen, ReaderViewModel, navigator hosts (Android Readium & Desktop AST)
 ```
 
 ---
@@ -35,9 +32,8 @@ KReader/
 
 - **`composeApp`**: [./composeApp/README.md](./composeApp/README.md) - Application entry points (Android `MainActivity` and Desktop `main`), root Compose UI scaffolding (`App.kt`), desktop distribution tasks, and system lifecycle bridges.
 - **`core`**: [./core/README.md](./core/README.md) - Foundational domain entities (`model`), local-first `.kreader/` JSON vault persistence (`database`), and reader engine contracts (`engine-api`).
-- **`engine`**: [./engine/README.md](./engine/README.md) - Readium 3.0 EPUB publication engine adapter (Android production) and pure Compose Block AST EPUB engine (Linux Desktop production) (`epub-adapter`).
+- **`engine`**: [./engine/README.md](./engine/README.md) - Readium 3.0 EPUB publication engine adapter (Android production) and pure Compose Block AST EPUB engine (Desktop production) (`epub-adapter`).
 - **`feature`**: [./feature/README.md](./feature/README.md) - Presentation UI modules for book vault library browsing (`library`) and EPUB reader viewport controls (`reader`).
-- **`packaging/arch`**: Native Arch Linux / CachyOS package files (`PKGBUILD`, `kreader.desktop`, launcher script, scalable SVG icon).
 
 ---
 
@@ -94,12 +90,6 @@ All shell commands use `fish` syntax:
 - **Desktop Engine (Pure Compose Block AST)**: In-house Jsoup-based XHTML/CSS parser converting chapters into a typed `ReaderContentBlock` AST rendered natively in Compose with zero browser engine dependencies.
 - **Automatic Reading Direction (RTL / LTR)**: Detects reading direction automatically from EPUB metadata or Arabic script detection. Navigation and keyboard arrow keys mirror automatically.
 - **Dual-Page & Continuous Scroll Modes**: Seamlessly toggle between responsive continuous vertical scrolling and single or dual-column pagination with pre-calculated `TextMeasurer` layout bounds.
-
-### 📦 Native Arch Linux / CachyOS Packaging
-- **Native `.pkg.tar.zst` Package**: Easily installable via `pacman -U kreader-<version>-1-x86_64.pkg.tar.zst`.
-- **Lean Distribution**: Targets host `java-runtime>=21` and native graphics libraries to keep the package under 20MB.
-- **Pre-flight Diagnostic Launcher**: Validates Java versions, detects Wayland/X11 session types, and provides actionable CLI advice if a headless JRE is active.
-- **Automated CI Pipeline**: Dual-stage GitHub Actions Linux job building the JVM distributable on Ubuntu and compiling the signed Arch package in an `archlinux:latest` container.
 
 ### 🎨 Custom Fonts & Typography
 - **Custom Font Injection**: Import `.ttf` or `.otf` custom fonts into the vault. Desktop Compose routes fonts through Skia and HarfBuzz for Arabic shaping.

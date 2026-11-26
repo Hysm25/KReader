@@ -1,6 +1,7 @@
 package io.github.kreader.feature.reader
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import io.github.kreader.core.database.BookRepository
@@ -21,7 +22,10 @@ import io.github.kreader.core.model.isRtlText
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +34,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 
 class ReaderViewModel(
@@ -50,6 +55,7 @@ class ReaderViewModel(
     private var currentEffectivePreferences = ReaderPreferences()
     private var globalPreferences = ReaderPreferences()
     private var typographySaveJob: Job? = null
+    private var pendingTypography: ReaderTypography? = null
 
     init {
         observeData()
@@ -65,11 +71,13 @@ class ReaderViewModel(
             _uiState.update { current ->
                 current.copy(
                     theme = prefs.theme,
-                    typography = prefs.typography,
+                    typography = pendingTypography ?: prefs.typography,
                     isScrollMode = prefs.isScrollMode,
                     pageLayout = prefs.pageLayout,
                     keepScreenOn = prefs.keepScreenOn,
-                    orientationLock = prefs.orientationLock
+                    volumeKeyNavigation = prefs.volumeKeyNavigation,
+                    orientationLock = prefs.orientationLock,
+                    customFonts = prefs.customFonts
                 )
             }
         }.launchIn(scope)
@@ -166,11 +174,11 @@ class ReaderViewModel(
                 bookRepository.deleteBookmark(existing.id)
             }
         } else {
-            val chapterTitle = currentState.tocItems.find {
-                it.locator.href.substringBefore("#") == currentLoc.href.substringBefore("#")
-            }?.title ?: currentLoc.title ?: "Page ${currentLoc.locations.position ?: ""}".trim().ifEmpty {
-                "Bookmark at ${(currentState.totalProgression * 100).toInt()}%"
-            }
+            val chapterTitle = findTocTitleForHref(currentState.tocItems, currentLoc.href)
+                ?: currentLoc.title
+                ?: "Page ${currentLoc.locations.position ?: ""}".trim().ifEmpty {
+                    "Bookmark at ${(currentState.totalProgression * 100).toInt()}%"
+                }
             val newBookmark = Bookmark(
                 id = "bm_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
                 bookId = book.id,
@@ -293,37 +301,55 @@ class ReaderViewModel(
     }
 
     fun changeTypography(newTypography: ReaderTypography) {
+        pendingTypography = newTypography
         _uiState.update { it.copy(typography = newTypography) }
         typographySaveJob?.cancel()
         typographySaveJob = scope.launch {
             // Debounce persistence so continuous slider drags update the reader live without
             // writing the vault on every frame.
             delay(200)
-            bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                val global = globalPreferences.typography
-                val typography = ReaderTypographyOverride(
-                    fontFamily = newTypography.fontFamily
-                        .takeIf { it != global.fontFamily },
-                    fontSizeSp = newTypography.fontSizeSp
-                        .takeIf { it != global.fontSizeSp },
-                    lineHeightMultiplier = newTypography.lineHeightMultiplier
-                        .takeIf { it != global.lineHeightMultiplier },
-                    letterSpacingSp = newTypography.letterSpacingSp
-                        .takeIf { it != global.letterSpacingSp },
-                    textAlignment = newTypography.textAlignment
-                        .takeIf { it != global.textAlignment },
-                    paddingHorizontal = newTypography.paddingHorizontal
-                        .takeIf { it != global.paddingHorizontal },
-                    paddingVertical = newTypography.paddingVertical
-                        .takeIf { it != global.paddingVertical },
-                    overrideFont = newTypography.overrideFont
-                        .takeIf { it != global.overrideFont }
-                )
-                val override = (current ?: ReaderPreferencesOverride()).copy(
-                    typography = typography.takeUnless { it.isEmpty() }
-                )
-                override.takeUnless { it.isEmpty() }
+            withContext(NonCancellable) {
+                persistTypographyOverride(newTypography)
+                pendingTypography = null
             }
+        }
+    }
+
+    private suspend fun persistTypographyOverride(newTypography: ReaderTypography) {
+        bookRepository.updateBookPreferencesOverride(book.id) { current ->
+            val global = globalPreferences.typography
+            val typography = ReaderTypographyOverride(
+                fontFamily = newTypography.fontFamily
+                    .takeIf { it != global.fontFamily },
+                fontSizeSp = newTypography.fontSizeSp
+                    .takeIf { it != global.fontSizeSp },
+                lineHeightMultiplier = newTypography.lineHeightMultiplier
+                    .takeIf { it != global.lineHeightMultiplier },
+                letterSpacingSp = newTypography.letterSpacingSp
+                    .takeIf { it != global.letterSpacingSp },
+                textAlignment = newTypography.textAlignment
+                    .takeIf { it != global.textAlignment },
+                paddingHorizontal = newTypography.paddingHorizontal
+                    .takeIf { it != global.paddingHorizontal },
+                paddingVertical = newTypography.paddingVertical
+                    .takeIf { it != global.paddingVertical },
+                overrideFont = newTypography.overrideFont
+                    .takeIf { it != global.overrideFont }
+            )
+            val override = (current ?: ReaderPreferencesOverride()).copy(
+                typography = typography.takeUnless { it.isEmpty() }
+            )
+            override.takeUnless { it.isEmpty() }
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    fun flushPendingTypography() {
+        val pending = pendingTypography ?: return
+        pendingTypography = null
+        typographySaveJob?.cancel()
+        GlobalScope.launch(Dispatchers.Default) {
+            runCatching { persistTypographyOverride(pending) }
         }
     }
 
@@ -339,6 +365,8 @@ class ReaderViewModel(
     }
 
     fun resetToDefaults() {
+        pendingTypography = null
+        typographySaveJob?.cancel()
         scope.launch {
             bookRepository.resetPreferences(book.id)
         }
@@ -370,6 +398,17 @@ class ReaderViewModel(
             bookRepository.updateBookPreferencesOverride(book.id) { current ->
                 val keepOverride = enabled.takeIf { it != globalPreferences.keepScreenOn }
                 val override = (current ?: ReaderPreferencesOverride()).copy(keepScreenOn = keepOverride)
+                override.takeUnless { it.isEmpty() }
+            }
+        }
+    }
+
+    fun changeVolumeKeyNavigation(enabled: Boolean) {
+        _uiState.update { it.copy(volumeKeyNavigation = enabled) }
+        scope.launch {
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                val volumeOverride = enabled.takeIf { it != globalPreferences.volumeKeyNavigation }
+                val override = (current ?: ReaderPreferencesOverride()).copy(volumeKeyNavigation = volumeOverride)
                 override.takeUnless { it.isEmpty() }
             }
         }
@@ -424,7 +463,13 @@ fun rememberReaderViewModel(
     book: Book
 ): ReaderViewModel {
     val scope = rememberCoroutineScope()
-    return remember(bookRepository, book.id) {
+    val viewModel = remember(bookRepository, book.id) {
         ReaderViewModel(bookRepository, book, scope)
     }
+    DisposableEffect(viewModel) {
+        onDispose {
+            viewModel.flushPendingTypography()
+        }
+    }
+    return viewModel
 }

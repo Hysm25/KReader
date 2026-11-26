@@ -4,8 +4,8 @@
 Provides the local-first storage engine and repository layer for KReader. Implements the Obsidian-style folder vault philosophy, persisting reading progression, bookmarks, highlights, typography preferences, and custom themes inside human-readable JSON files within the `.kreader/` vault directory.
 
 ## Interface
-- `BookRepository`: Core repository interface exposing reactive flows and asynchronous mutations for books, reading progression, annotations, preferences, and markdown exports (`[BookRepository.kt:BookRepository]`).
-- `VaultBookRepository`: Concrete repository implementation coordinating `VaultStorage` and JSON serialization (`[BookRepository.kt:VaultBookRepository]`).
+- `BookRepository`: Core repository interface exposing reactive flows and asynchronous mutations for books, reading progression, annotations, preferences (including atomic `updateReaderPreferences`), and markdown exports (`[BookRepository.kt:BookRepository]`).
+- `JsonVaultBookRepository`: Concrete repository implementation coordinating `VaultStorage` and JSON serialization (`[BookRepository.kt:JsonVaultBookRepository]`).
 - `VaultStorage`: Platform-specific file system and Storage Access Framework (SAF) abstraction (`[VaultStorage.kt:VaultStorage]`).
 - `VaultWorkspace`: Data contract for `.kreader/workspace.json` storing per-book reading progression records (`[VaultModels.kt:VaultWorkspace]`).
 - `VaultAnnotations`: Data contract for `.kreader/annotations.json` storing bookmarks and highlights (`[VaultModels.kt:VaultAnnotations]`).
@@ -13,7 +13,8 @@ Provides the local-first storage engine and repository layer for KReader. Implem
 - `convertHtmlToMarkdown`: Utility extracting structured Markdown from EPUB chapter HTML/XHTML documents (`[EpubToMarkdown.kt:convertHtmlToMarkdown]`).
 
 ## Invariants
-- `[VaultStorage.android.kt:writeConfig]`: Concurrent writes to vault configuration files (`workspace.json`, `appearance.json`, `annotations.json`, `themes.json`) are guarded by per-filename `Mutex` locks in a `ConcurrentHashMap`. Config file Uris are cached in `configFileUriCache` to avoid expensive SAF directory traversal queries on every write.
+- `[VaultStorage.android.kt:writeConfig]`: Concurrent writes to vault configuration files (`workspace.json`, `appearance.json`, `annotations.json`, `themes.json`) are guarded by per-filename `Mutex` locks in a `ConcurrentHashMap`. Config file Uris are cached in `configFileUriCache` to avoid expensive SAF directory traversal queries on every write, and internal `.kreader/` mutations suppress self-triggered `ContentObserver` vault rescans.
+- `[BookRepository.kt:JsonVaultBookRepository]`: In-memory state mutations for `_workspace`, `_annotations`, and `_preferences` are serialized via `workspaceMutex`, `annotationsMutex`, and `prefsMutex`; direct `workspace.json` mutations (`updateBookPreferencesOverride`, `resetPreferences`, `deleteBook`) cancel any pending debounced `saveWorkspaceJob` so stale progress snapshots never overwrite overrides or deletions.
 - `[VaultModels.kt:VaultWorkspace]`: Books are keyed in `VaultWorkspace` by their relative vault paths, ensuring vault portability across directories and devices. Per-book overrides use `ReaderPreferencesOverride` for sparse per-property inheritance without freezing global preferences.
 - `[BookRepository.kt:exportBookToMarkdown]`: Book titles are sanitized against regex `[^a-zA-Z0-9_ \u0600-\u06FF-]` before creating markdown export files in the vault.
 

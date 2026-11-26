@@ -54,7 +54,6 @@ import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
-import kotlin.random.Random
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 
@@ -101,6 +100,7 @@ fun ReaderScreen(
     onSaveCustomTheme: (CustomTheme) -> Unit = {},
     onDeleteCustomTheme: (String) -> Unit = {},
     onKeepScreenOnChange: (Boolean) -> Unit = {},
+    onVolumeKeyNavigationChange: (Boolean) -> Unit = {},
     onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
     onPageCountLoaded: (Int) -> Unit = {},
@@ -232,10 +232,9 @@ fun ReaderScreen(
     }
 
     val currentChapterTitle = remember(liveLocator, state.tocItems, state.book) {
-        val currHref = liveLocator?.href?.substringBefore('#')
-        state.tocItems.find {
-            !currHref.isNullOrBlank() && it.locator.href.substringBefore('#') == currHref
-        }?.title ?: liveLocator?.title ?: state.book?.title.orEmpty()
+        findTocTitleForHref(state.tocItems, liveLocator?.href)
+            ?: liveLocator?.title
+            ?: state.book?.title.orEmpty()
     }
 
     val currentPage = remember(liveLocator, liveProgression, totalPageCount) {
@@ -257,15 +256,20 @@ fun ReaderScreen(
         }
     }
 
-    // Hardware volume button navigation
-    DisposableEffect(state.book?.id, state.isRtl) {
-        ReaderKeyEventDispatcher.onVolumeUp = {
-            epubController.goPrevious?.invoke()
-            true
-        }
-        ReaderKeyEventDispatcher.onVolumeDown = {
-            epubController.goNext?.invoke()
-            true
+    // Hardware volume button navigation (active only when enabled in preferences)
+    DisposableEffect(state.book?.id, state.isRtl, state.volumeKeyNavigation) {
+        if (state.volumeKeyNavigation) {
+            ReaderKeyEventDispatcher.onVolumeUp = {
+                epubController.goPrevious?.invoke()
+                true
+            }
+            ReaderKeyEventDispatcher.onVolumeDown = {
+                epubController.goNext?.invoke()
+                true
+            }
+        } else {
+            ReaderKeyEventDispatcher.onVolumeUp = null
+            ReaderKeyEventDispatcher.onVolumeDown = null
         }
         onDispose {
             ReaderKeyEventDispatcher.onVolumeUp = null
@@ -563,6 +567,7 @@ fun ReaderScreen(
                 customFonts = customFonts,
                 customThemes = customThemes,
                 keepScreenOn = state.keepScreenOn,
+                volumeKeyNavigation = state.volumeKeyNavigation,
                 orientationLock = state.orientationLock,
                 onThemeChange = onThemeChange,
                 onTypographyChange = onTypographyChange,
@@ -573,6 +578,7 @@ fun ReaderScreen(
                 onSaveCustomTheme = onSaveCustomTheme,
                 onDeleteCustomTheme = onDeleteCustomTheme,
                 onKeepScreenOnChange = onKeepScreenOnChange,
+                onVolumeKeyNavigationChange = onVolumeKeyNavigationChange,
                 onOrientationLockChange = onOrientationLockChange,
                 onDismiss = onDismissSettings
             )

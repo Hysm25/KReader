@@ -5,7 +5,6 @@ import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
-import io.github.kreader.core.model.ReaderPreferences
 import io.github.kreader.core.model.ReaderPreferencesOverride
 import kotlinx.serialization.Serializable
 

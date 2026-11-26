@@ -9,8 +9,7 @@ Implements EPUB publication loading, parsing, and locator translation across pla
 ## Interface
 - `EpubReaderEngine`: Platform-specific `expect/actual` engine implementing `ReaderEngine` (`[EpubReaderEngine.kt:EpubReaderEngine]`).
 - `DesktopEpubReaderEngine`: Desktop production implementation of `ReaderEngine` (`[DesktopEpubReaderEngine.kt:DesktopEpubReaderEngine]`).
-- `DesktopEpubDocument`: Desktop EPUB container, metadata, spine, TOC, and resource extractor.
-- `EpubBlockParser`: Jsoup-based XHTML tokenizer converting book chapters into `ReaderContentBlock` AST nodes.
+- `DesktopEpubDocument`: Desktop EPUB container, metadata, spine, TOC, and resource extractor (`[DesktopEpubDocument.kt:DesktopEpubDocument]`).
 - `ReadiumEpubOpener`: Android-specific publication loader using Readium's `AssetRetriever`, `DefaultHttpClient`, and `PublicationOpener` (`[ReadiumEpubOpener.kt:ReadiumEpubOpener]`).
 - `ReadiumFontResources`: Derives stable publication hrefs and absolute navigator URLs for user-imported font files (`[ReadiumFontResources.kt:ReadiumFontResources]`).
 - `toDomain`: Extension mapping Readium `Locator` instances to domain `Locator` entities (`[ReadiumLocatorMapper.kt:toDomain]`).

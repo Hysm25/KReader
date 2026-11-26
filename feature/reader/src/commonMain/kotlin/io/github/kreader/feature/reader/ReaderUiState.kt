@@ -5,6 +5,7 @@ import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
@@ -46,12 +47,30 @@ data class ReaderUiState(
     val pendingNoteLocator: Locator? = null,
     val pendingNoteText: String? = null,
     val keepScreenOn: Boolean = false,
+    val volumeKeyNavigation: Boolean = true,
     val orientationLock: OrientationLock = OrientationLock.AUTO,
+    val customFonts: List<CustomFont> = emptyList(),
     val customThemes: List<CustomTheme> = emptyList(),
     val totalPageCount: Int = 0
 ) {
     val isCurrentBookmarked: Boolean
         get() = findMatchingBookmark(bookmarks, currentLocator, totalProgression) != null
+}
+
+fun normalizeTocHref(href: String?): String =
+    href.orEmpty().substringBefore('#').trimStart('/')
+
+fun findTocTitleForHref(tocItems: List<TocItem>, href: String?): String? {
+    val target = normalizeTocHref(href)
+    if (target.isBlank()) return null
+    for (item in tocItems) {
+        if (normalizeTocHref(item.locator.href) == target) {
+            return item.title
+        }
+        val childMatch = findTocTitleForHref(item.children, target)
+        if (childMatch != null) return childMatch
+    }
+    return null
 }
 
 fun findMatchingBookmark(

@@ -51,8 +51,6 @@ import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -69,7 +67,9 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -98,8 +98,6 @@ import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
-import io.github.kreader.core.model.toReaderTheme
-import kotlin.math.roundToInt
 
 object ReaderThemePresets {
     val System = ReaderTheme(
@@ -313,7 +311,9 @@ private fun ContentsTabContent(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             items(flattenToc(tocItems)) { flatItem ->
-                val isActive = currentLocator?.href?.substringBefore("#") == flatItem.item.locator.href.substringBefore("#")
+                val isActive = normalizeTocHref(currentLocator?.href).let { curr ->
+                    curr.isNotBlank() && curr == normalizeTocHref(flatItem.item.locator.href)
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1105,6 +1105,7 @@ fun ReaderSettingsSheet(
     customFonts: List<CustomFont> = emptyList(),
     customThemes: List<CustomTheme> = emptyList(),
     keepScreenOn: Boolean = false,
+    volumeKeyNavigation: Boolean = true,
     orientationLock: OrientationLock = OrientationLock.AUTO,
     onThemeChange: (ReaderTheme) -> Unit,
     onTypographyChange: (ReaderTypography) -> Unit,
@@ -1115,6 +1116,7 @@ fun ReaderSettingsSheet(
     onSaveCustomTheme: (CustomTheme) -> Unit = {},
     onDeleteCustomTheme: (String) -> Unit = {},
     onKeepScreenOnChange: (Boolean) -> Unit = {},
+    onVolumeKeyNavigationChange: (Boolean) -> Unit = {},
     onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDismiss: () -> Unit
 ) {
@@ -1127,9 +1129,23 @@ fun ReaderSettingsSheet(
     val interactionSource = remember { MutableInteractionSource() }
 
     var selectedTab by remember { mutableStateOf(ReaderSettingsTab.THEME) }
-    var tempHorizontalPadding by remember(typography.paddingHorizontal) { mutableStateOf(typography.paddingHorizontal.toFloat()) }
-    var tempVerticalPadding by remember(typography.paddingVertical) { mutableStateOf(typography.paddingVertical.toFloat()) }
-    var tempLineHeight by remember(typography.lineHeightMultiplier) { mutableStateOf(typography.lineHeightMultiplier) }
+    var isDraggingHorizontalPadding by remember { mutableStateOf(false) }
+    var tempHorizontalPadding by remember { mutableFloatStateOf(typography.paddingHorizontal.toFloat()) }
+    LaunchedEffect(typography.paddingHorizontal) {
+        if (!isDraggingHorizontalPadding) tempHorizontalPadding = typography.paddingHorizontal.toFloat()
+    }
+
+    var isDraggingVerticalPadding by remember { mutableStateOf(false) }
+    var tempVerticalPadding by remember { mutableFloatStateOf(typography.paddingVertical.toFloat()) }
+    LaunchedEffect(typography.paddingVertical) {
+        if (!isDraggingVerticalPadding) tempVerticalPadding = typography.paddingVertical.toFloat()
+    }
+
+    var isDraggingLineHeight by remember { mutableStateOf(false) }
+    var tempLineHeight by remember { mutableFloatStateOf(typography.lineHeightMultiplier) }
+    LaunchedEffect(typography.lineHeightMultiplier) {
+        if (!isDraggingLineHeight) tempLineHeight = typography.lineHeightMultiplier
+    }
 
     Box(
         modifier = Modifier
@@ -1415,7 +1431,9 @@ fun ReaderSettingsSheet(
                                     }
 
                                     val baseFontOptions = listOf("Default", "Serif", "Sans-Serif", "Monospace")
-                                    val allAvailableFonts = baseFontOptions + customFonts.map { it.name }.filterNot { it in baseFontOptions }
+                                    val allAvailableFonts = baseFontOptions + customFonts.map { it.name }.filterNot { customName ->
+                                        baseFontOptions.any { it.equals(customName, ignoreCase = true) }
+                                    }
 
                                     Row(
                                         modifier = Modifier
@@ -1558,6 +1576,7 @@ fun ReaderSettingsSheet(
                                     Slider(
                                         value = tempLineHeight,
                                         onValueChange = {
+                                            isDraggingLineHeight = true
                                             tempLineHeight = it
                                             val rounded = kotlin.math.round(it * 10f) / 10f
                                             if (rounded != typography.lineHeightMultiplier) {
@@ -1567,7 +1586,9 @@ fun ReaderSettingsSheet(
                                             }
                                         },
                                         onValueChangeFinished = {
+                                            isDraggingLineHeight = false
                                             val finalVal = kotlin.math.round(tempLineHeight * 10f) / 10f
+                                            tempLineHeight = finalVal
                                             onTypographyChange(typography.copy(lineHeightMultiplier = finalVal))
                                         },
                                         valueRange = 1.0f..2.5f,
@@ -1706,6 +1727,7 @@ fun ReaderSettingsSheet(
                                         Slider(
                                             value = tempHorizontalPadding,
                                             onValueChange = {
+                                                isDraggingHorizontalPadding = true
                                                 tempHorizontalPadding = it
                                                 val intVal = it.toInt()
                                                 if (intVal != typography.paddingHorizontal) {
@@ -1715,6 +1737,7 @@ fun ReaderSettingsSheet(
                                                 }
                                             },
                                             onValueChangeFinished = {
+                                                isDraggingHorizontalPadding = false
                                                 onTypographyChange(typography.copy(paddingHorizontal = tempHorizontalPadding.toInt()))
                                             },
                                             valueRange = 0f..48f,
@@ -1750,6 +1773,7 @@ fun ReaderSettingsSheet(
                                         Slider(
                                             value = tempVerticalPadding,
                                             onValueChange = {
+                                                isDraggingVerticalPadding = true
                                                 tempVerticalPadding = it
                                                 val intVal = it.toInt()
                                                 if (intVal != typography.paddingVertical) {
@@ -1759,10 +1783,45 @@ fun ReaderSettingsSheet(
                                                 }
                                             },
                                             onValueChangeFinished = {
+                                                isDraggingVerticalPadding = false
                                                 onTypographyChange(typography.copy(paddingVertical = tempVerticalPadding.toInt()))
                                             },
                                             valueRange = 0f..32f,
                                             modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (!isDesktopPlatform) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainer,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Volume Key Navigation",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Turn pages using hardware volume buttons",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = volumeKeyNavigation,
+                                            onCheckedChange = onVolumeKeyNavigationChange
                                         )
                                     }
                                 }
@@ -1784,442 +1843,6 @@ fun ReaderSettingsSheet(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CustomThemeEditor(
-    theme: ReaderTheme,
-    onThemeChange: (ReaderTheme) -> Unit,
-    onSaveTheme: (CustomTheme) -> Unit = {}
-) {
-    var bgHex by remember(theme.backgroundColorHex) { mutableStateOf(theme.backgroundColorHex) }
-    var textHex by remember(theme.textColorHex) { mutableStateOf(theme.textColorHex) }
-    var accentHex by remember(theme.accentColorHex) { mutableStateOf(theme.accentColorHex) }
-    var themeName by remember { mutableStateOf("") }
-
-    data class ThemePreset(val name: String, val bg: String, val text: String, val accent: String)
-    val presets = listOf(
-        ThemePreset("Nord", "#2E3440", "#ECEFF4", "#88C0D0"),
-        ThemePreset("Solarized Dark", "#002B36", "#839496", "#268BD2"),
-        ThemePreset("Solarized Light", "#FDF6E3", "#657B83", "#2AA198"),
-        ThemePreset("Gruvbox Dark", "#282828", "#EBDBB2", "#FE8019"),
-        ThemePreset("Gruvbox Light", "#FBF1C7", "#3C3836", "#D65D0E"),
-        ThemePreset("Rose Pine", "#191724", "#E0DEF4", "#EBBCBA"),
-        ThemePreset("Forest Green", "#1A2E26", "#E2E8F0", "#4ADE80"),
-        ThemePreset("Catppuccin", "#1E1E2E", "#CDD6F4", "#CBA6F7")
-    )
-
-    val accentPresets = listOf(
-        "#3B82F6", // Blue
-        "#14B8A6", // Teal
-        "#10B981", // Emerald
-        "#F59E0B", // Amber
-        "#F97316", // Coral
-        "#F43F5E", // Rose
-        "#8B5CF6", // Purple
-        "#6366F1"  // Indigo
-    )
-
-    val currentBgColor = parseHexToColor(bgHex)
-    val currentTextColor = parseHexToColor(textHex)
-    val currentAccentColor = parseHexToColor(accentHex)
-
-    val accentLuminance = 0.299f * currentAccentColor.red + 0.587f * currentAccentColor.green + 0.114f * currentAccentColor.blue
-    val onAccentColor = if (accentLuminance > 0.55f) Color(0xFF121212) else Color(0xFFFFFFFF)
-
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(
-                text = "Custom Theme Colors",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            // Live Preview Card
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = currentBgColor,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Chapter Preview",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = currentTextColor
-                    )
-                    Text(
-                        text = "Live preview of your custom background, text, and primary accent color combination.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = currentTextColor
-                    )
-
-                    // Accent Preview Controls
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = currentAccentColor
-                        ) {
-                            Text(
-                                text = "Primary Button",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = onAccentColor,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = currentAccentColor.copy(alpha = 0.2f)
-                        ) {
-                            Text(
-                                text = "Active Chip",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = currentAccentColor,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Quick Color Palettes
-            Text(
-                text = "Preset Palettes",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                presets.forEach { preset ->
-                    val presetBg = parseHexToColor(preset.bg)
-                    val presetAcc = parseHexToColor(preset.accent)
-                    val isSelected = bgHex.equals(preset.bg, ignoreCase = true) &&
-                        textHex.equals(preset.text, ignoreCase = true) &&
-                        accentHex.equals(preset.accent, ignoreCase = true)
-
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(presetBg)
-                            .border(
-                                width = if (isSelected) 2.5.dp else 1.dp,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
-                                shape = CircleShape
-                            )
-                            .clickable {
-                                bgHex = preset.bg
-                                textHex = preset.text
-                                accentHex = preset.accent
-                                onThemeChange(
-                                    theme.copy(
-                                        mode = ThemeMode.CUSTOM,
-                                        backgroundColorHex = preset.bg,
-                                        textColorHex = preset.text,
-                                        accentColorHex = preset.accent
-                                    )
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "A",
-                            color = presetAcc,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            // Primary Accent Color Swatches
-            Text(
-                text = "Primary Accent Color",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                accentPresets.forEach { hex ->
-                    val swatchColor = parseHexToColor(hex)
-                    val isSelected = accentHex.equals(hex, ignoreCase = true)
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(swatchColor)
-                            .border(
-                                width = if (isSelected) 3.dp else 1.dp,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
-                                shape = CircleShape
-                            )
-                            .clickable {
-                                accentHex = hex
-                                onThemeChange(
-                                    theme.copy(
-                                        mode = ThemeMode.CUSTOM,
-                                        backgroundColorHex = bgHex,
-                                        textColorHex = textHex,
-                                        accentColorHex = hex
-                                    )
-                                )
-                            }
-                    )
-                }
-            }
-
-            // Hex Inputs for Background, Text, and Accent - Clean Stacked Rows
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Background Color Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(currentBgColor)
-                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                    )
-                    Text(
-                        text = "Background Color",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = bgHex,
-                        onValueChange = { newBg ->
-                            bgHex = newBg
-                            val validHex = normalizeHexColor(newBg)
-                            if (validHex != null) {
-                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = validHex, textColorHex = textHex, accentColorHex = accentHex))
-                            }
-                        },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.width(130.dp)
-                    )
-                }
-
-                // Text Color Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(currentTextColor)
-                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                    )
-                    Text(
-                        text = "Text Color",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = textHex,
-                        onValueChange = { newTxt ->
-                            textHex = newTxt
-                            val validHex = normalizeHexColor(newTxt)
-                            if (validHex != null) {
-                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = validHex, accentColorHex = accentHex))
-                            }
-                        },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.width(130.dp)
-                    )
-                }
-
-                // Primary Accent Color Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(currentAccentColor)
-                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                    )
-                    Text(
-                        text = "Primary Accent",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = accentHex,
-                        onValueChange = { newAcc ->
-                            accentHex = newAcc
-                            val validHex = normalizeHexColor(newAcc)
-                            if (validHex != null) {
-                                onThemeChange(theme.copy(mode = ThemeMode.CUSTOM, backgroundColorHex = bgHex, textColorHex = textHex, accentColorHex = validHex))
-                            }
-                        },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.width(130.dp)
-                    )
-                }
-            }
-
-            // Save Custom Theme to Vault
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = themeName,
-                    onValueChange = { themeName = it },
-                    placeholder = { Text("Theme name...") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(
-                    onClick = {
-                        val name = themeName.trim().ifEmpty { "My Custom Theme" }
-                        val finalBg = normalizeHexColor(bgHex) ?: bgHex
-                        val finalTxt = normalizeHexColor(textHex) ?: textHex
-                        val finalAcc = normalizeHexColor(accentHex) ?: accentHex
-                        val id = "theme_${name.lowercase().replace(' ', '_')}_${finalBg.removePrefix("#")}"
-                        onSaveTheme(
-                            CustomTheme(
-                                id = id,
-                                name = name,
-                                backgroundColorHex = finalBg,
-                                textColorHex = finalTxt,
-                                accentColorHex = finalAcc
-                            )
-                        )
-                        themeName = ""
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(imageVector = Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Save Custom Theme")
-                }
-            }
-        }
-    }
-}
-
-private fun normalizeHexColor(input: String): String? {
-    val clean = input.trim()
-    val withHash = if (clean.startsWith("#")) clean else "#$clean"
-    if (withHash.length == 7 || withHash.length == 9) {
-        val hexPart = withHash.substring(1)
-        if (hexPart.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
-            return withHash
-        }
-    }
-    return null
-}
-
-@Composable
-private fun CustomSavedThemeOption(
-    name: String,
-    bgColor: Color,
-    textColor: Color,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(bgColor)
-                .border(
-                    width = if (isSelected) 3.dp else 1.dp,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
-                    shape = CircleShape
-                )
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Aa",
-                color = textColor,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.widthIn(max = 64.dp)
-        ) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .clickable(onClick = onClick)
-            )
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onDelete),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = "Delete $name",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(14.dp)
-                )
             }
         }
     }

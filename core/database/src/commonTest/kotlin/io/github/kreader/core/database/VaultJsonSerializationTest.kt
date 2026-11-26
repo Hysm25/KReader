@@ -96,7 +96,7 @@ class VaultJsonSerializationTest {
     @Test
     fun testAppearanceJsonRoundTrip() {
         val preferences = ReaderPreferences(
-            theme = ReaderTheme(mode = ThemeMode.AMOLED, backgroundColorHex = "#000000", textColorHex = "#E0E0E0"),
+            theme = ReaderTheme(mode = ThemeMode.DARK, backgroundColorHex = "#000000", textColorHex = "#DCDCDC"),
             typography = ReaderTypography(fontFamily = "Literata", fontSizeSp = 17f, paddingHorizontal = 20),
             pageLayout = PageLayout.SINGLE,
             isScrollMode = false
@@ -105,7 +105,7 @@ class VaultJsonSerializationTest {
         val encoded = json.encodeToString(preferences)
         val decoded = json.decodeFromString<ReaderPreferences>(encoded)
 
-        assertEquals(ThemeMode.AMOLED, decoded.theme.mode)
+        assertEquals(ThemeMode.DARK, decoded.theme.mode)
         assertEquals("#000000", decoded.theme.backgroundColorHex)
         assertEquals("Literata", decoded.typography.fontFamily)
         assertEquals(20, decoded.typography.paddingHorizontal)
