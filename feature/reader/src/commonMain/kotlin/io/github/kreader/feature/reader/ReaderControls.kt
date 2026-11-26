@@ -156,23 +156,10 @@ fun ReaderBottomBar(
 
     val currentDisplayProg = if (isDragging) dragValue else progression
     val pct = (currentDisplayProg * 100).toInt()
-    val remainingPct = (1f - currentDisplayProg).coerceIn(0f, 1f)
-    val totalEstimatedMinutes = 240
-    val remainingMinutes = (remainingPct * totalEstimatedMinutes).toInt()
-    val timeText = when {
-        remainingPct <= 0.005f -> "Finished"
-        remainingMinutes < 1 -> "< 1 min left"
-        remainingMinutes < 60 -> "~$remainingMinutes min left"
-        else -> {
-            val hrs = remainingMinutes / 60
-            val mins = remainingMinutes % 60
-            if (mins == 0) "~$hrs hr left" else "~$hrs hr $mins min left"
-        }
-    }
-    val displayPageInfo = when {
-        pageInfo.isNotBlank() && !pageInfo.endsWith("%") -> "$pageInfo • $pct% • $timeText"
-        !chapterTitle.isNullOrBlank() -> "$pct% • $chapterTitle • $timeText"
-        else -> "$pct% • $timeText"
+    val displayPageInfo = if (pageInfo.isNotBlank() && !pageInfo.endsWith("%")) {
+        pageInfo
+    } else {
+        "$pct%"
     }
 
     val layoutDir = if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
@@ -237,15 +224,18 @@ fun ReaderBottomBar(
                                 .weight(1f, fill = false)
                                 .padding(horizontal = 8.dp)
                         ) {
-                            Text(
-                                text = displayPageInfo,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                Text(
+                                    text = displayPageInfo,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
                         }
 
                         TextButton(

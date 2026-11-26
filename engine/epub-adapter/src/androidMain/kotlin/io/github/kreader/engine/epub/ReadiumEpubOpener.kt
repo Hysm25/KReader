@@ -70,8 +70,8 @@ class ReadiumEpubOpener(private val context: Context) {
                     if (fonts.isNotEmpty()) {
                         container = FontResourceContainer(
                             base = container,
-                            resources = fonts.associate { font ->
-                                font.href to InMemoryResource(bytes = font.bytes)
+                            fontBytes = fonts.associate { font ->
+                                font.href to font.bytes
                             }
                         )
                         manifest = manifest.copy(
@@ -118,11 +118,11 @@ class ReadiumEpubOpener(private val context: Context) {
 
     private class FontResourceContainer(
         private val base: Container<Resource>,
-        private val resources: Map<Url, Resource>
+        private val fontBytes: Map<Url, ByteArray>
     ) : Container<Resource> {
 
-        private val resourcesByNormalizedPath: Map<String, Resource> =
-            resources.entries.associate { (key, value) ->
+        private val bytesByNormalizedPath: Map<String, ByteArray> =
+            fontBytes.entries.associate { (key, value) ->
                 key.toString().trimStart('/') to value
             }
 
@@ -130,15 +130,21 @@ class ReadiumEpubOpener(private val context: Context) {
             get() = base.sourceUrl
 
         override val entries: Set<Url>
-            get() = base.entries + resources.keys
+            get() = base.entries + fontBytes.keys
 
-        override fun get(url: Url): Resource? =
-            resources[url]
-                ?: resourcesByNormalizedPath[url.toString().removePrefix("https://readium/publication/").trimStart('/')]
-                ?: base[url]
+        override fun get(url: Url): Resource? {
+            val bytes = fontBytes[url]
+                ?: bytesByNormalizedPath[url.toString().removePrefix("https://readium/publication/").trimStart('/')]
+            return if (bytes != null) {
+                // Return a fresh InMemoryResource per read so concurrent/sequential WebView
+                // fetches never read from a previously closed Resource instance.
+                InMemoryResource(bytes = bytes)
+            } else {
+                base[url]
+            }
+        }
 
         override fun close() {
-            resources.values.forEach { it.close() }
             base.close()
         }
     }

@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.ActionMode
 import android.view.Menu
@@ -248,10 +249,17 @@ actual fun EpubNavigatorHost(
         if (key != lastAppliedOverrideKey) {
             applyTypographyAndFontOverrides(fragment, typography, customFonts)
             lastAppliedOverrideKey = key
+            // Re-apply once after initial WebView DOM parse settles so newly attached chapters
+            // never lose custom @font-face or font-scale overrides.
+            delay(200)
+            if (isNavigatorReady && fragment.isAdded && fragment.context != null) {
+                applyTypographyAndFontOverrides(fragment, currentTypography, currentCustomFonts)
+            }
         }
     }
 
     // 3. Wire the imperative controller to official navigator APIs.
+    var searchJumpJob by remember(book.id) { mutableStateOf<Job?>(null) }
     DisposableEffect(navigator, publication, isNavigatorReady) {
         val fragment = navigator
         val pub = publication
@@ -260,6 +268,7 @@ actual fun EpubNavigatorHost(
             fragment?.takeIf { isNavigatorReady && it.isAdded && it.context != null }
 
         fun clearSearchHighlight(nav: EpubNavigatorFragment) {
+            searchJumpJob?.cancel()
             scope.launch {
                 runCatching { nav.applyDecorations(emptyList(), group = SEARCH_GROUP) }
             }
@@ -273,13 +282,23 @@ actual fun EpubNavigatorHost(
         }
         controller.goToSearchResult = { locator ->
             ready()?.let { nav ->
+                searchJumpJob?.cancel()
                 val readiumLocator = locator.toReadium()
                 nav.go(readiumLocator, animated = false)
-                scope.launch {
-                    nav.applyDecorations(
-                        listOf(searchDecoration(readiumLocator)),
-                        group = SEARCH_GROUP
-                    )
+                searchJumpJob = scope.launch {
+                    runCatching {
+                        nav.applyDecorations(
+                            listOf(searchDecoration(readiumLocator)),
+                            group = SEARCH_GROUP
+                        )
+                    }
+                    // Wait for target chapter load and typography/normalizer reflow to settle,
+                    // then re-snap pagination so the exact matched word lands inside the viewport.
+                    delay(220)
+                    val activeNav = ready() ?: return@launch
+                    applyTypographyAndFontOverrides(activeNav, currentTypography, currentCustomFonts)
+                    delay(60)
+                    ready()?.go(readiumLocator, animated = false)
                 }
             }
         }
@@ -362,6 +381,7 @@ actual fun EpubNavigatorHost(
         }
 
         onDispose {
+            searchJumpJob?.cancel()
             controller.goTo = null
             controller.goToSearchResult = null
             controller.goNext = null
@@ -376,25 +396,23 @@ actual fun EpubNavigatorHost(
 
     // 4. Render highlights through the official decoration API. Decorations are retained by the
     //    navigator and re-applied to every resource, including chapters loaded later.
-    val isDarkTheme = when (theme.mode) {
-        ThemeMode.DARK -> true
-        ThemeMode.SYSTEM -> isSystemDark
-        else -> false
-    }
+    val isDarkTheme = isDarkThemeAppearance(theme, isSystemDark)
     val isSepia = theme.mode == ThemeMode.SEPIA
     LaunchedEffect(navigator, isNavigatorReady, highlights, isDarkTheme, isSepia) {
         val fragment = navigator ?: return@LaunchedEffect
         if (!isNavigatorReady || !fragment.isAdded) return@LaunchedEffect
 
-        val decorations = highlights.map { highlight ->
-            Decoration(
-                id = highlight.id,
-                locator = highlight.locator.toReadium(),
-                style = Decoration.Style.Highlight(
-                    tint = calculateHighlightTintColor(highlight.colorHex, isDarkTheme, isSepia),
-                    isActive = false
+        val decorations = withContext(Dispatchers.Default) {
+            highlights.map { highlight ->
+                Decoration(
+                    id = highlight.id,
+                    locator = highlight.locator.toReadium(),
+                    style = Decoration.Style.Highlight(
+                        tint = calculateHighlightTintColor(highlight.colorHex, isDarkTheme, isSepia),
+                        isActive = false
+                    )
                 )
-            )
+            }
         }
         runCatching { fragment.applyDecorations(decorations, group = HIGHLIGHTS_GROUP) }
     }
@@ -737,10 +755,14 @@ private fun SelectionMenu(
 
     val (rawMenuX, rawMenuY) = remember(rect, maxWidth, maxHeight, density, menuWidth) {
         if (rect != null) {
-            val leftDp = with(density) { rect.left.toDp() }
-            val rightDp = with(density) { rect.right.toDp() }
-            val topDp = with(density) { rect.top.toDp() }
-            val bottomDp = with(density) { rect.bottom.toDp() }
+            val rawLeft = minOf(rect.left, rect.right)
+            val rawRight = maxOf(rect.left, rect.right)
+            val rawTop = minOf(rect.top, rect.bottom)
+            val rawBottom = maxOf(rect.top, rect.bottom)
+            val leftDp = with(density) { rawLeft.toDp() }
+            val rightDp = with(density) { rawRight.toDp() }
+            val topDp = with(density) { rawTop.toDp() }
+            val bottomDp = with(density) { rawBottom.toDp() }
 
             val centerX = (leftDp + rightDp) / 2
             val x = (centerX - menuWidth / 2).coerceIn(
@@ -748,9 +770,13 @@ private fun SelectionMenu(
                 (maxWidth - menuWidth - 12.dp).coerceAtLeast(12.dp)
             )
             val y = if (topDp >= menuHeight + 16.dp) {
-                (topDp - menuHeight - 10.dp).coerceAtLeast(12.dp)
+                (topDp - menuHeight - 10.dp).coerceIn(
+                    12.dp,
+                    (maxHeight - menuHeight - 12.dp).coerceAtLeast(12.dp)
+                )
             } else {
-                (bottomDp + 10.dp).coerceAtMost(
+                (bottomDp + 10.dp).coerceIn(
+                    12.dp,
                     (maxHeight - menuHeight - 12.dp).coerceAtLeast(12.dp)
                 )
             }
@@ -804,11 +830,7 @@ private fun rememberThemeHarmonizedSwatches(
     theme: ReaderTheme,
     isSystemInDarkTheme: Boolean
 ): List<HighlightColorSwatch> {
-    val isDark = when (theme.mode) {
-        ThemeMode.DARK -> true
-        ThemeMode.SYSTEM -> isSystemInDarkTheme
-        else -> false
-    }
+    val isDark = isDarkThemeAppearance(theme, isSystemInDarkTheme)
     val isSepia = theme.mode == ThemeMode.SEPIA
 
     return remember(theme.mode, isDark, isSepia) {
@@ -851,9 +873,9 @@ private fun calculateHighlightTintColor(colorHex: String, isDark: Boolean, isSep
     val luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
 
     val alpha = when {
-        isDark -> if (luminance > 0.65) 75 else 95
-        isSepia -> if (luminance < 0.35) 55 else 82
-        else -> if (luminance < 0.35) 48 else 88
+        isDark -> if (luminance > 0.65) 110 else 135
+        isSepia -> if (luminance < 0.35) 95 else 130
+        else -> if (luminance < 0.35) 88 else 140
     }
     return android.graphics.Color.argb(alpha, r, g, b)
 }
@@ -863,25 +885,35 @@ private class SelectionActionModeCallback(
     private val fragmentProvider: () -> EpubNavigatorFragment?,
     private val onSelectionActive: (ActiveSelection) -> Unit,
     private val onSelectionDismissed: (ActionMode?) -> Unit
-) : ActionMode.Callback {
+) : ActionMode.Callback2() {
 
     private var updateJob: Job? = null
+    private var lastContentRectPollMs: Long = 0L
 
     override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
         menu?.clear()
         mode?.title = ""
         mode?.subtitle = ""
-        fetchSelection(mode, attempts = 12)
+        fetchSelection(mode, attempts = 12, stepDelayMs = 20L)
         return true
     }
 
     override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
         menu?.clear()
-        fetchSelection(mode, attempts = 2)
-        return false
+        fetchSelection(mode, attempts = 10, stepDelayMs = 25L)
+        return true
     }
 
-    private fun fetchSelection(mode: ActionMode?, attempts: Int) {
+    override fun onGetContentRect(mode: ActionMode?, view: View?, outRect: Rect?) {
+        outRect?.set(0, 0, 0, 0)
+        val now = System.currentTimeMillis()
+        if (now - lastContentRectPollMs >= 80L) {
+            lastContentRectPollMs = now
+            fetchSelection(mode, attempts = 6, stepDelayMs = 25L)
+        }
+    }
+
+    private fun fetchSelection(mode: ActionMode?, attempts: Int, stepDelayMs: Long) {
         updateJob?.cancel()
         updateJob = scope.launch {
             repeat(attempts) { attempt ->
@@ -889,12 +921,13 @@ private class SelectionActionModeCallback(
                 val selection = fragment.currentSelection()
                 if (selection != null) {
                     val rect = selection.rect
-                    if (rect != null || attempt == attempts - 1) {
+                    val selectedText = selection.locator.text.highlight.orEmpty()
+                    if ((selectedText.isNotBlank() && rect != null) || attempt == attempts - 1) {
                         onSelectionActive(
                             ActiveSelection(
                                 readiumLocator = selection.locator,
                                 domainLocator = selection.locator.toDomain(),
-                                text = selection.locator.text.highlight.orEmpty(),
+                                text = selectedText,
                                 rect = rect?.let { SelectionRect(it.left, it.top, it.right, it.bottom) },
                                 actionMode = mode
                             )
@@ -904,7 +937,7 @@ private class SelectionActionModeCallback(
                 }
 
                 if (attempt < attempts - 1) {
-                    delay(20)
+                    delay(stepDelayMs)
                 }
             }
         }
@@ -1055,17 +1088,21 @@ private suspend fun applyTypographyAndFontOverrides(
             "$fontOverrideJs\n$typographyOverrideJs\n$fontNormalizeJs"
         }
 
-        frag.evaluateJavascript(js)
-        withContext(Dispatchers.Main) {
-            frag.view?.let { root ->
-                findWebViews(root).forEach { wv ->
+        val webViews = withContext(Dispatchers.Main) {
+            frag.view?.let(::findWebViews).orEmpty()
+        }
+        if (webViews.isNotEmpty()) {
+            val zoomPercent = (typography.fontSizeSp / 16.0f * 100).toInt().coerceIn(50, 300)
+            withContext(Dispatchers.Main) {
+                webViews.forEach { wv ->
                     wv.evaluateJavascript(js, null)
-                    val zoomPercent = (typography.fontSizeSp / 16.0f * 100).toInt().coerceIn(50, 300)
                     if (wv.settings.textZoom != zoomPercent) {
                         wv.settings.textZoom = zoomPercent
                     }
                 }
             }
+        } else {
+            frag.evaluateJavascript(js)
         }
     }
 }

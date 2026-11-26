@@ -33,7 +33,6 @@ fun App() {
     val bookRepository = rememberBookRepository()
     val metadataExtractor = rememberBookMetadataExtractor()
     val libraryViewModel = rememberLibraryViewModel(bookRepository, metadataExtractor)
-    val libraryUiState by libraryViewModel.uiState.collectAsState()
     val persistedPreferences by bookRepository.observeReaderPreferences().collectAsState(ReaderPreferences())
     val incomingSource by ExternalBookOpener.incomingSource.collectAsState()
     val scope = rememberCoroutineScope()
@@ -69,6 +68,7 @@ fun App() {
         ) {
             val bookToRead = selectedBook
             if (bookToRead == null) {
+                val libraryUiState by libraryViewModel.uiState.collectAsState()
                 var showGlobalSettings by remember { mutableStateOf(false) }
                 val customThemes by bookRepository.observeCustomThemes().collectAsState(emptyList())
 

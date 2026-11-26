@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -354,9 +355,9 @@ class JsonVaultBookRepository(
         _books.value = _books.value.filterNot { it.id == id }
     }
 
-    override fun observeBookmarks(bookId: String): Flow<List<Bookmark>> = _annotations.map { annotations ->
-        annotations.bookmarks[bookId] ?: emptyList()
-    }
+    override fun observeBookmarks(bookId: String): Flow<List<Bookmark>> = _annotations
+        .map { annotations -> annotations.bookmarks[bookId] ?: emptyList() }
+        .distinctUntilChanged()
 
     override suspend fun saveBookmark(bookmark: Bookmark): Unit = withContext(ioDispatcher) {
         val updated = annotationsMutex.withLock {
@@ -384,9 +385,9 @@ class JsonVaultBookRepository(
         vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updated))
     }
 
-    override fun observeHighlights(bookId: String): Flow<List<Highlight>> = _annotations.map { annotations ->
-        annotations.highlights[bookId] ?: emptyList()
-    }
+    override fun observeHighlights(bookId: String): Flow<List<Highlight>> = _annotations
+        .map { annotations -> annotations.highlights[bookId] ?: emptyList() }
+        .distinctUntilChanged()
 
     override suspend fun saveHighlight(highlight: Highlight): Unit = withContext(ioDispatcher) {
         val updated = annotationsMutex.withLock {
@@ -439,10 +440,12 @@ class JsonVaultBookRepository(
     }
 
     override fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences> =
-        combine(_preferences, _workspace) { global, ws ->
-            val override = ws.books[bookId]?.preferencesOverride
+        combine(
+            _preferences,
+            _workspace.map { ws -> ws.books[bookId]?.preferencesOverride }.distinctUntilChanged()
+        ) { global, override ->
             global.mergeWith(override)
-        }
+        }.distinctUntilChanged()
 
     override suspend fun getEffectivePreferences(bookId: String): ReaderPreferences = withContext(ioDispatcher) {
         val global = _preferences.value

@@ -30,6 +30,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,7 +42,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
@@ -314,16 +317,21 @@ fun ReaderScreen(
                                 )
                             }
 
-                            Text(
-                                text = pageIndicatorText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
-                                maxLines = 1,
+                            Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
                                     .padding(end = 16.dp, bottom = 8.dp, start = 64.dp)
-                            )
+                            ) {
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    Text(
+                                        text = pageIndicatorText,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -354,9 +362,12 @@ fun ReaderScreen(
                             )
                     ) {
                         // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
+                        val initialNavigatorLocator = remember(book.id, customFonts) {
+                            liveLocator ?: book.lastLocator
+                        }
                         EpubNavigatorHost(
                             book = book,
-                            initialLocator = liveLocator ?: book.lastLocator,
+                            initialLocator = initialNavigatorLocator,
                             theme = state.theme,
                             typography = state.typography,
                             isScrollMode = state.isScrollMode,

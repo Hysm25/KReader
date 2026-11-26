@@ -5,6 +5,10 @@ import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
 import io.github.kreader.engine.epub.ReadiumFontResources
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
@@ -130,14 +134,59 @@ fun readiumFontFamily(
     )
 }
 
+private const val MAX_INLINE_FONT_BYTES = 4 * 1024 * 1024L
+private val fontDataUriCache = ConcurrentHashMap<String, String>()
+
+@OptIn(ExperimentalEncodingApi::class)
+private fun cachedFontDataUri(font: CustomFont): String? {
+    val file = File(font.path)
+    if (!file.isFile) return null
+    val len = file.length()
+    if (len <= 0L || len > MAX_INLINE_FONT_BYTES) return null
+
+    val cacheKey = "${file.absolutePath}:${file.lastModified()}:$len"
+    fontDataUriCache[cacheKey]?.let { return it }
+
+    val mime = when (file.extension.lowercase()) {
+        "otf" -> "font/otf"
+        "woff" -> "font/woff"
+        "woff2" -> "font/woff2"
+        else -> "font/ttf"
+    }
+    val encoded = runCatching {
+        Base64.encode(file.readBytes())
+    }.getOrNull() ?: return null
+    val dataUri = "data:$mime;base64,$encoded"
+    if (fontDataUriCache.size > 16) {
+        fontDataUriCache.clear()
+    }
+    fontDataUriCache[cacheKey] = dataUri
+    return dataUri
+}
+
+fun isDarkThemeAppearance(theme: ReaderTheme, isSystemInDarkTheme: Boolean): Boolean =
+    when (theme.mode) {
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme
+        ThemeMode.CUSTOM -> {
+            val bgInt = parseHexColorInt(theme.backgroundColorHex, 0xFFFFFFFF.toInt())
+            val r = (bgInt shr 16) and 0xFF
+            val g = (bgInt shr 8) and 0xFF
+            val b = bgInt and 0xFF
+            (0.299 * r + 0.587 * g + 0.114 * b) < 128.0
+        }
+        else -> false
+    }
+
 /**
  * Builds the `#kreader-font-override` CSS payload for WebView injection.
  *
  * Returns `null` when `overrideFont` is disabled or set to `"Default"` so embedded publisher
  * fonts remain untouched. For imported custom fonts, emits `@font-face` rules covering weights
  * `100 900` across both `normal` and `italic` styles using [ReadiumFontResources.cssFamilyName]
- * and [ReadiumFontResources.url] so headings, bold spans, and Arabic body text never fall back
- * to Android system fonts.
+ * and [ReadiumFontResources.url] (plus an inline `data:` URI fallback for WebViews where custom
+ * resource interception is delayed or blocked) so headings, bold spans, and Arabic body text
+ * never fall back to Android system fonts.
  */
 fun buildFontOverrideCss(
     typography: ReaderTypography,
@@ -152,12 +201,18 @@ fun buildFontOverrideCss(
         val cssFamily = ReadiumFontResources.cssFamilyName(customFont)
         val fontUrl = ReadiumFontResources.url(customFont).toString()
         val formatHint = ReadiumFontResources.cssFormatHint(customFont)
+        val dataUri = cachedFontDataUri(customFont)
+        val srcValue = if (dataUri != null) {
+            "url('$fontUrl') format('$formatHint'), url('$dataUri') format('$formatHint')"
+        } else {
+            "url('$fontUrl') format('$formatHint')"
+        }
         val face = buildString {
             append("@font-face { font-family: '").append(cssFamily).append("'; ")
-            append("src: url('").append(fontUrl).append("') format('").append(formatHint).append("'); ")
+            append("src: ").append(srcValue).append("; ")
             append("font-weight: 100 900; font-style: normal; font-display: swap; }\n")
             append("@font-face { font-family: '").append(cssFamily).append("'; ")
-            append("src: url('").append(fontUrl).append("') format('").append(formatHint).append("'); ")
+            append("src: ").append(srcValue).append("; ")
             append("font-weight: 100 900; font-style: italic; font-display: swap; }\n")
         }
         face to "'$cssFamily', sans-serif !important"

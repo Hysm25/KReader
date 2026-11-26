@@ -496,6 +496,25 @@ class EpubPreferencesAndLayoutTest {
         assertTrue(buildFontOverrideScript(disabledTypography, fonts).contains("el.remove()"))
     }
 
+    @Test
+    fun testIsDarkThemeAppearanceDetectsCustomDarkAndLightPalettes() {
+        assertTrue(isDarkThemeAppearance(ReaderTheme(mode = ThemeMode.DARK), isSystemInDarkTheme = false))
+        assertTrue(isDarkThemeAppearance(ReaderTheme(mode = ThemeMode.SYSTEM), isSystemInDarkTheme = true))
+        assertFalse(isDarkThemeAppearance(ReaderTheme(mode = ThemeMode.SYSTEM), isSystemInDarkTheme = false))
+        assertTrue(
+            isDarkThemeAppearance(
+                ReaderTheme(mode = ThemeMode.CUSTOM, backgroundColorHex = "#1E1E2E"),
+                isSystemInDarkTheme = false
+            )
+        )
+        assertFalse(
+            isDarkThemeAppearance(
+                ReaderTheme(mode = ThemeMode.CUSTOM, backgroundColorHex = "#FDF6E3"),
+                isSystemInDarkTheme = true
+            )
+        )
+    }
+
     private fun bookmark(
         id: String,
         href: String,

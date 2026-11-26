@@ -21,7 +21,7 @@ fun org.readium.r2.shared.publication.Locator.toDomain(): Locator {
             totalProgression = locations.totalProgression?.toFloat(),
             fragments = locations.fragments,
             otherLocations = locations.otherLocations.mapNotNull { (k, v) ->
-                if (v != null) k to v.toString() else null
+                if (v != null) k to encodeOtherLocationValue(v) else null
             }.toMap()
         ),
         text = text.let {
@@ -46,14 +46,7 @@ fun Locator.toReadium(): org.readium.r2.shared.publication.Locator {
     val parsedMediaType = MediaType(type) ?: MediaType.BINARY
 
     val parsedOtherLocations: Map<String, Any> = locations.otherLocations.mapValues { (_, value) ->
-        val trimmed = value.trim()
-        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-            runCatching { org.json.JSONObject(trimmed) }.getOrDefault(value)
-        } else if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-            runCatching { org.json.JSONArray(trimmed) }.getOrDefault(value)
-        } else {
-            value
-        }
+        decodeOtherLocationValue(value)
     }
 
     return org.readium.r2.shared.publication.Locator(
@@ -91,4 +84,54 @@ fun Link.toTocItem(publication: Publication): TocItem {
         locator = domainLocator,
         children = children.map { it.toTocItem(publication) }
     )
+}
+
+private fun encodeOtherLocationValue(value: Any): String = when (value) {
+    is org.json.JSONObject, is org.json.JSONArray -> value.toString()
+    is Map<*, *> -> org.json.JSONObject(value).toString()
+    is Collection<*> -> org.json.JSONArray(value).toString()
+    else -> value.toString()
+}
+
+private fun decodeOtherLocationValue(value: String): Any {
+    val trimmed = value.trim()
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        return runCatching { jsonObjectToMap(org.json.JSONObject(trimmed)) }.getOrDefault(value)
+    }
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+        return runCatching { jsonArrayToList(org.json.JSONArray(trimmed)) }.getOrDefault(value)
+    }
+    return value
+}
+
+private fun jsonObjectToMap(obj: org.json.JSONObject): Map<String, Any> {
+    val map = LinkedHashMap<String, Any>(obj.length())
+    val keys = obj.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        val v = obj.opt(key) ?: continue
+        if (v === org.json.JSONObject.NULL) continue
+        map[key] = when (v) {
+            is org.json.JSONObject -> jsonObjectToMap(v)
+            is org.json.JSONArray -> jsonArrayToList(v)
+            else -> v
+        }
+    }
+    return map
+}
+
+private fun jsonArrayToList(arr: org.json.JSONArray): List<Any> {
+    val list = ArrayList<Any>(arr.length())
+    for (i in 0 until arr.length()) {
+        val v = arr.opt(i) ?: continue
+        if (v === org.json.JSONObject.NULL) continue
+        list.add(
+            when (v) {
+                is org.json.JSONObject -> jsonObjectToMap(v)
+                is org.json.JSONArray -> jsonArrayToList(v)
+                else -> v
+            }
+        )
+    }
+    return list
 }

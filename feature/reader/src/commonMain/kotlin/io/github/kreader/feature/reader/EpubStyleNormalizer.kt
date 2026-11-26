@@ -53,8 +53,15 @@ object EpubStyleNormalizer {
         return """
         (function() {
             var scale = $fontScale;
-            if (document.documentElement) {
-                document.documentElement.style.setProperty('--kreader-font-scale', scale);
+            var root = document.documentElement;
+            if (root) {
+                root.style.setProperty('--kreader-font-scale', scale);
+                if (root.dataset && root.dataset.kreaderScaled === '1') {
+                    return;
+                }
+                if (root.dataset) {
+                    root.dataset.kreaderScaled = '1';
+                }
             }
 
             var absRegex = /^([\d.]+)(px|pt|in|cm|mm|pc)$/i;

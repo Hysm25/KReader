@@ -17,7 +17,8 @@ Implements EPUB publication loading, parsing, and locator translation across pla
 - `toTocItem`: Extension mapping Readium navigation links to domain `TocItem` hierarchy (`[ReadiumLocatorMapper.kt:toTocItem]`).
 
 ## Invariants
-- `[ReadiumLocatorMapper.kt:toReadium]`: Missing or unparseable URLs fall back to `Url("#")` and missing media types fall back to `MediaType.BINARY` to prevent mapping crashes.
+- `[ReadiumLocatorMapper.kt:toReadium]`: Missing or unparseable URLs fall back to `Url("#")` and missing media types fall back to `MediaType.BINARY` to prevent mapping crashes; `otherLocations` JSON objects/arrays (`domRange`, etc.) round-trip cleanly between Readium `Map`/`List` structures and serialized domain strings.
+- `[ReadiumEpubOpener.kt:FontResourceContainer]`: Allocates a fresh `InMemoryResource` per `get(url)` read and resolves normalized paths so concurrent or sequential WebView fetches never hit a closed `Resource`.
 - `[AndroidEpubReaderEngine.kt:open]`: `initialize(context)` must be invoked prior to calling `open()` to instantiate the underlying `ReadiumEpubOpener`.
 - `[DesktopEpubReaderEngine.kt:open]`: Reads ZIP entries thread-safely via `java.util.zip.ZipFile`, builds manifest lookup tables, and maps navigation items to canonical resource hrefs.
 - `[DesktopEpubReaderEngine.kt:search]`: Emits streaming search results across spine items on `Dispatchers.Default` with coroutine cooperative cancellation and Arabic diacritic normalization.
