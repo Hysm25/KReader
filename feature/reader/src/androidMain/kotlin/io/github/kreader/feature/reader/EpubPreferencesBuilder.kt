@@ -1,8 +1,10 @@
 package io.github.kreader.feature.reader
 
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
+import io.github.kreader.engine.epub.ReadiumFontResources
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
@@ -26,7 +28,8 @@ fun buildReadiumPreferences(
     typography: ReaderTypography,
     isScrollMode: Boolean,
     isRtl: Boolean,
-    isSystemInDarkTheme: Boolean = false
+    isSystemInDarkTheme: Boolean = false,
+    customFonts: List<CustomFont> = emptyList()
 ): EpubPreferences {
     val backgroundColor = when (theme.mode) {
         ThemeMode.LIGHT -> Color(0xFFFFFFFF.toInt())
@@ -74,7 +77,7 @@ fun buildReadiumPreferences(
     return EpubPreferences(
         backgroundColor = backgroundColor,
         textColor = textColor,
-        fontFamily = readiumFontFamily(typography),
+        fontFamily = readiumFontFamily(typography, customFonts),
         textAlign = textAlign,
         fontSize = (typography.fontSizeSp / 16.0).toDouble().coerceIn(0.5, 3.0),
         lineHeight = typography.lineHeightMultiplier.toDouble().coerceIn(1.0, 3.0),
@@ -98,11 +101,19 @@ fun buildReadiumPreferences(
  * configuration.
  */
 @OptIn(ExperimentalReadiumApi::class)
-fun readiumFontFamily(typography: ReaderTypography): FontFamily? {
+fun readiumFontFamily(
+    typography: ReaderTypography,
+    customFonts: List<CustomFont> = emptyList()
+): FontFamily? {
     if (!typography.overrideFont) return null
 
     val name = typography.fontFamily.trim()
     if (name.isEmpty() || name.equals("Default", ignoreCase = true)) return null
+
+    val importedFont = customFonts.find { it.name.equals(name, ignoreCase = true) }
+    if (importedFont != null) {
+        return FontFamily(ReadiumFontResources.cssFamilyName(importedFont))
+    }
 
     return FontFamily(
         when (name.lowercase()) {
@@ -117,6 +128,98 @@ fun readiumFontFamily(typography: ReaderTypography): FontFamily? {
             else -> name
         }
     )
+}
+
+/**
+ * Builds the `#kreader-font-override` CSS payload for WebView injection.
+ *
+ * Returns `null` when `overrideFont` is disabled or set to `"Default"` so embedded publisher
+ * fonts remain untouched. For imported custom fonts, emits `@font-face` rules covering weights
+ * `100 900` across both `normal` and `italic` styles using [ReadiumFontResources.cssFamilyName]
+ * and [ReadiumFontResources.url] so headings, bold spans, and Arabic body text never fall back
+ * to Android system fonts.
+ */
+fun buildFontOverrideCss(
+    typography: ReaderTypography,
+    customFonts: List<CustomFont>
+): String? {
+    if (!typography.overrideFont) return null
+    val rawName = typography.fontFamily.trim()
+    if (rawName.isEmpty() || rawName.equals("Default", ignoreCase = true)) return null
+
+    val customFont = customFonts.find { it.name.equals(rawName, ignoreCase = true) }
+    val (fontFaceCss, fontCssValue) = if (customFont != null) {
+        val cssFamily = ReadiumFontResources.cssFamilyName(customFont)
+        val fontUrl = ReadiumFontResources.url(customFont).toString()
+        val formatHint = ReadiumFontResources.cssFormatHint(customFont)
+        val face = buildString {
+            append("@font-face { font-family: '").append(cssFamily).append("'; ")
+            append("src: url('").append(fontUrl).append("') format('").append(formatHint).append("'); ")
+            append("font-weight: 100 900; font-style: normal; font-display: swap; }\n")
+            append("@font-face { font-family: '").append(cssFamily).append("'; ")
+            append("src: url('").append(fontUrl).append("') format('").append(formatHint).append("'); ")
+            append("font-weight: 100 900; font-style: italic; font-display: swap; }\n")
+        }
+        face to "'$cssFamily', sans-serif !important"
+    } else {
+        val escaped = rawName
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+        val cssVal = when (rawName.lowercase()) {
+            "serif" -> "serif !important"
+            "sans-serif", "sans serif" -> "sans-serif !important"
+            "monospace" -> "monospace !important"
+            "cursive" -> "cursive !important"
+            "fantasy" -> "fantasy !important"
+            "accessible dfa", "accessibledfa" -> "'Accessible-DFA', sans-serif !important"
+            "ia writer duospace", "iawriterduospace" -> "'IA Writer Duospace', monospace !important"
+            "opendyslexic" -> "'OpenDyslexic', sans-serif !important"
+            else -> "'$escaped', sans-serif !important"
+        }
+        "" to cssVal
+    }
+
+    return "${fontFaceCss}body, h1, h2, h3, h4, h5, h6, p, div, span, li, blockquote, a, em, strong, i, b, td, th, figcaption { font-family: $fontCssValue; }"
+}
+
+/**
+ * Wraps [buildFontOverrideCss] in an idempotent DOM script that installs or removes
+ * `<style id="kreader-font-override">` (re-applying on `DOMContentLoaded` if still loading).
+ */
+fun buildFontOverrideScript(
+    typography: ReaderTypography,
+    customFonts: List<CustomFont>
+): String {
+    val css = buildFontOverrideCss(typography, customFonts) ?: return """
+        (function() {
+            var el = document.getElementById('kreader-font-override');
+            if (el) el.remove();
+        })();
+    """.trimIndent()
+
+    val jsLiteral = css
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "")
+
+    return """
+        (function() {
+            function applyKReaderFontOverride() {
+                var el = document.getElementById('kreader-font-override');
+                if (!el) {
+                    el = document.createElement('style');
+                    el.id = 'kreader-font-override';
+                    (document.head || document.documentElement).appendChild(el);
+                }
+                el.textContent = "$jsLiteral";
+            }
+            applyKReaderFontOverride();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', applyKReaderFontOverride, { once: true });
+            }
+        })();
+    """.trimIndent()
 }
 
 private fun parseHexColorInt(hex: String, fallback: Int): Int {

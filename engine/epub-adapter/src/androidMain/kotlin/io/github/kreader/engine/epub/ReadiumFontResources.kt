@@ -22,6 +22,32 @@ object ReadiumFontResources {
     private val SAFE_NAME = Regex("[^a-z0-9_-]+")
 
     /**
+     * Deterministic, sanitized ASCII CSS `font-family` identifier for [font].
+     *
+     * Using an ASCII CSS identifier prevents ReadiumCSS and WebView `@font-face` lookup mismatches
+     * when the imported filename contains Arabic/Unicode characters, spaces, or punctuation.
+     */
+    fun cssFamilyName(font: CustomFont): String {
+        val slug = font.name.lowercase()
+            .replace(SAFE_NAME, "-")
+            .trim('-')
+            .take(32)
+            .ifBlank { "custom" }
+        val fingerprint = font.name.lowercase().hashCode().toUInt().toString(16)
+        return "kreader-font-$slug-$fingerprint"
+    }
+
+    /**
+     * CSS `@font-face` `format(...)` hint matching the imported font file extension.
+     */
+    fun cssFormatHint(font: CustomFont): String = when (File(font.path).extension.lowercase()) {
+        "otf" -> "opentype"
+        "woff" -> "woff"
+        "woff2" -> "woff2"
+        else -> "truetype"
+    }
+
+    /**
      * Stable relative publication href for the given imported font.
      *
      * The href is deterministic so that reopening the same book keeps the same resource identity.

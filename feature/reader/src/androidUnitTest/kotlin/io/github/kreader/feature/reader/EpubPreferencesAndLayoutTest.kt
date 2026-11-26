@@ -2,10 +2,12 @@ package io.github.kreader.feature.reader
 
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
+import io.github.kreader.engine.epub.ReadiumFontResources
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.ReadingProgression
@@ -432,6 +434,66 @@ class EpubPreferencesAndLayoutTest {
         assertEquals("Chapter 1: Dawn", findTocTitleForHref(toc, "/OEBPS/ch1.xhtml#para3"))
         assertEquals("Part I", findTocTitleForHref(toc, "OEBPS/part1.xhtml"))
         assertNull(findTocTitleForHref(toc, "OEBPS/missing.xhtml"))
+    }
+
+    @Test
+    fun testCustomArabicAndUnicodeFontsGenerateUnifiedFontFaceAndOverrideCss() {
+        val arabicFont = CustomFont(
+            name = "أميري للكتب",
+            path = "/data/user/0/io.github.kreader/files/fonts/أميري للكتب.ttf"
+        )
+        val woff2Font = CustomFont(
+            name = "Kitab Naskh",
+            path = "/data/user/0/io.github.kreader/files/fonts/Kitab Naskh.woff2"
+        )
+        val fonts = listOf(arabicFont, woff2Font)
+
+        val arabicCssName = ReadiumFontResources.cssFamilyName(arabicFont)
+        val arabicUrl = ReadiumFontResources.url(arabicFont).toString()
+        assertTrue(arabicCssName.startsWith("kreader-font-"))
+        assertTrue(arabicCssName.all { it.code < 128 && !it.isWhitespace() })
+        assertTrue(arabicUrl.startsWith("https://readium/publication/kreader-fonts/"))
+        assertTrue(arabicUrl.endsWith(".ttf"))
+
+        val typography = ReaderTypography(
+            fontFamily = "أميري للكتب",
+            overrideFont = true
+        )
+
+        val prefs = buildReadiumPreferences(
+            theme = ReaderTheme(mode = ThemeMode.LIGHT),
+            typography = typography,
+            isScrollMode = false,
+            isRtl = true,
+            customFonts = fonts
+        )
+        assertEquals(arabicCssName, prefs.fontFamily?.name)
+
+        val css = buildFontOverrideCss(typography, fonts)
+        assertNotNull(css)
+        assertTrue(css.contains("@font-face { font-family: '$arabicCssName';"))
+        assertTrue(css.contains("src: url('$arabicUrl') format('truetype');"))
+        assertTrue(css.contains("font-weight: 100 900; font-style: normal;"))
+        assertTrue(css.contains("font-weight: 100 900; font-style: italic;"))
+        assertTrue(css.contains("body, h1, h2, h3, h4, h5, h6,"))
+        assertTrue(css.contains("font-family: '$arabicCssName', sans-serif !important;"))
+
+        val woff2Css = buildFontOverrideCss(
+            ReaderTypography(fontFamily = "Kitab Naskh", overrideFont = true),
+            fonts
+        )
+        assertNotNull(woff2Css)
+        assertTrue(woff2Css.contains("format('woff2')"))
+        assertTrue(woff2Css.contains(ReadiumFontResources.cssFamilyName(woff2Font)))
+
+        val script = buildFontOverrideScript(typography, fonts)
+        assertTrue(script.contains("kreader-font-override"))
+        assertTrue(script.contains("DOMContentLoaded"))
+        assertTrue(script.contains(arabicCssName))
+
+        val disabledTypography = typography.copy(overrideFont = false)
+        assertNull(buildFontOverrideCss(disabledTypography, fonts))
+        assertTrue(buildFontOverrideScript(disabledTypography, fonts).contains("el.remove()"))
     }
 
     private fun bookmark(

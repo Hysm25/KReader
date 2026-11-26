@@ -158,17 +158,14 @@ class JsonVaultBookRepository(
                 def
             }
 
-            // 1b. Restore custom fonts from .kreader/fonts/ in vault
+            // 1b. Restore custom fonts from .kreader/fonts/ in vault (always prefer live local paths)
             val scannedFonts = vaultStorage.listFonts()
             if (scannedFonts.isNotEmpty()) {
-                val existingFontsMap = prefs.customFonts.associateBy { it.name.lowercase() }
-                val mergedFonts = scannedFonts.map { sf ->
-                    existingFontsMap[sf.name.lowercase()] ?: sf
-                }
+                val scannedNames = scannedFonts.map { it.name.lowercase() }.toSet()
                 val remainingPrefsFonts = prefs.customFonts.filterNot { ef ->
-                    scannedFonts.any { it.name.equals(ef.name, ignoreCase = true) }
+                    ef.name.lowercase() in scannedNames
                 }
-                val combinedFonts = mergedFonts + remainingPrefsFonts
+                val combinedFonts = scannedFonts + remainingPrefsFonts
                 if (combinedFonts != prefs.customFonts) {
                     prefs = prefs.copy(customFonts = combinedFonts)
                     vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(prefs))

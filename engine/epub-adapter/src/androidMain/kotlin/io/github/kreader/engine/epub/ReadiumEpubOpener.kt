@@ -121,13 +121,21 @@ class ReadiumEpubOpener(private val context: Context) {
         private val resources: Map<Url, Resource>
     ) : Container<Resource> {
 
+        private val resourcesByNormalizedPath: Map<String, Resource> =
+            resources.entries.associate { (key, value) ->
+                key.toString().trimStart('/') to value
+            }
+
         override val sourceUrl: AbsoluteUrl?
             get() = base.sourceUrl
 
         override val entries: Set<Url>
             get() = base.entries + resources.keys
 
-        override fun get(url: Url): Resource? = resources[url] ?: base[url]
+        override fun get(url: Url): Resource? =
+            resources[url]
+                ?: resourcesByNormalizedPath[url.toString().removePrefix("https://readium/publication/").trimStart('/')]
+                ?: base[url]
 
         override fun close() {
             resources.values.forEach { it.close() }

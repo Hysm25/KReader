@@ -429,7 +429,12 @@ class ReaderViewModel(
         scope.launch {
             bookRepository.addCustomFont(font)
             val updatedTypography = _uiState.value.typography.copy(fontFamily = font.name, overrideFont = true)
-            changeTypography(updatedTypography)
+            pendingTypography = null
+            typographySaveJob?.cancel()
+            _uiState.update { it.copy(typography = updatedTypography) }
+            withContext(NonCancellable) {
+                persistTypographyOverride(updatedTypography)
+            }
         }
     }
 
@@ -438,7 +443,12 @@ class ReaderViewModel(
             bookRepository.deleteCustomFont(fontName)
             if (_uiState.value.typography.fontFamily.equals(fontName, ignoreCase = true)) {
                 val updatedTypography = _uiState.value.typography.copy(fontFamily = "Default", overrideFont = false)
-                changeTypography(updatedTypography)
+                pendingTypography = null
+                typographySaveJob?.cancel()
+                _uiState.update { it.copy(typography = updatedTypography) }
+                withContext(NonCancellable) {
+                    persistTypographyOverride(updatedTypography)
+                }
             }
         }
     }

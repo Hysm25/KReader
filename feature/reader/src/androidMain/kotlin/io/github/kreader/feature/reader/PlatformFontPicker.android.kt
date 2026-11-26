@@ -18,10 +18,15 @@ actual fun rememberFontPickerLauncher(onFontPicked: (CustomFont) -> Unit): () ->
     ) { uri: Uri? ->
         if (uri != null) {
             val displayName = queryFontDisplayName(context, uri) ?: uri.lastPathSegment ?: "ImportedFont.ttf"
-            val fontName = displayName.substringBeforeLast(".")
-            val ext = displayName.substringAfterLast(".", "ttf")
+            val fontName = displayName.substringBeforeLast(".").trim().ifBlank { "ImportedFont" }
+            val ext = displayName.substringAfterLast(".", "ttf").lowercase()
+                .takeIf { it in setOf("ttf", "otf", "woff", "woff2") } ?: "ttf"
             val fontsDir = File(context.filesDir, "fonts").apply { mkdirs() }
-            val safeFileName = "${fontName.replace("[^a-zA-Z0-9_-]".toRegex(), "_")}.$ext"
+            val safeBase = fontName
+                .replace(Regex("""[\\/:*?"<>|\u0000-\u001F]"""), "_")
+                .trim()
+                .ifBlank { "ImportedFont" }
+            val safeFileName = "$safeBase.$ext"
             val destFile = File(fontsDir, safeFileName)
             runCatching {
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -39,9 +44,13 @@ actual fun rememberFontPickerLauncher(onFontPicked: (CustomFont) -> Unit): () ->
         launcher.launch(arrayOf(
             "font/ttf",
             "font/otf",
+            "font/woff",
+            "font/woff2",
             "application/x-font-ttf",
             "application/x-font-otf",
             "application/font-sfnt",
+            "application/font-woff",
+            "application/font-woff2",
             "*/*"
         ))
     }

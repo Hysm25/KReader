@@ -11,7 +11,7 @@ Implements EPUB publication loading, parsing, and locator translation across pla
 - `DesktopEpubReaderEngine`: Desktop production implementation of `ReaderEngine` (`[DesktopEpubReaderEngine.kt:DesktopEpubReaderEngine]`).
 - `DesktopEpubDocument`: Desktop EPUB container, metadata, spine, TOC, and resource extractor (`[DesktopEpubDocument.kt:DesktopEpubDocument]`).
 - `ReadiumEpubOpener`: Android-specific publication loader using Readium's `AssetRetriever`, `DefaultHttpClient`, and `PublicationOpener` (`[ReadiumEpubOpener.kt:ReadiumEpubOpener]`).
-- `ReadiumFontResources`: Derives stable publication hrefs and absolute navigator URLs for user-imported font files (`[ReadiumFontResources.kt:ReadiumFontResources]`).
+- `ReadiumFontResources`: Derives deterministic publication hrefs, absolute navigator URLs, CSS `@font-face` format hints, and sanitized ASCII CSS `font-family` identifiers (`cssFamilyName`) for user-imported `.ttf`/`.otf`/`.woff`/`.woff2` font files (`[ReadiumFontResources.kt:ReadiumFontResources]`).
 - `toDomain`: Extension mapping Readium `Locator` instances to domain `Locator` entities (`[ReadiumLocatorMapper.kt:toDomain]`).
 - `toReadium`: Extension mapping domain `Locator` entities to Readium `Locator` instances (`[ReadiumLocatorMapper.kt:toReadium]`).
 - `toTocItem`: Extension mapping Readium navigation links to domain `TocItem` hierarchy (`[ReadiumLocatorMapper.kt:toTocItem]`).

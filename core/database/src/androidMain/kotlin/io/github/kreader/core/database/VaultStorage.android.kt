@@ -361,7 +361,12 @@ actual class VaultStorage(private val context: Context) {
         runCatching {
             val fontsDir = getOrCreateSubDir("fonts")
             if (fontsDir != null) {
-                val mimeType = if (fontFileName.endsWith(".otf", ignoreCase = true)) "font/otf" else "font/ttf"
+                val mimeType = when (fontFileName.substringAfterLast('.', "").lowercase()) {
+                    "otf" -> "font/otf"
+                    "woff" -> "font/woff"
+                    "woff2" -> "font/woff2"
+                    else -> "font/ttf"
+                }
                 val fontDoc = fontsDir.findFile(fontFileName) ?: fontsDir.createFile(mimeType, fontFileName)
                 if (fontDoc != null) {
                     context.contentResolver.openOutputStream(fontDoc.uri, "wt")?.use { out ->
@@ -402,7 +407,8 @@ actual class VaultStorage(private val context: Context) {
             val result = mutableListOf<CustomFont>()
             for (doc in fontDocs) {
                 val name = doc.name ?: continue
-                if (!name.endsWith(".ttf", ignoreCase = true) && !name.endsWith(".otf", ignoreCase = true)) continue
+                val ext = name.substringAfterLast('.', "").lowercase()
+                if (ext !in setOf("ttf", "otf", "woff", "woff2")) continue
                 val localFile = File(localFontsDir, name)
                 if (!localFile.exists() || localFile.length() == 0L || localFile.length() != doc.length()) {
                     context.contentResolver.openInputStream(doc.uri)?.use { input ->

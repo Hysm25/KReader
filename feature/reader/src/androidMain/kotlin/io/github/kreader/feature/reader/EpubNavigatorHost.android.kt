@@ -215,13 +215,14 @@ actual fun EpubNavigatorHost(
     val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val effectiveRtl = detectedRtl == true
 
-    val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl, isSystemDark) {
+    val preferences = remember(theme, typography, isScrollMode, book.id, effectiveRtl, isSystemDark, customFonts) {
         buildReadiumPreferences(
             theme = theme,
             typography = typography,
             isScrollMode = isScrollMode,
             isRtl = effectiveRtl,
-            isSystemInDarkTheme = isSystemDark
+            isSystemInDarkTheme = isSystemDark,
+            customFonts = customFonts
         )
     }
 
@@ -240,10 +241,10 @@ actual fun EpubNavigatorHost(
 
     // Apply font override across all text elements (including h1-h6 headings) and typography customizations
     var lastAppliedOverrideKey by remember(book.id, navigator) { mutableStateOf<String?>(null) }
-    LaunchedEffect(navigator, isNavigatorReady, typography, customFonts) {
+    LaunchedEffect(navigator, isNavigatorReady, typography, fontsKey) {
         val fragment = navigator ?: return@LaunchedEffect
         if (!isNavigatorReady || !fragment.isAdded || fragment.context == null) return@LaunchedEffect
-        val key = "${typography.overrideFont}:${typography.fontFamily}:${typography.fontSizeSp}:${typography.lineHeightMultiplier}:${typography.textAlignment}"
+        val key = "${typography.overrideFont}:${typography.fontFamily}:${typography.fontSizeSp}:${typography.lineHeightMultiplier}:${typography.textAlignment}:$fontsKey"
         if (key != lastAppliedOverrideKey) {
             applyTypographyAndFontOverrides(fragment, typography, customFonts)
             lastAppliedOverrideKey = key
@@ -599,9 +600,9 @@ actual fun EpubNavigatorHost(
                                 ).apply {
                                     useReadiumCssFontSize = false
                                     customFonts
-                                        .filter { File(it.path).isFile }
+                                        .filter { File(it.path).let { f -> f.isFile && f.length() > 0L } }
                                         .forEach { font ->
-                                            addFontFamilyDeclaration(FontFamily(font.name)) {
+                                            addFontFamilyDeclaration(FontFamily(ReadiumFontResources.cssFamilyName(font))) {
                                                 addFontFace {
                                                     addSource(ReadiumFontResources.url(font))
                                                 }
@@ -1011,55 +1012,11 @@ private suspend fun applyTypographyAndFontOverrides(
 ) {
     runCatching {
         val js = withContext(Dispatchers.IO) {
-            val fontOverrideJs = if (typography.overrideFont && typography.fontFamily.isNotBlank() && !typography.fontFamily.equals("Default", ignoreCase = true)) {
-                val fontName = typography.fontFamily
-                val escapedFontName = fontName
-                    .replace("\\", "\\\\")
-                    .replace("'", "\\'")
-                    .replace("`", "\\`")
-                    .replace("$", "\\$")
-                val customFont = customFonts.find { it.name.equals(fontName, ignoreCase = true) }
-                val fontFaceDef = if (customFont != null) {
-                    val file = File(customFont.path)
-                    if (file.exists() && file.length() > 0L) {
-                        val fontUrl = ReadiumFontResources.url(customFont).toString()
-                            .replace("\\", "\\\\")
-                            .replace("'", "\\'")
-                        "@font-face { font-family: '$escapedFontName'; src: url('$fontUrl'); }\n"
-                    } else ""
-                } else ""
-
-                val fontCssValue = when (fontName.lowercase()) {
-                    "serif" -> "serif !important"
-                    "sans-serif", "sans serif" -> "sans-serif !important"
-                    "monospace" -> "monospace !important"
-                    "cursive" -> "cursive !important"
-                    "fantasy" -> "fantasy !important"
-                    "accessible dfa", "accessibledfa" -> "'Accessible-DFA', sans-serif !important"
-                    "ia writer duospace", "iawriterduospace" -> "'IA Writer Duospace', monospace !important"
-                    "opendyslexic" -> "'OpenDyslexic', sans-serif !important"
-                    else -> "'$escapedFontName', sans-serif !important"
-                }
-
-                """
-                (function() {
-                    var el = document.getElementById('kreader-font-override');
-                    if (!el) {
-                        el = document.createElement('style');
-                        el.id = 'kreader-font-override';
-                        (document.head || document.documentElement).appendChild(el);
-                    }
-                    el.textContent = `${fontFaceDef}body, h1, h2, h3, h4, h5, h6, p, div, span, li, blockquote, a, em, strong, i, b, td, th, figcaption { font-family: $fontCssValue; }`;
-                })();
-                """.trimIndent()
-            } else {
-                """
-                (function() {
-                    var el = document.getElementById('kreader-font-override');
-                    if (el) el.remove();
-                })();
-                """.trimIndent()
+            val activeCustomFonts = customFonts.filter { font ->
+                val file = File(font.path)
+                file.isFile && file.length() > 0L
             }
+            val fontOverrideJs = buildFontOverrideScript(typography, activeCustomFonts)
 
             val textAlignRule = when (typography.textAlignment) {
                 ReaderTypography.TextAlignment.JUSTIFY -> "text-align: justify !important;"
