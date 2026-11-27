@@ -1,8 +1,11 @@
 package io.github.kreader.feature.reader
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -15,19 +18,32 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.NavigateBefore
+import androidx.compose.material.icons.automirrored.rounded.NavigateNext
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -84,10 +100,14 @@ actual fun CbzNavigatorHost(
     readingMode: CbzReadingMode,
     imageFit: CbzImageFit,
     controller: EpubNavigatorController,
+    previousChapterTitle: String?,
+    nextChapterTitle: String?,
+    onGoToPreviousChapter: (() -> Unit)?,
+    onGoToNextChapter: (() -> Unit)?,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onPageCountLoaded: (Int) -> Unit,
-    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit,
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?, detectedMode: CbzReadingMode?) -> Unit,
     onTap: () -> Unit,
     modifier: Modifier
 ) {
@@ -96,6 +116,8 @@ actual fun CbzNavigatorHost(
 
     val currentOnProgressChanged by rememberUpdatedState(onProgressChanged)
     val currentOnTap by rememberUpdatedState(onTap)
+    val currentOnGoToNextChapter by rememberUpdatedState(onGoToNextChapter)
+    val currentOnGoToPreviousChapter by rememberUpdatedState(onGoToPreviousChapter)
 
     var openState by remember(book.id, book.source) {
         mutableStateOf<CbzOpenState>(CbzOpenState.Loading)
@@ -111,9 +133,12 @@ actual fun CbzNavigatorHost(
                     archive.close()
                     openState = CbzOpenState.Error("No readable images found in CBZ archive.")
                 } else {
+                    val detectedMode = archive.detectPreferredReadingMode(
+                        book.cbzSeriesFolder?.substringAfterLast('/') ?: book.title
+                    )
                     val loader = CbzPageLoader(archive)
                     onPageCountLoaded(count)
-                    onCbzMetadataLoaded(count, archive.metadata.isMangaRtl)
+                    onCbzMetadataLoaded(count, archive.metadata.isMangaRtl, detectedMode)
                     val toc = List(count) { idx ->
                         TocItem(
                             title = "Page ${idx + 1}",
@@ -177,15 +202,19 @@ actual fun CbzNavigatorHost(
 
                             DisposableEffect(pagerState, pageCount) {
                                 controller.goNext = {
-                                    val target = (pagerState.currentPage + 1).coerceAtMost(pageCount - 1)
-                                    if (target != pagerState.currentPage) {
+                                    if (pagerState.currentPage < pageCount - 1) {
+                                        val target = pagerState.currentPage + 1
                                         scope.launch { pagerState.animateScrollToPage(target) }
+                                    } else {
+                                        currentOnGoToNextChapter?.invoke()
                                     }
                                 }
                                 controller.goPrevious = {
-                                    val target = (pagerState.currentPage - 1).coerceAtLeast(0)
-                                    if (target != pagerState.currentPage) {
+                                    if (pagerState.currentPage > 0) {
+                                        val target = pagerState.currentPage - 1
                                         scope.launch { pagerState.animateScrollToPage(target) }
+                                    } else {
+                                        currentOnGoToPreviousChapter?.invoke()
                                     }
                                 }
                                 controller.goTo = { locator ->
@@ -223,67 +252,128 @@ actual fun CbzNavigatorHost(
                                     }
                             }
 
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                HorizontalPager(
-                                    state = pagerState,
-                                    reverseLayout = isRtl,
-                                    key = { it },
-                                    modifier = Modifier.fillMaxSize()
-                                ) { pageIndex ->
-                                    val decodedPage by produceState<CbzDecodedPage?>(
-                                        initialValue = pageLoader.getCached(
-                                            pageIndex = pageIndex,
-                                            isWebtoon = false,
-                                            reqWidth = viewportWidthPx,
-                                            reqHeight = viewportHeightPx
-                                        ),
-                                        key1 = pageIndex,
-                                        key2 = viewportWidthPx
-                                    ) {
-                                        if (value == null) {
-                                            value = pageLoader.loadPage(
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        reverseLayout = isRtl,
+                                        key = { it },
+                                        modifier = Modifier.fillMaxSize()
+                                    ) { pageIndex ->
+                                        val decodedPage by produceState<CbzDecodedPage?>(
+                                            initialValue = pageLoader.getCached(
                                                 pageIndex = pageIndex,
                                                 isWebtoon = false,
                                                 reqWidth = viewportWidthPx,
                                                 reqHeight = viewportHeightPx
+                                            ),
+                                            key1 = pageIndex,
+                                            key2 = viewportWidthPx
+                                        ) {
+                                            if (value == null) {
+                                                value = pageLoader.loadPage(
+                                                    pageIndex = pageIndex,
+                                                    isWebtoon = false,
+                                                    reqWidth = viewportWidthPx,
+                                                    reqHeight = viewportHeightPx
+                                                )
+                                            }
+                                        }
+
+                                        CbzPagedImageViewport(
+                                            decodedPage = decodedPage,
+                                            imageFit = imageFit,
+                                            isSettledCurrentPage = pagerState.settledPage == pageIndex,
+                                            viewportSize = IntSize(viewportWidthPx, viewportHeightPx),
+                                            onTap = { currentOnTap() }
+                                        )
+                                    }
+                                }
+
+                                // Seamless chapter transition pill at chapter boundaries
+                                val showNextChapterPill = pagerState.currentPage == pageCount - 1 && onGoToNextChapter != null
+                                val showPrevChapterPill = pagerState.currentPage == 0 && onGoToPreviousChapter != null && !showNextChapterPill
+                                AnimatedVisibility(
+                                    visible = showNextChapterPill || showPrevChapterPill,
+                                    enter = fadeIn(tween(150)),
+                                    exit = fadeOut(tween(120)),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 18.dp, start = 16.dp, end = 16.dp)
+                                ) {
+                                    if (showNextChapterPill) {
+                                        Button(
+                                            onClick = { onGoToNextChapter?.invoke() },
+                                            shape = RoundedCornerShape(24.dp),
+                                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+                                        ) {
+                                            Text(
+                                                text = "Next: ${nextChapterTitle ?: "Chapter"}",
+                                                style = MaterialTheme.typography.labelLarge
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.NavigateNext,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    } else if (showPrevChapterPill) {
+                                        FilledTonalButton(
+                                            onClick = { onGoToPreviousChapter?.invoke() },
+                                            shape = RoundedCornerShape(24.dp),
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.NavigateBefore,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Prev: ${previousChapterTitle ?: "Chapter"}",
+                                                style = MaterialTheme.typography.labelMedium
                                             )
                                         }
                                     }
-
-                                    CbzPagedImageViewport(
-                                        decodedPage = decodedPage,
-                                        imageFit = imageFit,
-                                        isSettledCurrentPage = pagerState.settledPage == pageIndex,
-                                        viewportSize = IntSize(viewportWidthPx, viewportHeightPx),
-                                        onTap = { currentOnTap() }
-                                    )
                                 }
                             }
                         }
 
                         CbzReadingMode.WEBTOON -> {
+                            val hasPrevHeader = onGoToPreviousChapter != null
+                            val hasNextFooter = onGoToNextChapter != null
+                            val pageItemOffset = if (hasPrevHeader) 1 else 0
                             val listState = rememberLazyListState(
-                                initialFirstVisibleItemIndex = currentPageIndex.coerceIn(0, pageCount - 1)
+                                initialFirstVisibleItemIndex = (currentPageIndex.coerceIn(0, pageCount - 1) + pageItemOffset)
                             )
 
-                            DisposableEffect(listState, pageCount) {
+                            DisposableEffect(listState, pageCount, pageItemOffset) {
                                 controller.goNext = {
-                                    val target = (listState.firstVisibleItemIndex + 1).coerceAtMost(pageCount - 1)
-                                    scope.launch { listState.animateScrollToItem(target) }
+                                    val currPage = (listState.firstVisibleItemIndex - pageItemOffset).coerceIn(0, pageCount - 1)
+                                    if (currPage < pageCount - 1) {
+                                        scope.launch { listState.animateScrollToItem(currPage + 1 + pageItemOffset) }
+                                    } else {
+                                        currentOnGoToNextChapter?.invoke()
+                                    }
                                 }
                                 controller.goPrevious = {
-                                    val target = (listState.firstVisibleItemIndex - 1).coerceAtLeast(0)
-                                    scope.launch { listState.animateScrollToItem(target) }
+                                    val currPage = (listState.firstVisibleItemIndex - pageItemOffset).coerceIn(0, pageCount - 1)
+                                    if (currPage > 0) {
+                                        scope.launch { listState.animateScrollToItem(currPage - 1 + pageItemOffset) }
+                                    } else {
+                                        currentOnGoToPreviousChapter?.invoke()
+                                    }
                                 }
                                 controller.goTo = { locator ->
                                     val target = cbzInitialPageIndex(locator, pageCount)
-                                    scope.launch { listState.scrollToItem(target) }
+                                    scope.launch { listState.scrollToItem(target + pageItemOffset) }
                                 }
                                 controller.seekToProgression = { targetProg ->
                                     val target = (targetProg * (pageCount - 1).coerceAtLeast(1))
                                         .roundToInt()
                                         .coerceIn(0, pageCount - 1)
-                                    scope.launch { listState.scrollToItem(target) }
+                                    scope.launch { listState.scrollToItem(target + pageItemOffset) }
                                 }
                                 onDispose {
                                     controller.goNext = null
@@ -293,8 +383,10 @@ actual fun CbzNavigatorHost(
                                 }
                             }
 
-                            LaunchedEffect(listState, pageCount, viewportWidthPx, viewportHeightPx) {
-                                snapshotFlow { listState.firstVisibleItemIndex }
+                            LaunchedEffect(listState, pageCount, viewportWidthPx, viewportHeightPx, pageItemOffset) {
+                                snapshotFlow {
+                                    (listState.firstVisibleItemIndex - pageItemOffset).coerceIn(0, pageCount - 1)
+                                }
                                     .distinctUntilChanged()
                                     .collect { firstVisible ->
                                         currentPageIndex = firstVisible
@@ -316,6 +408,10 @@ actual fun CbzNavigatorHost(
                                 pageLoader = pageLoader,
                                 viewportWidthPx = viewportWidthPx,
                                 viewportHeightPx = viewportHeightPx,
+                                previousChapterTitle = previousChapterTitle,
+                                nextChapterTitle = nextChapterTitle,
+                                onGoToPreviousChapter = if (hasPrevHeader) onGoToPreviousChapter else null,
+                                onGoToNextChapter = if (hasNextFooter) onGoToNextChapter else null,
                                 onTap = { currentOnTap() }
                             )
                         }
@@ -476,6 +572,10 @@ private fun CbzWebtoonViewport(
     pageLoader: CbzPageLoader,
     viewportWidthPx: Int,
     viewportHeightPx: Int,
+    previousChapterTitle: String?,
+    nextChapterTitle: String?,
+    onGoToPreviousChapter: (() -> Unit)?,
+    onGoToNextChapter: (() -> Unit)?,
     onTap: () -> Unit
 ) {
     val scaleAnim = remember { Animatable(1f) }
@@ -579,6 +679,30 @@ private fun CbzWebtoonViewport(
                     translationX = offsetAnim.value.x
                 }
         ) {
+            if (onGoToPreviousChapter != null) {
+                item(key = "webtoon_prev_chapter") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        OutlinedButton(
+                            onClick = onGoToPreviousChapter,
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.NavigateBefore,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Previous: ${previousChapterTitle ?: "Chapter"}")
+                        }
+                    }
+                }
+            }
+
             items(
                 count = pageCount,
                 key = { it }
@@ -629,6 +753,45 @@ private fun CbzWebtoonViewport(
                                     .fillMaxWidth()
                                     .aspectRatio(aspect)
                             )
+                        }
+                    }
+                }
+            }
+
+            if (onGoToNextChapter != null) {
+                item(key = "webtoon_next_chapter") {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 24.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "End of Chapter",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = onGoToNextChapter,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Next Chapter: ${nextChapterTitle ?: "Continue"}")
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.NavigateNext,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }

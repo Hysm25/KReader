@@ -13,7 +13,6 @@ import io.github.kreader.core.model.CbzImageFit
 import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
-import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderPreferences
@@ -115,10 +114,6 @@ class ReaderViewModel(
 
         bookRepository.observeBookmarks(book.id).onEach { bookmarks ->
             _uiState.update { it.copy(bookmarks = bookmarks) }
-        }.launchIn(scope)
-
-        bookRepository.observeHighlights(book.id).onEach { highlights ->
-            _uiState.update { it.copy(highlights = highlights) }
         }.launchIn(scope)
 
         bookRepository.observeCustomThemes().onEach { themes ->
@@ -233,93 +228,6 @@ class ReaderViewModel(
         }
     }
 
-    fun saveHighlight(highlight: Highlight) {
-        _uiState.update { current ->
-            val updated = current.highlights.filterNot { it.id == highlight.id } + highlight
-            current.copy(highlights = updated)
-        }
-        scope.launch {
-            bookRepository.saveHighlight(highlight)
-        }
-    }
-
-    fun deleteHighlight(highlightId: String) {
-        _uiState.update { current ->
-            current.copy(highlights = current.highlights.filterNot { it.id == highlightId })
-        }
-        scope.launch {
-            bookRepository.deleteHighlight(highlightId)
-        }
-    }
-
-    fun selectHighlightForDetail(highlight: Highlight?) {
-        _uiState.update { it.copy(selectedHighlightForDetail = highlight) }
-    }
-
-    fun saveHighlightDetail(id: String, note: String, colorHex: String) {
-        val existing = _uiState.value.highlights.find { it.id == id }
-        if (existing != null) {
-            val updated = existing.copy(
-                annotation = note.ifBlank { null },
-                colorHex = colorHex,
-                modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
-            )
-            _uiState.update { current ->
-                val updatedHighlights = current.highlights.map { if (it.id == id) updated else it }
-                current.copy(
-                    highlights = updatedHighlights,
-                    selectedHighlightForDetail = null
-                )
-            }
-            scope.launch {
-                bookRepository.saveHighlight(updated)
-            }
-        } else {
-            _uiState.update { it.copy(selectedHighlightForDetail = null) }
-        }
-    }
-
-    fun openAddNoteDialog(locator: Locator, selectedText: String) {
-        _uiState.update {
-            it.copy(
-                pendingNoteLocator = locator,
-                pendingNoteText = selectedText
-            )
-        }
-    }
-
-    fun dismissAddNoteDialog() {
-        _uiState.update {
-            it.copy(
-                pendingNoteLocator = null,
-                pendingNoteText = null
-            )
-        }
-    }
-
-    fun saveNewNote(locator: Locator, note: String, colorHex: String) {
-        val newHighlight = Highlight(
-            id = "hl_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000, 9999)}",
-            bookId = book.id,
-            locator = locator,
-            colorHex = colorHex,
-            annotation = note.ifBlank { null },
-            createdTimestamp = Clock.System.now().toEpochMilliseconds(),
-            modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
-        )
-        _uiState.update { current ->
-            val updated = current.highlights.filterNot { it.id == newHighlight.id } + newHighlight
-            current.copy(
-                highlights = updated,
-                pendingNoteLocator = null,
-                pendingNoteText = null
-            )
-        }
-        scope.launch {
-            bookRepository.saveHighlight(newHighlight)
-        }
-    }
-
     fun changeTheme(newTheme: ReaderTheme) {
         _uiState.update { it.copy(theme = newTheme) }
         scope.launch {
@@ -411,17 +319,23 @@ class ReaderViewModel(
         _uiState.update { it.copy(totalPageCount = count) }
     }
 
-    fun onCbzMetadataLoaded(pageCount: Int, isMangaRtl: Boolean?) {
+    fun onCbzMetadataLoaded(pageCount: Int, isMangaRtl: Boolean?, detectedMode: CbzReadingMode? = null) {
         _uiState.update { it.copy(totalPageCount = pageCount) }
-        if (book.format == BookFormat.CBZ &&
-            isMangaRtl == true &&
-            !cbzMangaHintApplied &&
-            book.lastLocator == null &&
-            book.totalProgression == 0f &&
-            _uiState.value.cbzReadingMode != CbzReadingMode.MANGA_RTL
-        ) {
-            cbzMangaHintApplied = true
-            changeCbzReadingMode(CbzReadingMode.MANGA_RTL)
+        if (book.format != BookFormat.CBZ) return
+        scope.launch {
+            val hasExplicitOverride = bookRepository.hasExplicitCbzReadingModeOverride(book.id)
+            if (!hasExplicitOverride) {
+                val chosenMode = detectedMode ?: if (isMangaRtl == true) CbzReadingMode.MANGA_RTL else null
+                if (chosenMode != null) {
+                    cbzMangaHintApplied = true
+                    _uiState.update {
+                        it.copy(
+                            cbzReadingMode = chosenMode,
+                            isRtl = chosenMode == CbzReadingMode.MANGA_RTL
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -434,9 +348,8 @@ class ReaderViewModel(
             )
         }
         scope.launch {
-            bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                val modeOverride = mode.takeIf { it != globalPreferences.cbzReadingMode }
-                val override = (current ?: ReaderPreferencesOverride()).copy(cbzReadingMode = modeOverride)
+            bookRepository.updateCbzPreferencesOverride(book.id) { current ->
+                val override = (current ?: ReaderPreferencesOverride()).copy(cbzReadingMode = mode)
                 override.takeUnless { it.isEmpty() }
             }
         }
@@ -445,9 +358,8 @@ class ReaderViewModel(
     fun changeCbzImageFit(fit: CbzImageFit) {
         _uiState.update { it.copy(cbzImageFit = fit) }
         scope.launch {
-            bookRepository.updateBookPreferencesOverride(book.id) { current ->
-                val fitOverride = fit.takeIf { it != globalPreferences.cbzImageFit }
-                val override = (current ?: ReaderPreferencesOverride()).copy(cbzImageFit = fitOverride)
+            bookRepository.updateCbzPreferencesOverride(book.id) { current ->
+                val override = (current ?: ReaderPreferencesOverride()).copy(cbzImageFit = fit)
                 override.takeUnless { it.isEmpty() }
             }
         }

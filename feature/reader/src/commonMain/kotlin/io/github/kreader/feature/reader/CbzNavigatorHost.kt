@@ -49,10 +49,14 @@ expect fun CbzNavigatorHost(
     readingMode: CbzReadingMode,
     imageFit: CbzImageFit,
     controller: EpubNavigatorController,
+    previousChapterTitle: String? = null,
+    nextChapterTitle: String? = null,
+    onGoToPreviousChapter: (() -> Unit)? = null,
+    onGoToNextChapter: (() -> Unit)? = null,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onPageCountLoaded: (Int) -> Unit,
-    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit = { _, _ -> },
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?, detectedMode: CbzReadingMode?) -> Unit = { _, _, _ -> },
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 )

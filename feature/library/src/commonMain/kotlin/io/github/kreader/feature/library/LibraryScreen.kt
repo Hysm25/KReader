@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.CbzSeries
 import io.github.kreader.core.model.ExternalBookOpener
 import io.github.kreader.feature.library.filepicker.rememberFilePickerLauncher
 import io.github.kreader.feature.library.filepicker.rememberFolderPickerLauncher
@@ -87,7 +88,12 @@ fun LibraryScreen(
     onOpenGlobalSettings: () -> Unit = {},
     onDeleteBook: (Book) -> Unit,
     onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
+    onDeleteSeries: (CbzSeries) -> Unit = {},
+    onDeleteItems: (List<LibraryItem>) -> Unit = {},
     onResetBookProgress: (Book) -> Unit = {},
+    onResetSeriesProgress: (CbzSeries) -> Unit = {},
+    onSeriesClick: (CbzSeries) -> Unit = {},
+    onDismissSeries: () -> Unit = {},
     onSearchQueryChanged: (String) -> Unit,
     onFilterChanged: (BookFilter) -> Unit = {},
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
@@ -113,7 +119,11 @@ fun LibraryScreen(
             onOpenGlobalSettings = onOpenGlobalSettings,
             onDeleteBook = onDeleteBook,
             onDeleteBooks = onDeleteBooks,
+            onDeleteSeries = onDeleteSeries,
             onResetBookProgress = onResetBookProgress,
+            onResetSeriesProgress = onResetSeriesProgress,
+            onSeriesClick = onSeriesClick,
+            onDismissSeries = onDismissSeries,
             onSearchQueryChanged = onSearchQueryChanged,
             onFilterChanged = onFilterChanged,
             onSortOrderChanged = onSortOrderChanged,
@@ -189,13 +199,13 @@ fun LibraryScreen(
                         }
                     },
                     actions = {
-                        val allSelected = state.displayBooks.isNotEmpty() && selectedBookIds.size >= state.displayBooks.size
+                        val allSelected = state.displayItems.isNotEmpty() && selectedBookIds.size >= state.displayItems.size
                         IconButton(
                             onClick = {
                                 selectedBookIds = if (allSelected) {
                                     emptySet()
                                 } else {
-                                    state.displayBooks.map { it.id }.toSet()
+                                    state.displayItems.map { it.id }.toSet()
                                 }
                             }
                         ) {
@@ -206,7 +216,14 @@ fun LibraryScreen(
                         }
                         IconButton(
                             onClick = {
-                                val selectedBooks = state.books.filter { selectedBookIds.contains(it.id) }
+                                val selectedBooks = state.displayItems
+                                    .filter { selectedBookIds.contains(it.id) }
+                                    .flatMap { item ->
+                                        when (item) {
+                                            is LibraryItem.SingleBook -> listOf(item.book)
+                                            is LibraryItem.Series -> item.series.chapters
+                                        }
+                                    }
                                 bookShareLauncher(selectedBooks)
                             }
                         ) {
@@ -441,7 +458,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    val countShown = state.displayBooks.size
+                    val countShown = state.displayItems.size
                     val countText = "$countShown ${if (countShown == 1) "item" else "items"}"
                     val headerText = if (!state.vaultName.isNullOrBlank()) {
                         "${state.vaultName} • $countText"
@@ -505,7 +522,7 @@ fun LibraryScreen(
                             }
                         }
                     }
-                    state.displayBooks.isEmpty() && state.searchQuery.isNotEmpty() -> {
+                    state.displayItems.isEmpty() && state.searchQuery.isNotEmpty() -> {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
@@ -530,7 +547,7 @@ fun LibraryScreen(
                             }
                         }
                     }
-                    state.displayBooks.isEmpty() && state.selectedFilter != BookFilter.ALL -> {
+                    state.displayItems.isEmpty() && state.selectedFilter != BookFilter.ALL -> {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
@@ -558,27 +575,27 @@ fun LibraryScreen(
                     }
                     else -> {
                         BookGrid(
-                            books = state.displayBooks,
-                            selectedBookIds = selectedBookIds,
+                            items = state.displayItems,
+                            selectedItemIds = selectedBookIds,
                             isSelectionMode = isSelectionMode,
-                            onBookClick = { book ->
-                                if (isSelectionMode) {
-                                    selectedBookIds = if (selectedBookIds.contains(book.id)) {
-                                        selectedBookIds - book.id
-                                    } else {
-                                        selectedBookIds + book.id
-                                    }
-                                } else {
-                                    onBookClick(book)
+                            onBookClick = onBookClick,
+                            onSeriesClick = onSeriesClick,
+                            onItemLongClick = { item ->
+                                if (!isSelectionMode) {
+                                    selectedBookIds = setOf(item.id)
                                 }
                             },
-                            onBookLongClick = { book ->
-                                if (!isSelectionMode) {
-                                    selectedBookIds = setOf(book.id)
+                            onToggleItemSelection = { item ->
+                                selectedBookIds = if (selectedBookIds.contains(item.id)) {
+                                    selectedBookIds - item.id
+                                } else {
+                                    selectedBookIds + item.id
                                 }
                             },
                             onDeleteBook = onDeleteBook,
+                            onDeleteSeries = onDeleteSeries,
                             onResetProgress = onResetBookProgress,
+                            onResetSeriesProgress = onResetSeriesProgress,
                             onExportMarkdown = { book ->
                                 if (onExportBookToMarkdown != null) {
                                     scope.launch {
@@ -620,8 +637,13 @@ fun LibraryScreen(
                 Button(
                     onClick = {
                         showMultiDeleteDialog = false
-                        val booksToDelete = state.books.filter { selectedBookIds.contains(it.id) }
-                        onDeleteBooks(booksToDelete)
+                        val itemsToDelete = state.displayItems.filter { selectedBookIds.contains(it.id) }
+                        if (itemsToDelete.isNotEmpty()) {
+                            onDeleteItems(itemsToDelete)
+                        } else {
+                            val booksToDelete = state.books.filter { selectedBookIds.contains(it.id) }
+                            onDeleteBooks(booksToDelete)
+                        }
                         selectedBookIds = emptySet()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -636,6 +658,15 @@ fun LibraryScreen(
             }
         )
     }
+
+    SeriesChaptersSheet(
+        series = state.selectedSeries,
+        onChapterClick = { chapter ->
+            onDismissSeries()
+            onBookClick(chapter)
+        },
+        onDismiss = onDismissSeries
+    )
 }
 
 @Composable

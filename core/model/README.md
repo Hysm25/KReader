@@ -4,7 +4,9 @@
 Defines core domain entities, value objects, reading preference models, and locator definitions for the KReader application. This package provides platform-agnostic, serializable representations of books, bookmarks, highlights, reading progress, themes, and typography settings without dependencies on storage or UI frameworks.
 
 ## Interface
-- `Book`: Core data class representing a publication with metadata, format, source, progression, optional page count / manga hint, and locator references (`[Book.kt:Book]`).
+- `Book`: Core data class representing a publication with metadata, format, source, progression, optional page count / manga hint, `cbzSeriesFolder` grouping helper, and locator references (`[Book.kt:Book]`).
+- `CbzSeries`: Domain model aggregating subdirectory `.cbz` chapters into a library series card with natural chapter ordering and aggregated progress (`[Book.kt:CbzSeries]`).
+- `cbzSeriesWorkspaceKey`: Workspace key helper mapping CBZ series folders to `"series:<folderPath>"` (`[Book.kt:cbzSeriesWorkspaceKey]`).
 - `BookFormat`: Publication format enumeration supporting EPUB and CBZ with MIME type and extension resolution (`[BookFormat.kt:BookFormat]`).
 - `BookSource`: Sealed interface abstracting storage origins (`FilePath`, `ContentUri`, `InactiveSource`) (`[BookSource.kt:BookSource]`).
 - `Bookmark`: User bookmark anchor associating a publication with a locator and timestamp (`[Bookmark.kt:Bookmark]`).

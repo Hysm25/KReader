@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
+import io.github.kreader.core.model.CbzSeries
 import io.github.kreader.feature.library.filepicker.rememberFilePickerLauncher
 import io.github.kreader.feature.library.filepicker.rememberFolderPickerLauncher
 import io.github.kreader.feature.library.ui.rememberCoverPainter
@@ -104,7 +105,11 @@ fun DesktopLibraryLayout(
     onOpenGlobalSettings: () -> Unit = {},
     onDeleteBook: (Book) -> Unit,
     onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
+    onDeleteSeries: (CbzSeries) -> Unit = {},
     onResetBookProgress: (Book) -> Unit = {},
+    onResetSeriesProgress: (CbzSeries) -> Unit = {},
+    onSeriesClick: (CbzSeries) -> Unit = {},
+    onDismissSeries: () -> Unit = {},
     onSearchQueryChanged: (String) -> Unit,
     onFilterChanged: (BookFilter) -> Unit = {},
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
@@ -124,6 +129,8 @@ fun DesktopLibraryLayout(
 
     var selectedBookForDelete by remember { mutableStateOf<Book?>(null) }
     var selectedBookForReset by remember { mutableStateOf<Book?>(null) }
+    var selectedSeriesForDelete by remember { mutableStateOf<CbzSeries?>(null) }
+    var selectedSeriesForReset by remember { mutableStateOf<CbzSeries?>(null) }
 
     // If no vault is set, show desktop onboarding hero
     if (state.vaultPath == null) {
@@ -141,7 +148,7 @@ fun DesktopLibraryLayout(
         topBar = {
             DesktopLibraryHeader(
                 vaultName = state.vaultName,
-                bookCount = state.displayBooks.size,
+                bookCount = state.displayItems.size,
                 totalCount = state.books.size,
                 searchQuery = state.searchQuery,
                 onSearchQueryChanged = onSearchQueryChanged,
@@ -161,7 +168,7 @@ fun DesktopLibraryLayout(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (state.displayBooks.isEmpty()) {
+            if (state.displayItems.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -216,27 +223,41 @@ fun DesktopLibraryLayout(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(
-                        items = state.displayBooks,
+                        items = state.displayItems,
                         key = { it.id }
-                    ) { book ->
-                        DesktopBookCard(
-                            book = book,
-                            onClick = { onBookClick(book) },
-                            onDelete = { selectedBookForDelete = book },
-                            onResetProgress = { selectedBookForReset = book },
-                            onExportMarkdown = {
-                                if (onExportBookToMarkdown != null) {
-                                    scope.launch {
-                                        val path = onExportBookToMarkdown(book)
-                                        if (path != null) {
-                                            snackbarHostState.showSnackbar("Exported to $path")
-                                        } else {
-                                            snackbarHostState.showSnackbar("Failed to export notes")
+                    ) { item ->
+                        when (item) {
+                            is LibraryItem.SingleBook -> {
+                                val book = item.book
+                                DesktopBookCard(
+                                    book = book,
+                                    onClick = { onBookClick(book) },
+                                    onDelete = { selectedBookForDelete = book },
+                                    onResetProgress = { selectedBookForReset = book },
+                                    onExportMarkdown = {
+                                        if (onExportBookToMarkdown != null) {
+                                            scope.launch {
+                                                val path = onExportBookToMarkdown(book)
+                                                if (path != null) {
+                                                    snackbarHostState.showSnackbar("Exported to $path")
+                                                } else {
+                                                    snackbarHostState.showSnackbar("Failed to export notes")
+                                                }
+                                            }
                                         }
                                     }
-                                }
+                                )
                             }
-                        )
+                            is LibraryItem.Series -> {
+                                val series = item.series
+                                DesktopSeriesCard(
+                                    series = series,
+                                    onClick = { onSeriesClick(series) },
+                                    onDelete = { selectedSeriesForDelete = series },
+                                    onResetProgress = { selectedSeriesForReset = series }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -291,6 +312,62 @@ fun DesktopLibraryLayout(
             }
         )
     }
+
+    selectedSeriesForDelete?.let { series ->
+        AlertDialog(
+            onDismissRequest = { selectedSeriesForDelete = null },
+            title = { Text("Delete Series") },
+            text = { Text("Delete '${series.title}' and all ${series.chapters.size} CBZ chapter file(s) from your vault?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteSeries(series)
+                        selectedSeriesForDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Series")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedSeriesForDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    selectedSeriesForReset?.let { series ->
+        AlertDialog(
+            onDismissRequest = { selectedSeriesForReset = null },
+            title = { Text("Reset Series Progress") },
+            text = { Text("Reset reading progress for all ${series.chapters.size} chapters of '${series.title}'?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onResetSeriesProgress(series)
+                        selectedSeriesForReset = null
+                    }
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedSeriesForReset = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    SeriesChaptersSheet(
+        series = state.selectedSeries,
+        onChapterClick = { chapter ->
+            onDismissSeries()
+            onBookClick(chapter)
+        },
+        onDismiss = onDismissSeries
+    )
 }
 
 /**
@@ -774,6 +851,201 @@ private fun DesktopBookCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { book.totalProgression.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(CircleShape),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DesktopSeriesCard(
+    series: CbzSeries,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    onResetProgress: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .hoverable(interactionSource)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+                onLongClick = { menuExpanded = true }
+            ),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isHovered) 6.dp else 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f / 1.45f)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                val coverPainter = rememberCoverPainter(series.coverPath)
+                if (coverPainter != null) {
+                    Image(
+                        painter = coverPainter,
+                        contentDescription = series.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.MenuBook,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = series.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.9f)
+                        ) {
+                            Text(
+                                text = "CBZ Series",
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color.Black.copy(alpha = 0.7f)
+                        ) {
+                            Text(
+                                text = "${series.chapters.size} Ch",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.5f),
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            IconButton(
+                                onClick = { menuExpanded = true },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.MoreVert,
+                                    contentDescription = "Series options",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("View Chapters") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onClick()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Reset Series Progress") },
+                                    leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onResetProgress()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete Series", color = MaterialTheme.colorScheme.error) },
+                                    leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onDelete()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = series.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${series.chapters.size} ${if (series.chapters.size == 1) "chapter" else "chapters"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { series.totalProgression.coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.dp)

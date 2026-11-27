@@ -12,8 +12,6 @@ class EpubNavigatorController {
     var seekToProgression: ((Float) -> Unit)? = null
     var search: (suspend (String) -> List<Locator>)? = null
     var clearSelection: (() -> Unit)? = null
-    var highlightSearchResult: ((Locator) -> Unit)? = null
-    var clearSearchHighlight: (() -> Unit)? = null
 }
 
 @Composable

@@ -92,7 +92,6 @@ import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
-import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderTheme
@@ -128,15 +127,6 @@ object ReaderThemePresets {
     )
 }
 
-object HighlightColors {
-    val Yellow = "#FEF08A"
-    val Green = "#BBF7D0"
-    val Blue = "#BAE6FD"
-    val Pink = "#FBCFE8"
-
-    val list = listOf(Yellow, Green, Blue, Pink)
-}
-
 @Composable
 fun ReaderNavigationDrawer(
     isOpen: Boolean,
@@ -144,12 +134,9 @@ fun ReaderNavigationDrawer(
     onTabSelected: (NavigationDrawerTab) -> Unit,
     tocItems: List<TocItem>,
     bookmarks: List<Bookmark>,
-    highlights: List<Highlight>,
     currentLocator: Locator?,
     onNavigateToLocator: (Locator) -> Unit,
     onDeleteBookmark: (String) -> Unit,
-    onDeleteHighlight: (String) -> Unit,
-    onHighlightClicked: (Highlight) -> Unit,
     onExportMarkdown: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
@@ -217,9 +204,9 @@ fun ReaderNavigationDrawer(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Tabs: Contents, Bookmarks, Highlights & Notes
+                // Tabs: Contents, Bookmarks
                 TabRow(
-                    selectedTabIndex = currentTab.ordinal,
+                    selectedTabIndex = currentTab.ordinal.coerceIn(0, 1),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     contentColor = MaterialTheme.colorScheme.primary,
                     divider = {
@@ -241,12 +228,6 @@ fun ReaderNavigationDrawer(
                         onClick = { onTabSelected(NavigationDrawerTab.BOOKMARKS) },
                         icon = { Icon(Icons.Rounded.Bookmark, contentDescription = null) },
                         text = { Text("Bookmarks (${bookmarks.size})", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    )
-                    Tab(
-                        selected = currentTab == NavigationDrawerTab.HIGHLIGHTS,
-                        onClick = { onTabSelected(NavigationDrawerTab.HIGHLIGHTS) },
-                        icon = { Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null) },
-                        text = { Text("Notes (${highlights.size})", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                 }
 
@@ -272,17 +253,6 @@ fun ReaderNavigationDrawer(
                                 onDismiss()
                             },
                             onDeleteBookmark = onDeleteBookmark
-                        )
-                    }
-                    NavigationDrawerTab.HIGHLIGHTS -> {
-                        HighlightsTabContent(
-                            highlights = highlights,
-                            onHighlightClick = { highlight ->
-                                onNavigateToLocator(highlight.locator)
-                                onDismiss()
-                            },
-                            onHighlightDetail = onHighlightClicked,
-                            onDeleteHighlight = onDeleteHighlight
                         )
                     }
                 }
@@ -395,161 +365,6 @@ private fun BookmarksTabContent(
                             contentDescription = "Delete bookmark",
                             tint = MaterialTheme.colorScheme.error
                         )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HighlightsTabContent(
-    highlights: List<Highlight>,
-    onHighlightClick: (Highlight) -> Unit,
-    onHighlightDetail: (Highlight) -> Unit,
-    onDeleteHighlight: (String) -> Unit
-) {
-    if (highlights.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = "No highlights or notes yet.\nSelect text inside the book to highlight or add notes.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 22.sp,
-                textAlign = TextAlign.Center
-            )
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(highlights) { highlight ->
-                val highlightColor = parseHexToColor(highlight.colorHex)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable { onHighlightClick(highlight) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Min)
-                    ) {
-                        // Colored start accent bar
-                        Box(
-                            modifier = Modifier
-                                .width(5.dp)
-                                .fillMaxHeight()
-                                .background(highlightColor)
-                        )
-
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // Header: Chapter pill & progression
-                            val chapterTitle = highlight.locator.title
-                                ?.takeIf { it.isNotBlank() }
-                                ?: highlight.locator.href.substringBefore('#').substringAfterLast('/')
-                                    .removeSuffix(".xhtml")
-                                    .removeSuffix(".html")
-                                    .replace('_', ' ')
-                            val prog = ((highlight.locator.locations.totalProgression ?: highlight.locator.locations.progression ?: 0f) * 100).toInt()
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = highlightColor.copy(alpha = 0.25f)
-                                ) {
-                                    Text(
-                                        text = chapterTitle,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "$prog%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            // Highlighted Quote Text
-                            Text(
-                                text = "“${highlight.locator.text?.highlight ?: "Highlighted text"}”",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal),
-                                maxLines = 4,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            // Annotation / Note if present
-                            if (!highlight.annotation.isNullOrBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "📝 ${highlight.annotation}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            maxLines = 3,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Action buttons
-                        Column(
-                            modifier = Modifier
-                                .padding(end = 4.dp, top = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            IconButton(
-                                onClick = { onHighlightDetail(highlight) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Edit,
-                                    contentDescription = "Edit annotation",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = { onDeleteHighlight(highlight.id) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Delete,
-                                    contentDescription = "Delete highlight",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -865,171 +680,6 @@ fun ReaderSearchSheet(
             }
         }
     }
-}
-
-@Composable
-fun HighlightDetailDialog(
-    highlight: Highlight?,
-    onSaveAnnotation: (id: String, note: String, colorHex: String) -> Unit,
-    onDeleteHighlight: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    if (highlight == null) return
-
-    var noteText by remember(highlight.id) { mutableStateOf(highlight.annotation ?: "") }
-    var selectedColor by remember(highlight.id) { mutableStateOf(highlight.colorHex) }
-
-    AlertDialog(
-        modifier = Modifier.widthIn(max = 500.dp),
-        onDismissRequest = onDismiss,
-        title = { Text("Highlight Details") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Highlighted quote
-                val quote = (highlight.locator.text?.highlight ?: "").trim()
-                if (quote.isNotEmpty()) {
-                    Text(
-                        text = "\"$quote\"",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                // Color picker swatches
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    HighlightColors.list.forEach { hex ->
-                        val color = parseHexToColor(hex)
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(
-                                    width = if (selectedColor == hex) 3.dp else 1.dp,
-                                    color = if (selectedColor == hex) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
-                                    shape = CircleShape
-                                )
-                                .clickable { selectedColor = hex }
-                        )
-                    }
-                }
-
-                // Note input
-                OutlinedTextField(
-                    value = noteText,
-                    onValueChange = { noteText = it },
-                    label = { Text("Note / Annotation") },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 4
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                onSaveAnnotation(highlight.id, noteText, selectedColor)
-                onDismiss()
-            }) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(
-                    onClick = {
-                        onDeleteHighlight(highlight.id)
-                        onDismiss()
-                    }
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("Cancel")
-                }
-            }
-        }
-    )
-}
-
-@Composable
-fun AddNoteDialog(
-    locator: Locator?,
-    selectedText: String?,
-    onSaveNote: (locator: Locator, note: String, colorHex: String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    if (locator == null) return
-
-    var noteText by remember { mutableStateOf("") }
-    var selectedColor by remember { mutableStateOf(HighlightColors.Yellow) }
-
-    AlertDialog(
-        modifier = Modifier.widthIn(max = 500.dp),
-        onDismissRequest = onDismiss,
-        title = { Text("Add Note") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                val quote = (selectedText ?: "").trim()
-                if (quote.isNotEmpty()) {
-                    Text(
-                        text = "\"$quote\"",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                // Color picker swatches
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    HighlightColors.list.forEach { hex ->
-                        val color = parseHexToColor(hex)
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(
-                                    width = if (selectedColor == hex) 3.dp else 1.dp,
-                                    color = if (selectedColor == hex) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
-                                    shape = CircleShape
-                                )
-                                .clickable { selectedColor = hex }
-                        )
-                    }
-                }
-
-                OutlinedTextField(
-                    value = noteText,
-                    onValueChange = { noteText = it },
-                    label = { Text("Write note...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 4
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSaveNote(locator, noteText, selectedColor)
-                    onDismiss()
-                },
-                enabled = noteText.isNotBlank()
-            ) {
-                Text("Save Note")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
 }
 
 enum class ReaderSettingsTab {

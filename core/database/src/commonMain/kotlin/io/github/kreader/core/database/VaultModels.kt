@@ -43,6 +43,11 @@ data class VaultBookFile(
     val lastModified: Long = 0L
 )
 
+data class VaultScanResult(
+    val books: List<VaultBookFile> = emptyList(),
+    val seriesCovers: Map<String, BookSource> = emptyMap()
+)
+
 internal fun stripBookExtension(path: String): String =
     path.replace(Regex("""\.(epub|cbz)$""", RegexOption.IGNORE_CASE), "")
 

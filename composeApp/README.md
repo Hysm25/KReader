@@ -13,7 +13,7 @@ Serves as the root application module, packaging coordinator, and presentation c
 - `[MainActivity.kt:handleIncomingIntent]`: External book intents are transformed into `BookSource.FilePath` or `BookSource.ContentUri` and dispatched via `ExternalBookOpener.open()` into the library viewmodel without blocking the main UI thread.
 - `[main.kt:main]`: File path arguments passed via CLI (`args[0]`) are validated, converted into `BookSource.FilePath`, and queued into `ExternalBookOpener.open()` prior to launching the UI window.
 - `[MainActivity.kt:onKeyDown]`: Hardware volume button presses (`KEYCODE_VOLUME_UP`, `KEYCODE_VOLUME_DOWN`) are checked against `ReaderKeyEventDispatcher` and consumed only if active in reading mode.
-- `[App.kt:App]`: If `selectedBook == null`, renders `LibraryScreen`; if `selectedBook != null`, renders `ReaderScreen`. Global settings mutations serialize through `BookRepository.updateReaderPreferences` so concurrent custom font updates are never overwritten.
+- `[App.kt:App]`: If `selectedBook == null`, renders `LibraryScreen` (including `CbzSeries` chapter selection); if `selectedBook != null`, resolves series chapter neighbors (`previousChapter`, `nextChapter`) and renders `ReaderScreen`. Global settings mutations serialize through `BookRepository.updateReaderPreferences` so concurrent custom font updates are never overwritten.
 
 ## Side Effects
 - `[MainActivity.kt:enableEdgeToEdge]`: Configures Android system window flags for edge-to-edge rendering.

@@ -145,48 +145,86 @@ actual class VaultStorage(private val context: Context) {
         }
     }
 
-    actual suspend fun listBooks(): List<VaultBookFile> = withContext(Dispatchers.IO) {
-        val root = getRootDoc() ?: return@withContext emptyList()
+    actual suspend fun listBooks(): List<VaultBookFile> = scanVault().books
+
+    actual suspend fun scanVault(): VaultScanResult = withContext(Dispatchers.IO) {
+        val root = getRootDoc() ?: return@withContext VaultScanResult()
         val kreaderDir = root.findFile(".kreader")
         if (kreaderDir != null) {
             cleanupStrayDuplicates(kreaderDir)
         }
-        val results = mutableListOf<VaultBookFile>()
-        scanDocumentTree(root, "", results)
-        results
+        val books = mutableListOf<VaultBookFile>()
+        val seriesCovers = mutableMapOf<String, BookSource>()
+        scanDocumentTree(root, "", books, seriesCovers)
+        VaultScanResult(books = books, seriesCovers = seriesCovers)
+    }
+
+    actual suspend fun readBytesFromSource(source: BookSource): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            when (source) {
+                is BookSource.FilePath -> File(source.path).takeIf { it.isFile && it.length() > 0L }?.readBytes()
+                is BookSource.ContentUri -> context.contentResolver.openInputStream(Uri.parse(source.uriString))?.use { it.readBytes() }
+                is BookSource.InactiveSource -> null
+            }
+        }.getOrNull()
     }
 
     private fun scanDocumentTree(
         dir: DocumentFile,
         parentPath: String,
-        results: MutableList<VaultBookFile>
+        results: MutableList<VaultBookFile>,
+        seriesCovers: MutableMap<String, BookSource>
     ) {
         val children = dir.listFiles()
+        var customCoverSource: BookSource? = null
+        var hasCbzInDir = false
+
         for (child in children) {
             val name = child.name.orEmpty()
             if (child.isDirectory) {
                 if (name == ".kreader") continue
                 val subPath = if (parentPath.isEmpty()) name else "$parentPath/$name"
-                scanDocumentTree(child, subPath, results)
+                scanDocumentTree(child, subPath, results, seriesCovers)
             } else if (child.isFile) {
-                val ext = name.substringAfterLast('.', "")
-                val format = BookFormat.fromExtension(ext) ?: continue
-                val relPath = if (parentPath.isEmpty()) name else "$parentPath/$name"
-                results.add(
-                    VaultBookFile(
-                        relativePath = relPath,
-                        displayName = name,
-                        source = BookSource.ContentUri(
-                            uriString = child.uri.toString(),
-                            displayName = name
-                        ),
-                        format = format,
-                        fileSizeBytes = child.length(),
-                        lastModified = child.lastModified()
+                val ext = name.substringAfterLast('.', "").lowercase()
+                val format = BookFormat.fromExtension(ext)
+                if (format != null) {
+                    if (format == BookFormat.CBZ) {
+                        hasCbzInDir = true
+                    }
+                    val relPath = if (parentPath.isEmpty()) name else "$parentPath/$name"
+                    results.add(
+                        VaultBookFile(
+                            relativePath = relPath,
+                            displayName = name,
+                            source = BookSource.ContentUri(
+                                uriString = child.uri.toString(),
+                                displayName = name
+                            ),
+                            format = format,
+                            fileSizeBytes = child.length(),
+                            lastModified = child.lastModified()
+                        )
                     )
-                )
+                } else if (parentPath.isNotEmpty() && isCustomSeriesCoverFile(name) && customCoverSource == null) {
+                    customCoverSource = BookSource.ContentUri(
+                        uriString = child.uri.toString(),
+                        displayName = name
+                    )
+                }
             }
         }
+
+        if (parentPath.isNotEmpty() && hasCbzInDir && customCoverSource != null) {
+            seriesCovers[parentPath] = customCoverSource
+        }
+    }
+
+    private fun isCustomSeriesCoverFile(name: String): Boolean {
+        val stem = name.substringBeforeLast('.', "")
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return stem.equals("cover", ignoreCase = true) &&
+            ext in setOf("jpg", "jpeg", "png", "webp", "bmp")
     }
 
     actual suspend fun readConfig(fileName: String): String? {

@@ -297,12 +297,11 @@ class DesktopEpubDocument private constructor(
     }
 
     /**
-     * In-book text search across all spine chapters with Unicode NFC normalization
-     * and Arabic diacritic stripping for maximal search recall.
+     * In-book text search across all spine chapters with Arabic Tashkeel/Alef/Ya normalization
+     * and exact 1:1 offset mapping back to original text.
      */
     fun search(query: String): List<Locator> {
-        val cleanQuery = normalizeForSearch(query)
-        if (cleanQuery.isBlank()) return emptyList()
+        if (ArabicSearchNormalizer.normalizeQuery(query).isEmpty()) return emptyList()
 
         val results = mutableListOf<Locator>()
         val totalSpine = spine.size.coerceAtLeast(1)
@@ -313,52 +312,31 @@ class DesktopEpubDocument private constructor(
 
             val doc = Jsoup.parse(xhtml)
             val bodyText = doc.body().text()
-            val normalizedBody = normalizeForSearch(bodyText)
+            val matches = ArabicSearchNormalizer.search(bodyText, query, maxMatches = 100 - results.size)
 
-            var startIndex = 0
-            while (startIndex < normalizedBody.length) {
-                val matchIndex = normalizedBody.indexOf(cleanQuery, startIndex)
-                if (matchIndex < 0) break
-
-                val chapterProgress = matchIndex.toFloat() / normalizedBody.length.coerceAtLeast(1)
-                val totalProgress = (spineIndex.toFloat() + chapterProgress) / totalSpine.toFloat()
-
-                val beforeStart = max(0, matchIndex - 40)
-                val before = bodyText.substring(beforeStart, matchIndex).trimStart()
-                val highlight = bodyText.substring(matchIndex, min(bodyText.length, matchIndex + query.length))
-                val afterEnd = min(bodyText.length, matchIndex + query.length + 40)
-                val after = bodyText.substring(min(bodyText.length, matchIndex + query.length), afterEnd).trimEnd()
-
+            for (match in matches) {
+                val totalProgress = (spineIndex.toFloat() + match.progression) / totalSpine.toFloat()
                 results.add(
                     Locator(
                         href = item.originalHref,
                         type = item.mediaType.ifBlank { "application/xhtml+xml" },
                         title = null,
                         locations = Locator.Locations(
-                            progression = chapterProgress,
-                            position = matchIndex,
+                            progression = match.progression,
+                            position = match.rawStart,
                             totalProgression = totalProgress
                         ),
                         text = Locator.LocatorText(
-                            before = before,
-                            highlight = highlight,
-                            after = after
+                            before = match.before,
+                            highlight = match.highlight,
+                            after = match.after
                         )
                     )
                 )
-
-                startIndex = matchIndex + max(1, cleanQuery.length)
+                if (results.size >= 100) return results
             }
         }
         return results
-    }
-
-    private fun normalizeForSearch(input: String): String {
-        val nfc = Normalizer.normalize(input, Normalizer.Form.NFC)
-        // Strip Arabic diacritics/tashkeel (\u064B to \u065F, \u0670) and Tatweel (\u0640)
-        return nfc.replace(Regex("""[\u064B-\u065F\u0670\u0640]"""), "")
-            .lowercase()
-            .trim()
     }
 
     override fun close() {

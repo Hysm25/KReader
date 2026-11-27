@@ -78,11 +78,11 @@ import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.CustomFont
-import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.isRtlText
+import io.github.kreader.engine.epub.ArabicSearchNormalizer
 import io.github.kreader.engine.epub.DesktopEpubDocument
 import io.github.kreader.engine.epub.DesktopSpineItem
 import kotlinx.coroutines.Dispatchers
@@ -102,10 +102,7 @@ actual fun EpubNavigatorHost(
     isTwoPageSpread: Boolean,
     controller: EpubNavigatorController,
     customFonts: List<CustomFont>,
-    highlights: List<Highlight>,
-    onHighlightClicked: (String) -> Unit,
-    onAddHighlight: (id: String, locator: Locator, colorHex: String) -> Unit,
-    onAddNoteRequested: (Locator, String) -> Unit,
+    onSearchSelectedText: (String) -> Unit,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onDirectionDetected: (isRtl: Boolean) -> Unit,
@@ -315,7 +312,28 @@ actual fun EpubNavigatorHost(
                     it.originalHref.contains(locator.href)
                 }
                 if (idx >= 0) {
-                    val targetBlockOffset = locator.locations.position ?: 0
+                    val chapter = doc.spine[idx]
+                    val xhtml = doc.readChapter(chapter)
+                    val parsedBlocks = EpubBlockParser.parse(xhtml, chapter.originalHref)
+                    val quote = locator.text?.highlight?.let { ArabicSearchNormalizer.normalizeQuery(it) }.orEmpty()
+                    val matchedBlockIdx = if (quote.isNotEmpty()) {
+                        parsedBlocks.indexOfFirst { block ->
+                            val raw = when (block) {
+                                is ReaderContentBlock.Paragraph -> block.rawText
+                                is ReaderContentBlock.Heading -> block.annotatedText.text
+                                is ReaderContentBlock.Blockquote -> block.annotatedText.text
+                                is ReaderContentBlock.ListItem -> block.annotatedText.text
+                                else -> ""
+                            }
+                            ArabicSearchNormalizer.normalizeQuery(raw).contains(quote)
+                        }
+                    } else -1
+                    val targetBlockOffset = when {
+                        matchedBlockIdx >= 0 -> matchedBlockIdx
+                        locator.locations.progression != null && parsedBlocks.isNotEmpty() ->
+                            ((locator.locations.progression!! * parsedBlocks.size).toInt()).coerceIn(0, parsedBlocks.lastIndex)
+                        else -> (locator.locations.position ?: 0).coerceIn(0, (parsedBlocks.size - 1).coerceAtLeast(0))
+                    }
                     loadSpineChapter(idx, initialBlockOffset = targetBlockOffset)
                 }
             }
@@ -432,31 +450,13 @@ actual fun EpubNavigatorHost(
                         items(currentBlocks, key = { it.id }) { block ->
                             RenderBlock(
                                 block = block,
-                                highlights = highlights,
                                 textColor = textColor,
                                 fontFamily = activeFontFamily,
                                 typography = typography,
                                 isRtl = isRtl,
                                 document = document,
                                 currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
-                                imageCache = imageCache,
-                                onHighlightClicked = onHighlightClicked,
-                                onAddHighlight = { id, quote, colorHex ->
-                                    val loc = Locator(
-                                        href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                        type = "application/xhtml+xml",
-                                        text = Locator.LocatorText(highlight = quote)
-                                    )
-                                    onAddHighlight(id, loc, colorHex)
-                                },
-                                onAddNoteRequested = { quote ->
-                                    val loc = Locator(
-                                        href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                        type = "application/xhtml+xml",
-                                        text = Locator.LocatorText(highlight = quote)
-                                    )
-                                    onAddNoteRequested(loc, quote)
-                                }
+                                imageCache = imageCache
                             )
                             Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.4f).dp))
                         }
@@ -503,31 +503,13 @@ actual fun EpubNavigatorHost(
                                 for (block in leftBlocks) {
                                     RenderBlock(
                                         block = block,
-                                        highlights = highlights,
                                         textColor = textColor,
                                         fontFamily = activeFontFamily,
                                         typography = typography,
                                         isRtl = isRtl,
                                         document = document,
                                         currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
-                                        imageCache = imageCache,
-                                        onHighlightClicked = onHighlightClicked,
-                                        onAddHighlight = { id, quote, colorHex ->
-                                            val loc = Locator(
-                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                                type = "application/xhtml+xml",
-                                                text = Locator.LocatorText(highlight = quote)
-                                            )
-                                            onAddHighlight(id, loc, colorHex)
-                                        },
-                                        onAddNoteRequested = { quote ->
-                                            val loc = Locator(
-                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                                type = "application/xhtml+xml",
-                                                text = Locator.LocatorText(highlight = quote)
-                                            )
-                                            onAddNoteRequested(loc, quote)
-                                        }
+                                        imageCache = imageCache
                                     )
                                     Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
                                 }
@@ -552,31 +534,13 @@ actual fun EpubNavigatorHost(
                                 for (block in rightBlocks) {
                                     RenderBlock(
                                         block = block,
-                                        highlights = highlights,
                                         textColor = textColor,
                                         fontFamily = activeFontFamily,
                                         typography = typography,
                                         isRtl = isRtl,
                                         document = document,
                                         currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
-                                        imageCache = imageCache,
-                                        onHighlightClicked = onHighlightClicked,
-                                        onAddHighlight = { id, quote, colorHex ->
-                                            val loc = Locator(
-                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                                type = "application/xhtml+xml",
-                                                text = Locator.LocatorText(highlight = quote)
-                                            )
-                                            onAddHighlight(id, loc, colorHex)
-                                        },
-                                        onAddNoteRequested = { quote ->
-                                            val loc = Locator(
-                                                href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                                type = "application/xhtml+xml",
-                                                text = Locator.LocatorText(highlight = quote)
-                                            )
-                                            onAddNoteRequested(loc, quote)
-                                        }
+                                        imageCache = imageCache
                                     )
                                     Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
                                 }
@@ -600,31 +564,13 @@ actual fun EpubNavigatorHost(
                             for (block in visibleBlocks) {
                                 RenderBlock(
                                     block = block,
-                                    highlights = highlights,
                                     textColor = textColor,
                                     fontFamily = activeFontFamily,
                                     typography = typography,
                                     isRtl = isRtl,
                                     document = document,
                                     currentSpineZipPath = document?.spine?.getOrNull(currentSpineIndex)?.zipPath,
-                                    imageCache = imageCache,
-                                    onHighlightClicked = onHighlightClicked,
-                                    onAddHighlight = { id, quote, colorHex ->
-                                        val loc = Locator(
-                                            href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                            type = "application/xhtml+xml",
-                                            text = Locator.LocatorText(highlight = quote)
-                                        )
-                                        onAddHighlight(id, loc, colorHex)
-                                    },
-                                    onAddNoteRequested = { quote ->
-                                        val loc = Locator(
-                                            href = document?.spine?.getOrNull(currentSpineIndex)?.originalHref ?: "content.xhtml",
-                                            type = "application/xhtml+xml",
-                                            text = Locator.LocatorText(highlight = quote)
-                                        )
-                                        onAddNoteRequested(loc, quote)
-                                    }
+                                    imageCache = imageCache
                                 )
                                 Spacer(modifier = Modifier.height((typography.fontSizeSp * 0.35f).dp))
                             }
@@ -639,29 +585,22 @@ actual fun EpubNavigatorHost(
 @Composable
 private fun RenderBlock(
     block: ReaderContentBlock,
-    highlights: List<Highlight>,
     textColor: Color,
     fontFamily: FontFamily,
     typography: ReaderTypography,
     isRtl: Boolean,
     document: DesktopEpubDocument?,
     currentSpineZipPath: String?,
-    imageCache: MutableMap<String, ImageBitmap>,
-    onHighlightClicked: (String) -> Unit,
-    onAddHighlight: (id: String, quote: String, colorHex: String) -> Unit,
-    onAddNoteRequested: (String) -> Unit
+    imageCache: MutableMap<String, ImageBitmap>
 ) {
     val textDirection = if (isRtl) TextDirection.Rtl else TextDirection.Ltr
     val textAlign = if (isRtl) TextAlign.Right else TextAlign.Left
 
     when (block) {
         is ReaderContentBlock.Paragraph -> {
-            val styledText = remember(block.rawText, highlights) {
-                EpubBlockParser.applyHighlights(block.rawText, block.annotatedText, highlights)
-            }
             SelectionContainer {
                 Text(
-                    text = styledText,
+                    text = block.annotatedText,
                     color = textColor,
                     fontFamily = fontFamily,
                     fontSize = typography.fontSizeSp.sp,

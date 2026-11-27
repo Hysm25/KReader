@@ -8,6 +8,8 @@ Implements EPUB publication loading, parsing, and locator translation across pla
 
 ## Interface
 - `EpubReaderEngine`: Platform-specific `expect/actual` engine implementing `ReaderEngine` (`[EpubReaderEngine.kt:EpubReaderEngine]`).
+- `ArabicSearchNormalizer`: Unicode-safe search engine normalizing Arabic Tashkeel/harakat, Tatweel, Alef variants (`أ/إ/آ/ٱ -> ا`), and Ya/Alef Maksura (`ى -> ي`) alongside case-insensitive Latin matching while maintaining exact 1:1 character offsets back to original chapter text (`[ArabicSearchNormalizer.kt:ArabicSearchNormalizer]`).
+- `ReadiumPublicationSearch` (Android): Spine-wide EPUB HTML visible-text searcher powered by `ArabicSearchNormalizer` producing Readium-compatible `TextQuote` locators (`[ReadiumPublicationSearch.kt:ReadiumPublicationSearch]`).
 - `DesktopEpubReaderEngine`: Desktop production implementation of `ReaderEngine` (`[DesktopEpubReaderEngine.kt:DesktopEpubReaderEngine]`).
 - `DesktopEpubDocument`: Desktop EPUB container, metadata, spine, TOC, and resource extractor (`[DesktopEpubDocument.kt:DesktopEpubDocument]`).
 - `ReadiumEpubOpener`: Android-specific publication loader using Readium's `AssetRetriever`, `DefaultHttpClient`, and `PublicationOpener` (`[ReadiumEpubOpener.kt:ReadiumEpubOpener]`).

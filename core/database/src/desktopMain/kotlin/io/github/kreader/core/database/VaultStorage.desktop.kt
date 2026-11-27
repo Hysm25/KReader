@@ -51,34 +51,73 @@ actual class VaultStorage {
         return File(vault, ".kreader").apply { mkdirs() }
     }
 
-    actual suspend fun listBooks(): List<VaultBookFile> = withContext(Dispatchers.IO) {
-        val vault = getVaultDir() ?: return@withContext emptyList()
-        val results = mutableListOf<VaultBookFile>()
-        scanFileTree(vault, vault, results)
-        results
+    actual suspend fun listBooks(): List<VaultBookFile> = scanVault().books
+
+    actual suspend fun scanVault(): VaultScanResult = withContext(Dispatchers.IO) {
+        val vault = getVaultDir() ?: return@withContext VaultScanResult()
+        val books = mutableListOf<VaultBookFile>()
+        val seriesCovers = mutableMapOf<String, BookSource>()
+        scanFileTree(vault, vault, books, seriesCovers)
+        VaultScanResult(books = books, seriesCovers = seriesCovers)
     }
 
-    private fun scanFileTree(rootDir: File, currentDir: File, results: MutableList<VaultBookFile>) {
+    actual suspend fun readBytesFromSource(source: BookSource): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            when (source) {
+                is BookSource.FilePath -> File(source.path).takeIf { it.isFile && it.length() > 0L }?.readBytes()
+                else -> null
+            }
+        }.getOrNull()
+    }
+
+    private fun scanFileTree(
+        rootDir: File,
+        currentDir: File,
+        results: MutableList<VaultBookFile>,
+        seriesCovers: MutableMap<String, BookSource>
+    ) {
         val files = currentDir.listFiles() ?: return
+        val parentRelPath = if (currentDir == rootDir) "" else currentDir.relativeTo(rootDir).path.replace('\\', '/')
+        var customCoverSource: BookSource? = null
+        var hasCbzInDir = false
+
         for (file in files) {
             if (file.isDirectory) {
                 if (file.name == ".kreader") continue
-                scanFileTree(rootDir, file, results)
+                scanFileTree(rootDir, file, results, seriesCovers)
             } else if (file.isFile) {
-                val format = BookFormat.fromExtension(file.extension) ?: continue
-                val relPath = file.relativeTo(rootDir).path.replace('\\', '/')
-                results.add(
-                    VaultBookFile(
-                        relativePath = relPath,
-                        displayName = file.name,
-                        source = BookSource.FilePath(path = file.absolutePath, displayName = file.name),
-                        format = format,
-                        fileSizeBytes = file.length(),
-                        lastModified = file.lastModified()
+                val format = BookFormat.fromExtension(file.extension)
+                if (format != null) {
+                    if (format == BookFormat.CBZ) {
+                        hasCbzInDir = true
+                    }
+                    val relPath = file.relativeTo(rootDir).path.replace('\\', '/')
+                    results.add(
+                        VaultBookFile(
+                            relativePath = relPath,
+                            displayName = file.name,
+                            source = BookSource.FilePath(path = file.absolutePath, displayName = file.name),
+                            format = format,
+                            fileSizeBytes = file.length(),
+                            lastModified = file.lastModified()
+                        )
                     )
-                )
+                } else if (parentRelPath.isNotEmpty() && isCustomSeriesCoverFile(file.name) && customCoverSource == null) {
+                    customCoverSource = BookSource.FilePath(path = file.absolutePath, displayName = file.name)
+                }
             }
         }
+
+        if (parentRelPath.isNotEmpty() && hasCbzInDir && customCoverSource != null) {
+            seriesCovers[parentRelPath] = customCoverSource
+        }
+    }
+
+    private fun isCustomSeriesCoverFile(name: String): Boolean {
+        val stem = name.substringBeforeLast('.', "")
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return stem.equals("cover", ignoreCase = true) &&
+            ext in setOf("jpg", "jpeg", "png", "webp", "bmp")
     }
 
     actual suspend fun readConfig(fileName: String): String? = withContext(Dispatchers.IO) {

@@ -9,7 +9,6 @@ import io.github.kreader.core.model.CbzImageFit
 import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
-import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.PageLayout
@@ -19,8 +18,7 @@ import kotlin.math.abs
 
 enum class NavigationDrawerTab {
     CONTENTS,
-    BOOKMARKS,
-    HIGHLIGHTS
+    BOOKMARKS
 }
 
 @Immutable
@@ -44,10 +42,6 @@ data class ReaderUiState(
     val isRtl: Boolean = false,
     val tocItems: List<TocItem> = emptyList(),
     val bookmarks: List<Bookmark> = emptyList(),
-    val highlights: List<Highlight> = emptyList(),
-    val selectedHighlightForDetail: Highlight? = null,
-    val pendingNoteLocator: Locator? = null,
-    val pendingNoteText: String? = null,
     val keepScreenOn: Boolean = false,
     val volumeKeyNavigation: Boolean = true,
     val orientationLock: OrientationLock = OrientationLock.AUTO,

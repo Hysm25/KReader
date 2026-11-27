@@ -11,6 +11,8 @@ expect class VaultStorage {
     fun setActiveVault(uriOrPath: String?)
     fun getVaultName(): String?
     suspend fun listBooks(): List<VaultBookFile>
+    suspend fun scanVault(): VaultScanResult
+    suspend fun readBytesFromSource(source: BookSource): ByteArray?
     suspend fun readConfig(fileName: String): String?
     suspend fun writeConfig(fileName: String, content: String)
     suspend fun deleteBookFile(relativePath: String): Boolean

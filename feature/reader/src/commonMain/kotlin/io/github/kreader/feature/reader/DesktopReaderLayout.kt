@@ -99,32 +99,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.engine.TocItem
+import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Bookmark
 import io.github.kreader.core.model.CbzImageFit
 import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
-import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
 
 enum class DesktopSidebarTab {
     CONTENTS,
     BOOKMARKS,
-    NOTES,
     SEARCH
 }
 
 /**
  * Cohesive Desktop Reader Layout (Foliate / Apple Books on desktop paradigm):
  * - Clean desktop header with book & chapter title, sidebar toggle, spread mode, font controls.
- * - Docked collapsible sidebar (TOC, Bookmarks, Highlights & Notes, Search) alongside content.
+ * - Docked collapsible sidebar (TOC, Bookmarks, Search) alongside content.
  * - Optimal reading line length (constrained single column or two-page book spread on widescreen).
  * - Desktop appearance flyout popover instead of a mobile bottom sheet.
  * - Slim status progress bar with chapter tracking and scrub slider.
@@ -132,6 +130,10 @@ enum class DesktopSidebarTab {
 @Composable
 fun DesktopReaderLayout(
     state: ReaderUiState,
+    seriesTitle: String? = null,
+    previousChapter: Book? = null,
+    nextChapter: Book? = null,
+    onSwitchChapter: (Book) -> Unit = {},
     onBackClick: () -> Unit,
     onToggleControls: () -> Unit,
     onPreviousPage: () -> Unit,
@@ -144,14 +146,6 @@ fun DesktopReaderLayout(
     onDismissNavigationDrawer: () -> Unit = {},
     onTabSelected: (NavigationDrawerTab) -> Unit = {},
     onDeleteBookmark: (String) -> Unit = {},
-    onDeleteHighlight: (String) -> Unit = {},
-    onSaveHighlight: (Highlight) -> Unit = {},
-    onHighlightClicked: (Highlight) -> Unit = {},
-    onDismissHighlightDetail: () -> Unit = {},
-    onSaveHighlightDetail: (id: String, note: String, colorHex: String) -> Unit = { _, _, _ -> },
-    onOpenAddNoteDialog: (locator: Locator, selectedText: String) -> Unit = { _, _ -> },
-    onDismissAddNoteDialog: () -> Unit = {},
-    onSaveNewNote: (locator: Locator, note: String, colorHex: String) -> Unit = { _, _, _ -> },
     onSearchQueryChange: (String) -> Unit = {},
     onPerformSearch: ((String) -> Unit)? = null,
     onSearchResultsChange: (List<Locator>) -> Unit = {},
@@ -174,7 +168,7 @@ fun DesktopReaderLayout(
     onKeepScreenOnChange: (Boolean) -> Unit = {},
     onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
-    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit = { _, _ -> },
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?, detectedMode: CbzReadingMode?) -> Unit = { _, _, _ -> },
     onCbzReadingModeChange: (CbzReadingMode) -> Unit = {},
     onCbzImageFitChange: (CbzImageFit) -> Unit = {},
     onExportMarkdown: (suspend () -> String?)? = null,
@@ -240,8 +234,6 @@ fun DesktopReaderLayout(
     BackHandler(enabled = true) {
         when {
             showAppearancePopover -> showAppearancePopover = false
-            state.selectedHighlightForDetail != null -> onDismissHighlightDetail()
-            state.pendingNoteLocator != null -> onDismissAddNoteDialog()
             isSidebarOpen -> isSidebarOpen = false
             else -> onBackClick()
         }
@@ -261,8 +253,6 @@ fun DesktopReaderLayout(
                             event.key == Key.Escape -> {
                                 when {
                                     showAppearancePopover -> { showAppearancePopover = false; true }
-                                    state.selectedHighlightForDetail != null -> { onDismissHighlightDetail(); true }
-                                    state.pendingNoteLocator != null -> { onDismissAddNoteDialog(); true }
                                     isSidebarOpen -> { isSidebarOpen = false; true }
                                     else -> { onBackClick(); true }
                                 }
@@ -288,8 +278,14 @@ fun DesktopReaderLayout(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 1. Desktop Top Header Bar
+                val isCbzBook = state.book?.format == BookFormat.CBZ
+                val headerTitle = if (isCbzBook && !seriesTitle.isNullOrBlank()) {
+                    "$seriesTitle • ${state.book?.title.orEmpty()}"
+                } else {
+                    state.book?.title ?: "Reading"
+                }
                 DesktopReaderHeader(
-                    bookTitle = state.book?.title ?: "Reading",
+                    bookTitle = headerTitle,
                     currentChapterTitle = state.tocItems.find {
                         val currHref = liveLocator?.href?.substringBefore('#')
                         currHref != null && it.locator.href.substringBefore('#') == currHref
@@ -330,7 +326,6 @@ fun DesktopReaderLayout(
                             onTabSelected = { selectedSidebarTab = it },
                             tocItems = state.tocItems,
                             bookmarks = state.bookmarks,
-                            highlights = state.highlights,
                             currentLocator = liveLocator,
                             searchQuery = state.searchQuery,
                             searchResults = state.searchResults,
@@ -341,20 +336,6 @@ fun DesktopReaderLayout(
                                 epubController.goTo?.invoke(locator)
                             },
                             onDeleteBookmark = onDeleteBookmark,
-                            onDeleteHighlight = onDeleteHighlight,
-                            onHighlightClicked = onHighlightClicked,
-                            onExportMarkdown = {
-                                if (onExportMarkdown != null) {
-                                    scope.launch {
-                                        val path = onExportMarkdown()
-                                        if (path != null) {
-                                            snackbarHostState.showSnackbar("Exported to $path")
-                                        } else {
-                                            snackbarHostState.showSnackbar("Failed to export notes")
-                                        }
-                                    }
-                                }
-                            },
                             onClose = { isSidebarOpen = false },
                             modifier = Modifier
                                 .width(340.dp)
@@ -385,6 +366,10 @@ fun DesktopReaderLayout(
                                     readingMode = state.cbzReadingMode,
                                     imageFit = state.cbzImageFit,
                                     controller = epubController,
+                                    previousChapterTitle = previousChapter?.title,
+                                    nextChapterTitle = nextChapter?.title,
+                                    onGoToPreviousChapter = previousChapter?.let { ch -> { onSwitchChapter(ch) } },
+                                    onGoToNextChapter = nextChapter?.let { ch -> { onSwitchChapter(ch) } },
                                     onProgressChanged = { prog, loc ->
                                         liveProgression = prog
                                         liveLocator = loc
@@ -406,25 +391,16 @@ fun DesktopReaderLayout(
                                     isTwoPageSpread = isTwoPageSpread,
                                     controller = epubController,
                                     customFonts = customFonts,
-                                    highlights = state.highlights,
-                                    onHighlightClicked = { highlightId ->
-                                        val h = state.highlights.find { it.id == highlightId }
-                                        if (h != null) onHighlightClicked(h)
-                                    },
-                                    onAddHighlight = { id, locator, colorHex ->
-                                        val newHighlight = Highlight(
-                                            id = id,
-                                            bookId = book.id,
-                                            locator = locator,
-                                            colorHex = colorHex,
-                                            annotation = null,
-                                            createdTimestamp = Clock.System.now().toEpochMilliseconds(),
-                                            modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
-                                        )
-                                        onSaveHighlight(newHighlight)
-                                    },
-                                    onAddNoteRequested = { locator, selectedText ->
-                                        onOpenAddNoteDialog(locator, selectedText)
+                                    onSearchSelectedText = { selectedText ->
+                                        onSearchQueryChange(selectedText)
+                                        isSidebarOpen = true
+                                        selectedSidebarTab = DesktopSidebarTab.SEARCH
+                                        scope.launch {
+                                            onIsSearchingChange(true)
+                                            val results = epubController.search?.invoke(selectedText) ?: emptyList()
+                                            onSearchResultsChange(results)
+                                            onIsSearchingChange(false)
+                                        }
                                     },
                                     onProgressChanged = { prog, loc ->
                                         liveProgression = prog
@@ -518,22 +494,6 @@ fun DesktopReaderLayout(
                     }
                 }
             }
-
-            // Highlight Detail Dialog
-            HighlightDetailDialog(
-                highlight = state.selectedHighlightForDetail,
-                onSaveAnnotation = onSaveHighlightDetail,
-                onDeleteHighlight = onDeleteHighlight,
-                onDismiss = onDismissHighlightDetail
-            )
-
-            // Add Note Dialog
-            AddNoteDialog(
-                locator = state.pendingNoteLocator,
-                selectedText = state.pendingNoteText,
-                onSaveNote = onSaveNewNote,
-                onDismiss = onDismissAddNoteDialog
-            )
 
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -679,7 +639,6 @@ private fun DesktopReaderSidebar(
     onTabSelected: (DesktopSidebarTab) -> Unit,
     tocItems: List<TocItem>,
     bookmarks: List<Bookmark>,
-    highlights: List<Highlight>,
     currentLocator: Locator?,
     searchQuery: String,
     searchResults: List<Locator>,
@@ -688,9 +647,6 @@ private fun DesktopReaderSidebar(
     onPerformSearch: () -> Unit,
     onNavigateToLocator: (Locator) -> Unit,
     onDeleteBookmark: (String) -> Unit,
-    onDeleteHighlight: (String) -> Unit,
-    onHighlightClicked: (Highlight) -> Unit,
-    onExportMarkdown: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -708,7 +664,7 @@ private fun DesktopReaderSidebar(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 TabRow(
-                    selectedTabIndex = currentTab.ordinal,
+                    selectedTabIndex = currentTab.ordinal.coerceIn(0, 2),
                     modifier = Modifier.weight(1f),
                     containerColor = Color.Transparent
                 ) {
@@ -721,11 +677,6 @@ private fun DesktopReaderSidebar(
                         selected = currentTab == DesktopSidebarTab.BOOKMARKS,
                         onClick = { onTabSelected(DesktopSidebarTab.BOOKMARKS) },
                         text = { Text("Bookmarks", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                    )
-                    Tab(
-                        selected = currentTab == DesktopSidebarTab.NOTES,
-                        onClick = { onTabSelected(DesktopSidebarTab.NOTES) },
-                        text = { Text("Notes", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
                     )
                     Tab(
                         selected = currentTab == DesktopSidebarTab.SEARCH,
@@ -838,86 +789,6 @@ private fun DesktopReaderSidebar(
                                                 tint = MaterialTheme.colorScheme.error,
                                                 modifier = Modifier.size(16.dp)
                                             )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    DesktopSidebarTab.NOTES -> {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            // Export to Markdown button
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "${highlights.size} highlights & notes",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    TextButton(onClick = onExportMarkdown) {
-                                        Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Export to Vault", fontSize = 12.sp)
-                                    }
-                                }
-                            }
-
-                            if (highlights.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = "No highlights or notes yet",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            } else {
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(vertical = 8.dp)
-                                ) {
-                                    items(highlights, key = { it.id }) { hl ->
-                                        Card(
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                                                .clickable {
-                                                    onHighlightClicked(hl)
-                                                    onNavigateToLocator(hl.locator)
-                                                }
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp)) {
-                                                val quote = hl.locator.text?.highlight ?: ""
-                                                if (quote.isNotBlank()) {
-                                                    Text(
-                                                        text = "\"$quote\"",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = MaterialTheme.colorScheme.onSurface,
-                                                        maxLines = 3,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                                val annotation = hl.annotation
-                                                if (!annotation.isNullOrBlank()) {
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    Text(
-                                                        text = annotation,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.primary
-                                                    )
-                                                }
-                                            }
                                         }
                                     }
                                 }

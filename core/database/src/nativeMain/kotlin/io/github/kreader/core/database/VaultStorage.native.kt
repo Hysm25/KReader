@@ -15,6 +15,8 @@ actual class VaultStorage {
     actual fun setActiveVault(uriOrPath: String?) { _activeVaultUriOrPath.value = uriOrPath }
     actual fun getVaultName(): String? = null
     actual suspend fun listBooks(): List<VaultBookFile> = emptyList()
+    actual suspend fun scanVault(): VaultScanResult = VaultScanResult()
+    actual suspend fun readBytesFromSource(source: BookSource): ByteArray? = null
     actual suspend fun readConfig(fileName: String): String? = null
     actual suspend fun writeConfig(fileName: String, content: String) {}
     actual suspend fun deleteBookFile(relativePath: String): Boolean = false

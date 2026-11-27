@@ -49,23 +49,26 @@ import androidx.compose.ui.unit.dp
 import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
 import io.github.kreader.core.engine.TocItem
+import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.CbzImageFit
 import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
-import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.OrientationLock
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
 import io.github.kreader.core.model.ThemeMode
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
 
 @Composable
 fun ReaderScreen(
     state: ReaderUiState,
+    seriesTitle: String? = null,
+    previousChapter: Book? = null,
+    nextChapter: Book? = null,
+    onSwitchChapter: (Book) -> Unit = {},
     onBackClick: () -> Unit,
     onToggleControls: () -> Unit,
     onPreviousPage: () -> Unit,
@@ -78,14 +81,6 @@ fun ReaderScreen(
     onDismissNavigationDrawer: () -> Unit = {},
     onTabSelected: (NavigationDrawerTab) -> Unit = {},
     onDeleteBookmark: (String) -> Unit = {},
-    onDeleteHighlight: (String) -> Unit = {},
-    onSaveHighlight: (Highlight) -> Unit = {},
-    onHighlightClicked: (Highlight) -> Unit = {},
-    onDismissHighlightDetail: () -> Unit = {},
-    onSaveHighlightDetail: (id: String, note: String, colorHex: String) -> Unit = { _, _, _ -> },
-    onOpenAddNoteDialog: (locator: Locator, selectedText: String) -> Unit = { _, _ -> },
-    onDismissAddNoteDialog: () -> Unit = {},
-    onSaveNewNote: (locator: Locator, note: String, colorHex: String) -> Unit = { _, _, _ -> },
     onSearchQueryChange: (String) -> Unit = {},
     onPerformSearch: ((String) -> Unit)? = null,
     onSearchResultsChange: (List<Locator>) -> Unit = {},
@@ -110,7 +105,7 @@ fun ReaderScreen(
     onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
     onPageCountLoaded: (Int) -> Unit = {},
-    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit = { _, _ -> },
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?, detectedMode: CbzReadingMode?) -> Unit = { _, _, _ -> },
     onCbzReadingModeChange: (CbzReadingMode) -> Unit = {},
     onCbzImageFitChange: (CbzImageFit) -> Unit = {},
     onExportMarkdown: (suspend () -> String?)? = null,
@@ -119,6 +114,10 @@ fun ReaderScreen(
     if (isDesktopPlatform) {
         DesktopReaderLayout(
             state = state,
+            seriesTitle = seriesTitle,
+            previousChapter = previousChapter,
+            nextChapter = nextChapter,
+            onSwitchChapter = onSwitchChapter,
             onBackClick = onBackClick,
             onToggleControls = onToggleControls,
             onPreviousPage = onPreviousPage,
@@ -131,14 +130,6 @@ fun ReaderScreen(
             onDismissNavigationDrawer = onDismissNavigationDrawer,
             onTabSelected = onTabSelected,
             onDeleteBookmark = onDeleteBookmark,
-            onDeleteHighlight = onDeleteHighlight,
-            onSaveHighlight = onSaveHighlight,
-            onHighlightClicked = onHighlightClicked,
-            onDismissHighlightDetail = onDismissHighlightDetail,
-            onSaveHighlightDetail = onSaveHighlightDetail,
-            onOpenAddNoteDialog = onOpenAddNoteDialog,
-            onDismissAddNoteDialog = onDismissAddNoteDialog,
-            onSaveNewNote = onSaveNewNote,
             onSearchQueryChange = onSearchQueryChange,
             onPerformSearch = onPerformSearch,
             onSearchResultsChange = onSearchResultsChange,
@@ -192,8 +183,6 @@ fun ReaderScreen(
     // Android system back button management: close dialogs/sheets/drawers/controls first, then back to library
     BackHandler(enabled = true) {
         when {
-            state.selectedHighlightForDetail != null -> onDismissHighlightDetail()
-            state.pendingNoteLocator != null -> onDismissAddNoteDialog()
             state.isSettingsOpen -> onDismissSettings()
             state.isSearchOpen -> onDismissSearch()
             state.isNavigationDrawerOpen -> onDismissNavigationDrawer()
@@ -202,8 +191,8 @@ fun ReaderScreen(
         }
     }
 
-    val executeSearch: () -> Unit = {
-        val q = state.searchQuery
+    val executeSearchForQuery: (String) -> Unit = { queryText ->
+        val q = queryText.trim()
         if (q.isNotBlank()) {
             if (onPerformSearch != null) {
                 onPerformSearch(q)
@@ -216,6 +205,10 @@ fun ReaderScreen(
                 }
             }
         }
+    }
+
+    val executeSearch: () -> Unit = {
+        executeSearchForQuery(state.searchQuery)
     }
 
     ManageSystemBars(isControlsVisible = state.isControlsVisible, theme = state.theme)
@@ -371,6 +364,10 @@ fun ReaderScreen(
                             readingMode = state.cbzReadingMode,
                             imageFit = state.cbzImageFit,
                             controller = epubController,
+                            previousChapterTitle = previousChapter?.title,
+                            nextChapterTitle = nextChapter?.title,
+                            onGoToPreviousChapter = previousChapter?.let { ch -> { onSwitchChapter(ch) } },
+                            onGoToNextChapter = nextChapter?.let { ch -> { onSwitchChapter(ch) } },
                             onProgressChanged = { prog, loc ->
                                 liveProgression = prog
                                 liveLocator = loc
@@ -396,7 +393,7 @@ fun ReaderScreen(
                                     bottom = 40.dp + state.typography.paddingVertical.dp
                                 )
                         ) {
-                            // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
+                            // Readium EPUB Navigator Host with Selection Search & Automatic Progression
                             val initialNavigatorLocator = remember(book.id, customFonts) {
                                 liveLocator ?: book.lastLocator
                             }
@@ -408,27 +405,10 @@ fun ReaderScreen(
                                 isScrollMode = state.isScrollMode,
                                 controller = epubController,
                                 customFonts = customFonts,
-                                highlights = state.highlights,
-                                onHighlightClicked = { highlightId ->
-                                    val h = state.highlights.find { it.id == highlightId }
-                                    if (h != null) {
-                                        onHighlightClicked(h)
-                                    }
-                                },
-                                onAddHighlight = { id, locator, colorHex ->
-                                    val newHighlight = Highlight(
-                                        id = id,
-                                        bookId = book.id,
-                                        locator = locator,
-                                        colorHex = colorHex,
-                                        annotation = null,
-                                        createdTimestamp = Clock.System.now().toEpochMilliseconds(),
-                                        modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
-                                    )
-                                    onSaveHighlight(newHighlight)
-                                },
-                                onAddNoteRequested = { locator, selectedText ->
-                                    onOpenAddNoteDialog(locator, selectedText)
+                                onSearchSelectedText = { selectedText ->
+                                    onSearchQueryChange(selectedText)
+                                    onSearchClick()
+                                    executeSearchForQuery(selectedText)
                                 },
                                 onProgressChanged = { prog, loc ->
                                     liveProgression = prog
@@ -492,6 +472,11 @@ fun ReaderScreen(
 
             // Top Bar Overlay (floating)
             val isCbzBook = state.book?.format == BookFormat.CBZ
+            val topBarTitle = if (isCbzBook && !seriesTitle.isNullOrBlank()) {
+                "$seriesTitle • ${state.book?.title.orEmpty()}"
+            } else {
+                state.book?.title ?: "Reading"
+            }
             AnimatedVisibility(
                 visible = state.isControlsVisible,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
@@ -499,8 +484,8 @@ fun ReaderScreen(
                 modifier = Modifier.align(Alignment.TopCenter)
             ) {
                 ReaderTopBar(
-                    title = state.book?.title ?: "Reading",
-                    chapterTitle = currentChapterTitle,
+                    title = topBarTitle,
+                    chapterTitle = if (isCbzBook) pageIndicatorText else currentChapterTitle,
                     isBookmarked = state.isCurrentBookmarked,
                     showSearch = !isCbzBook,
                     isCbz = isCbzBook,
@@ -541,22 +526,19 @@ fun ReaderScreen(
                 )
             }
 
-            // Navigation Drawer (Contents / TOC, Bookmarks, Highlights & Notes)
+            // Navigation Drawer (Contents / TOC, Bookmarks)
             ReaderNavigationDrawer(
                 isOpen = state.isNavigationDrawerOpen,
                 currentTab = state.navigationDrawerTab,
                 onTabSelected = onTabSelected,
                 tocItems = state.tocItems,
                 bookmarks = state.bookmarks,
-                highlights = state.highlights,
                 currentLocator = state.currentLocator,
                 onNavigateToLocator = { locator ->
                     epubController.goTo?.invoke(locator)
                     onDismissNavigationDrawer()
                 },
                 onDeleteBookmark = onDeleteBookmark,
-                onDeleteHighlight = onDeleteHighlight,
-                onHighlightClicked = onHighlightClicked,
                 onExportMarkdown = {
                     if (onExportMarkdown != null) {
                         scope.launch {
@@ -585,27 +567,10 @@ fun ReaderScreen(
                         epubController.goToSearchResult?.invoke(locator)
                     } else {
                         epubController.goTo?.invoke(locator)
-                        epubController.highlightSearchResult?.invoke(locator)
                     }
                     onDismissSearch()
                 },
                 onDismiss = onDismissSearch
-            )
-
-            // Highlight Detail Dialog (View/Edit Annotation & Color, Delete)
-            HighlightDetailDialog(
-                highlight = state.selectedHighlightForDetail,
-                onSaveAnnotation = onSaveHighlightDetail,
-                onDeleteHighlight = onDeleteHighlight,
-                onDismiss = onDismissHighlightDetail
-            )
-
-            // Add Note Dialog (Prompted from Text Selection)
-            AddNoteDialog(
-                locator = state.pendingNoteLocator,
-                selectedText = state.pendingNoteText,
-                onSaveNote = onSaveNewNote,
-                onDismiss = onDismissAddNoteDialog
             )
 
             // Reading Settings Modal Sheet (dedicated CBZ sheet vs EPUB sheet)

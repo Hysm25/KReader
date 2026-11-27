@@ -10,6 +10,7 @@ import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderPreferences
 import io.github.kreader.core.model.ReaderPreferencesOverride
 import io.github.kreader.core.model.ReaderTypographyOverride
+import io.github.kreader.core.model.cbzSeriesWorkspaceKey
 import io.github.kreader.core.model.mergeWith
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -42,11 +43,13 @@ interface BookRepository {
     suspend fun refreshVault()
 
     fun observeAllBooks(): Flow<List<Book>>
+    fun observeSeriesCovers(): Flow<Map<String, String>>
     fun observeBook(id: String): Flow<Book?>
     suspend fun getBook(id: String): Book?
     suspend fun upsertBook(book: Book)
     suspend fun updateProgress(bookId: String, progression: Float, locator: Locator, timestamp: Long)
     suspend fun deleteBook(id: String)
+    suspend fun deleteSeries(seriesFolder: String)
 
     fun observeBookmarks(bookId: String): Flow<List<Bookmark>>
     suspend fun saveBookmark(bookmark: Bookmark)
@@ -62,7 +65,9 @@ interface BookRepository {
     suspend fun updateReaderPreferences(transform: (ReaderPreferences) -> ReaderPreferences)
     fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences>
     suspend fun getEffectivePreferences(bookId: String): ReaderPreferences
+    suspend fun hasExplicitCbzReadingModeOverride(bookId: String): Boolean
     suspend fun updateBookPreferencesOverride(bookId: String, update: (ReaderPreferencesOverride?) -> ReaderPreferencesOverride?)
+    suspend fun updateCbzPreferencesOverride(bookId: String, update: (ReaderPreferencesOverride?) -> ReaderPreferencesOverride?)
     suspend fun savePreferences(bookId: String, preferences: ReaderPreferences, applyToThisBookOnly: Boolean = true)
     suspend fun resetPreferences(bookId: String)
     suspend fun resetGlobalPreferences()
@@ -94,6 +99,7 @@ class JsonVaultBookRepository(
     override val activeVaultName: StateFlow<String?> = _activeVaultName.asStateFlow()
 
     private val _books = MutableStateFlow<List<Book>>(emptyList())
+    private val _seriesCovers = MutableStateFlow<Map<String, String>>(emptyMap())
     private val _preferences = MutableStateFlow(ReaderPreferences())
     private val _workspace = MutableStateFlow(VaultWorkspace())
     private val _annotations = MutableStateFlow(VaultAnnotations())
@@ -140,6 +146,7 @@ class JsonVaultBookRepository(
         vaultStorage.setActiveVault(null)
         _activeVaultName.value = null
         _books.value = emptyList()
+        _seriesCovers.value = emptyMap()
         _workspace.value = VaultWorkspace()
         _annotations.value = VaultAnnotations()
         _customThemes.value = emptyList()
@@ -222,9 +229,30 @@ class JsonVaultBookRepository(
     }
 
     private suspend fun refreshVaultInternal() = withContext(ioDispatcher) {
-        val vaultFiles = vaultStorage.listBooks()
+        val scanResult = vaultStorage.scanVault()
+        val vaultFiles = scanResult.books
         val currentWorkspace = _workspace.value.books
         val existingBooksMap = _books.value.associateBy { it.id }
+
+        val resolvedSeriesCovers = mutableMapOf<String, String>()
+        for ((seriesFolder, coverSource) in scanResult.seriesCovers) {
+            val coverBase = "series_${coverCacheBaseName(seriesFolder)}"
+            val ext = coverSource.displayName.substringAfterLast('.', "jpg").ifBlank { "jpg" }
+            val coverFileName = "$coverBase.$ext"
+            val existingCoverPath = vaultStorage.getCoverPath(coverFileName)
+            if (existingCoverPath != null) {
+                resolvedSeriesCovers[seriesFolder] = existingCoverPath
+            } else {
+                val bytes = vaultStorage.readBytesFromSource(coverSource)
+                if (bytes != null && bytes.isNotEmpty()) {
+                    val savedPath = vaultStorage.saveCover(coverFileName, bytes)
+                    if (savedPath != null) {
+                        resolvedSeriesCovers[seriesFolder] = savedPath
+                    }
+                }
+            }
+        }
+        _seriesCovers.value = resolvedSeriesCovers
 
         val newBooks = vaultFiles.map { file ->
             val relativePath = file.relativePath
@@ -260,6 +288,8 @@ class JsonVaultBookRepository(
     }
 
     override fun observeAllBooks(): Flow<List<Book>> = _books.asStateFlow()
+
+    override fun observeSeriesCovers(): Flow<Map<String, String>> = _seriesCovers.asStateFlow()
 
     override fun observeBook(id: String): Flow<Book?> = _books.map { list -> list.find { it.id == id } }
 
@@ -355,6 +385,42 @@ class JsonVaultBookRepository(
         _books.value = _books.value.filterNot { it.id == id }
     }
 
+    override suspend fun deleteSeries(seriesFolder: String): Unit = withContext(ioDispatcher) {
+        saveWorkspaceJob?.cancel()
+
+        val chapters = _books.value.filter { it.cbzSeriesFolder == seriesFolder }
+        val chapterIds = chapters.map { it.id }.toSet()
+        val seriesKey = cbzSeriesWorkspaceKey(seriesFolder)
+
+        for (chapterId in chapterIds) {
+            vaultStorage.deleteBookFile(chapterId)
+            vaultStorage.deleteCover("${coverCacheBaseName(chapterId)}.jpg")
+        }
+        vaultStorage.deleteCover("series_${coverCacheBaseName(seriesFolder)}.jpg")
+
+        val updatedWorkspace = workspaceMutex.withLock {
+            val updated = _workspace.value.copy(
+                books = _workspace.value.books.filterKeys { it !in chapterIds && it != seriesKey }
+            )
+            _workspace.value = updated
+            updated
+        }
+        vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(updatedWorkspace))
+
+        val updatedAnnotations = annotationsMutex.withLock {
+            val updated = _annotations.value.copy(
+                bookmarks = _annotations.value.bookmarks.filterKeys { it !in chapterIds },
+                highlights = _annotations.value.highlights.filterKeys { it !in chapterIds }
+            )
+            _annotations.value = updated
+            updated
+        }
+        vaultStorage.writeConfig(ANNOTATIONS_FILE, json.encodeToString(updatedAnnotations))
+
+        _seriesCovers.value = _seriesCovers.value - seriesFolder
+        _books.value = _books.value.filterNot { it.id in chapterIds }
+    }
+
     override fun observeBookmarks(bookId: String): Flow<List<Bookmark>> = _annotations
         .map { annotations -> annotations.bookmarks[bookId] ?: emptyList() }
         .distinctUntilChanged()
@@ -439,18 +505,43 @@ class JsonVaultBookRepository(
         vaultStorage.writeConfig(APPEARANCE_FILE, json.encodeToString(updated))
     }
 
-    override fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences> =
-        combine(
+    private fun resolveCbzSeriesKey(bookId: String): String? {
+        val book = _books.value.find { it.id == bookId }
+        val seriesFolder = when {
+            book != null -> book.cbzSeriesFolder
+            bookId.endsWith(".cbz", ignoreCase = true) && bookId.contains('/') ->
+                bookId.substringBeforeLast('/').takeIf { it.isNotBlank() }
+            else -> null
+        }
+        return seriesFolder?.let { cbzSeriesWorkspaceKey(it) }
+    }
+
+    override fun observeEffectivePreferences(bookId: String): Flow<ReaderPreferences> {
+        val seriesKey = resolveCbzSeriesKey(bookId)
+        return combine(
             _preferences,
-            _workspace.map { ws -> ws.books[bookId]?.preferencesOverride }.distinctUntilChanged()
-        ) { global, override ->
-            global.mergeWith(override)
+            _workspace.map { ws ->
+                val seriesOverride = seriesKey?.let { ws.books[it]?.preferencesOverride }
+                val bookOverride = ws.books[bookId]?.preferencesOverride
+                seriesOverride to bookOverride
+            }.distinctUntilChanged()
+        ) { global, (seriesOverride, bookOverride) ->
+            global.mergeWith(seriesOverride).mergeWith(bookOverride)
         }.distinctUntilChanged()
+    }
 
     override suspend fun getEffectivePreferences(bookId: String): ReaderPreferences = withContext(ioDispatcher) {
         val global = _preferences.value
-        val override = _workspace.value.books[bookId]?.preferencesOverride
-        global.mergeWith(override)
+        val seriesOverride = resolveCbzSeriesKey(bookId)?.let { _workspace.value.books[it]?.preferencesOverride }
+        val bookOverride = _workspace.value.books[bookId]?.preferencesOverride
+        global.mergeWith(seriesOverride).mergeWith(bookOverride)
+    }
+
+    override suspend fun hasExplicitCbzReadingModeOverride(bookId: String): Boolean = withContext(ioDispatcher) {
+        val ws = _workspace.value.books
+        val seriesMode = resolveCbzSeriesKey(bookId)?.let { ws[it]?.preferencesOverride?.cbzReadingMode }
+        val bookMode = ws[bookId]?.preferencesOverride?.cbzReadingMode
+        seriesMode != null || bookMode != null
     }
 
     override suspend fun updateBookPreferencesOverride(
@@ -464,6 +555,42 @@ class JsonVaultBookRepository(
             val updatedOverride = update(existingRecord.preferencesOverride)?.takeUnless { it.isEmpty() }
             val updatedBooks = currentWorkspace.books.toMutableMap()
             updatedBooks[bookId] = existingRecord.copy(preferencesOverride = updatedOverride)
+            currentWorkspace.copy(books = updatedBooks).also { _workspace.value = it }
+        }
+        vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
+    }
+
+    override suspend fun updateCbzPreferencesOverride(
+        bookId: String,
+        update: (ReaderPreferencesOverride?) -> ReaderPreferencesOverride?
+    ): Unit = withContext(ioDispatcher) {
+        val seriesKey = resolveCbzSeriesKey(bookId)
+        if (seriesKey == null) {
+            updateBookPreferencesOverride(bookId, update)
+            return@withContext
+        }
+        val seriesFolder = seriesKey.removePrefix("series:")
+        saveWorkspaceJob?.cancel()
+        val newWorkspace = workspaceMutex.withLock {
+            val currentWorkspace = _workspace.value
+            val updatedBooks = currentWorkspace.books.toMutableMap()
+            val existingSeriesRecord = updatedBooks[seriesKey] ?: BookProgressRecord(relativePath = seriesKey)
+            val updatedSeriesOverride = update(existingSeriesRecord.preferencesOverride)?.takeUnless { it.isEmpty() }
+            if (updatedSeriesOverride != null) {
+                updatedBooks[seriesKey] = existingSeriesRecord.copy(preferencesOverride = updatedSeriesOverride)
+            } else {
+                updatedBooks.remove(seriesKey)
+            }
+            // Clear per-chapter CBZ overrides in this series so series-level settings apply uniformly
+            for ((path, record) in currentWorkspace.books) {
+                if (path != seriesKey && path.startsWith("$seriesFolder/") && path.endsWith(".cbz", ignoreCase = true)) {
+                    val override = record.preferencesOverride ?: continue
+                    val cleared = override.copy(cbzReadingMode = null, cbzImageFit = null).takeUnless { it.isEmpty() }
+                    if (cleared != override) {
+                        updatedBooks[path] = record.copy(preferencesOverride = cleared)
+                    }
+                }
+            }
             currentWorkspace.copy(books = updatedBooks).also { _workspace.value = it }
         }
         vaultStorage.writeConfig(WORKSPACE_FILE, json.encodeToString(newWorkspace))
@@ -504,12 +631,21 @@ class JsonVaultBookRepository(
 
     override suspend fun resetPreferences(bookId: String): Unit = withContext(ioDispatcher) {
         saveWorkspaceJob?.cancel()
+        val seriesKey = resolveCbzSeriesKey(bookId)
         val newWorkspace = workspaceMutex.withLock {
             val currentWorkspace = _workspace.value
             val updatedBooks = currentWorkspace.books.toMutableMap()
+            var changed = false
             val existingRecord = updatedBooks[bookId]
             if (existingRecord?.preferencesOverride != null) {
                 updatedBooks[bookId] = existingRecord.copy(preferencesOverride = null)
+                changed = true
+            }
+            if (seriesKey != null && updatedBooks[seriesKey]?.preferencesOverride != null) {
+                updatedBooks.remove(seriesKey)
+                changed = true
+            }
+            if (changed) {
                 currentWorkspace.copy(books = updatedBooks).also { _workspace.value = it }
             } else null
         }

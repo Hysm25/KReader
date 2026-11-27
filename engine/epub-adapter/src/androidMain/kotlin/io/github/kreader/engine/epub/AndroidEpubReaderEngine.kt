@@ -15,11 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.publication.services.search.SearchIterator
-import org.readium.r2.shared.publication.services.search.search
-import org.readium.r2.shared.util.Try
 
 @OptIn(ExperimentalReadiumApi::class)
 actual class EpubReaderEngine actual constructor() : ReaderEngine {
@@ -143,27 +139,6 @@ actual class EpubReaderEngine actual constructor() : ReaderEngine {
     override suspend fun applyTypography(typography: ReaderTypography) {}
     override suspend fun search(query: String): List<Locator> {
         val pub = publication ?: return emptyList()
-        val searchIterator = pub.search(query).unwrapReadium<SearchIterator>() ?: return emptyList()
-        val results = mutableListOf<Locator>()
-        try {
-            var count = 0
-            while (count < 100) {
-                val page = searchIterator.next().unwrapReadium<LocatorCollection>()
-                if (page == null || page.locators.isEmpty()) break
-                for (loc in page.locators) {
-                    results.add(loc.toDomain())
-                    count++
-                }
-            }
-        } finally {
-            searchIterator.close()
-        }
-        return results
+        return ReadiumPublicationSearch.search(pub, query)
     }
-}
-
-private inline fun <reified T> Any?.unwrapReadium(): T? {
-    if (this is T) return this
-    if (this is Try.Success<*, *>) return this.value as? T
-    return null
 }

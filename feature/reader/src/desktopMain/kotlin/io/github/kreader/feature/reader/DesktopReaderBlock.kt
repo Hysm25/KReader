@@ -8,12 +8,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import io.github.kreader.core.model.Highlight
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
-import java.text.Normalizer
 
 /**
  * Immutable AST nodes representing rendered EPUB content blocks.
@@ -280,40 +278,5 @@ object EpubBlockParser {
                 }
             }
         }
-    }
-
-    /**
-     * Injects highlight background spans into an [AnnotatedString] using TextQuoteSelector matching.
-     */
-    fun applyHighlights(
-        rawText: String,
-        baseAnnotated: AnnotatedString,
-        highlights: List<Highlight>
-    ): AnnotatedString {
-        if (highlights.isEmpty() || rawText.isBlank()) return baseAnnotated
-
-        val builder = AnnotatedString.Builder(baseAnnotated)
-        val normalizedRaw = Normalizer.normalize(rawText, Normalizer.Form.NFC).replace(Regex("""\s+"""), " ")
-
-        for (h in highlights) {
-            val quote = h.locator.text?.highlight?.let { Normalizer.normalize(it, Normalizer.Form.NFC).replace(Regex("""\s+"""), " ") }
-            if (quote.isNullOrBlank()) continue
-
-            val matchIndex = normalizedRaw.indexOf(quote)
-            if (matchIndex >= 0 && matchIndex + quote.length <= baseAnnotated.length) {
-                val color = runCatching {
-                    val hex = h.colorHex.removePrefix("#")
-                    val colorInt = hex.toLong(16)
-                    if (hex.length == 6) Color(colorInt or 0x66000000L) else Color(colorInt)
-                }.getOrDefault(Color(0x66FFEB3B))
-
-                builder.addStyle(
-                    style = SpanStyle(background = color),
-                    start = matchIndex,
-                    end = matchIndex + quote.length
-                )
-            }
-        }
-        return builder.toAnnotatedString()
     }
 }

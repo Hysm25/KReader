@@ -63,17 +63,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.BookFormat
+import io.github.kreader.core.model.CbzSeries
 import io.github.kreader.feature.library.ui.rememberCoverPainter
 
 @Composable
 fun BookGrid(
-    books: List<Book>,
-    selectedBookIds: Set<String> = emptySet(),
+    items: List<LibraryItem>,
+    selectedItemIds: Set<String> = emptySet(),
     isSelectionMode: Boolean = false,
     onBookClick: (Book) -> Unit,
-    onBookLongClick: (Book) -> Unit = {},
+    onSeriesClick: (CbzSeries) -> Unit = {},
+    onItemLongClick: (LibraryItem) -> Unit = {},
+    onToggleItemSelection: (LibraryItem) -> Unit = {},
     onDeleteBook: (Book) -> Unit,
+    onDeleteSeries: (CbzSeries) -> Unit = {},
     onResetProgress: (Book) -> Unit = {},
+    onResetSeriesProgress: (CbzSeries) -> Unit = {},
     onExportMarkdown: (Book) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -85,29 +90,55 @@ fun BookGrid(
         modifier = modifier.fillMaxSize()
     ) {
         items(
-            items = books,
+            items = items,
             key = { it.id },
-            contentType = { "book" }
-        ) { book ->
-            val isSelected = selectedBookIds.contains(book.id)
-            BookItemCard(
-                book = book,
-                isSelected = isSelected,
-                isSelectionMode = isSelectionMode,
-                onClick = {
-                    if (isSelectionMode) {
-                        onBookClick(book)
-                    } else {
-                        onBookClick(book)
-                    }
-                },
-                onLongClick = {
-                    onBookLongClick(book)
-                },
-                onDelete = { onDeleteBook(book) },
-                onResetProgress = { onResetProgress(book) },
-                onExportMarkdown = { onExportMarkdown(book) }
-            )
+            contentType = { if (it is LibraryItem.Series) "series" else "book" }
+        ) { item ->
+            val isSelected = selectedItemIds.contains(item.id)
+            when (item) {
+                is LibraryItem.SingleBook -> {
+                    val book = item.book
+                    BookItemCard(
+                        book = book,
+                        isSelected = isSelected,
+                        isSelectionMode = isSelectionMode,
+                        onClick = {
+                            if (isSelectionMode) {
+                                onToggleItemSelection(item)
+                            } else {
+                                onBookClick(book)
+                            }
+                        },
+                        onLongClick = {
+                            onItemLongClick(item)
+                        },
+                        onDelete = { onDeleteBook(book) },
+                        onResetProgress = { onResetProgress(book) },
+                        onExportMarkdown = { onExportMarkdown(book) }
+                    )
+                }
+
+                is LibraryItem.Series -> {
+                    val series = item.series
+                    SeriesItemCard(
+                        series = series,
+                        isSelected = isSelected,
+                        isSelectionMode = isSelectionMode,
+                        onClick = {
+                            if (isSelectionMode) {
+                                onToggleItemSelection(item)
+                            } else {
+                                onSeriesClick(series)
+                            }
+                        },
+                        onLongClick = {
+                            onItemLongClick(item)
+                        },
+                        onDeleteSeries = { onDeleteSeries(series) },
+                        onResetSeriesProgress = { onResetSeriesProgress(series) }
+                    )
+                }
+            }
         }
     }
 }
@@ -541,6 +572,288 @@ fun BookItemCard(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Text("Delete File", color = MaterialTheme.colorScheme.onError)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun SeriesItemCard(
+    series: CbzSeries,
+    isSelected: Boolean = false,
+    isSelectionMode: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onDeleteSeries: () -> Unit,
+    onResetSeriesProgress: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(
+                width = if (isSelected) 2.dp else 0.dp,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                shape = RoundedCornerShape(16.dp)
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.7f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                val coverPainter = rememberCoverPainter(series.coverPath)
+                if (coverPainter != null) {
+                    Image(
+                        painter = coverPainter,
+                        contentDescription = series.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.MenuBook,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = series.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Series & Chapter Count Badges
+                if (!isSelectionMode) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.92f)
+                        ) {
+                            Text(
+                                text = "CBZ Series",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color.Black.copy(alpha = 0.68f)
+                        ) {
+                            val chCount = series.chapters.size
+                            Text(
+                                text = "$chCount ${if (chCount == 1) "Chapter" else "Chapters"}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(28.dp)
+                            .background(
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.5f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                if (!isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            IconButton(
+                                onClick = { showMenu = true },
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.MoreVert,
+                                    contentDescription = "Series options",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("View Chapters") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Reset Series Progress") },
+                                leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onResetSeriesProgress()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete Series", color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteConfirmDialog = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                    text = series.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${series.chapters.size} ${if (series.chapters.size == 1) "chapter" else "chapters"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+
+                if (series.totalProgression > 0f) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { series.totalProgression.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
+                        )
+                        Text(
+                            text = "${(series.totalProgression * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            modifier = Modifier.widthIn(max = 500.dp),
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Delete Series from Vault?") },
+            text = {
+                Text("Are you sure you want to delete '${series.title}' and all ${series.chapters.size} CBZ chapter file(s) from your folder?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDeleteSeries()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Series", color = MaterialTheme.colorScheme.onError)
                 }
             },
             dismissButton = {

@@ -13,43 +13,40 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,9 +54,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -71,15 +69,14 @@ import androidx.lifecycle.Lifecycle
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.CustomFont
-import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
 import io.github.kreader.core.model.ReaderTheme
 import io.github.kreader.core.model.ReaderTypography
-import io.github.kreader.core.model.ThemeMode
 import io.github.kreader.core.model.isRtlLanguage
 import io.github.kreader.core.model.isRtlText
 import io.github.kreader.engine.epub.ReadiumEpubOpener
 import io.github.kreader.engine.epub.ReadiumFontResources
+import io.github.kreader.engine.epub.ReadiumPublicationSearch
 import io.github.kreader.engine.epub.toDomain
 import io.github.kreader.engine.epub.toReadium
 import io.github.kreader.engine.epub.toTocItem
@@ -92,8 +89,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.readium.r2.navigator.DecorableNavigator
-import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
@@ -102,17 +97,9 @@ import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.locateProgression
 import org.readium.r2.shared.publication.services.positions
-import org.readium.r2.shared.publication.services.search.SearchIterator
-import org.readium.r2.shared.publication.services.search.search
-import org.readium.r2.shared.util.Try
-
-private const val HIGHLIGHTS_GROUP = "highlights"
-private const val SEARCH_GROUP = "search-highlight"
-private const val SEARCH_DECORATION_ID = "search-current"
 
 @OptIn(ExperimentalReadiumApi::class, DelicateReadiumApi::class)
 @Composable
@@ -125,10 +112,7 @@ actual fun EpubNavigatorHost(
     isTwoPageSpread: Boolean,
     controller: EpubNavigatorController,
     customFonts: List<CustomFont>,
-    highlights: List<Highlight>,
-    onHighlightClicked: (String) -> Unit,
-    onAddHighlight: (id: String, locator: Locator, colorHex: String) -> Unit,
-    onAddNoteRequested: (Locator, String) -> Unit,
+    onSearchSelectedText: (String) -> Unit,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onDirectionDetected: (isRtl: Boolean) -> Unit,
@@ -142,9 +126,7 @@ actual fun EpubNavigatorHost(
 
     val currentOnProgressChanged by rememberUpdatedState(onProgressChanged)
     val currentOnTap by rememberUpdatedState(onTap)
-    val currentOnHighlightClicked by rememberUpdatedState(onHighlightClicked)
-    val currentOnAddHighlight by rememberUpdatedState(onAddHighlight)
-    val currentOnAddNoteRequested by rememberUpdatedState(onAddNoteRequested)
+    val currentOnSearchSelectedText by rememberUpdatedState(onSearchSelectedText)
     val currentOnTableOfContentsLoaded by rememberUpdatedState(onTableOfContentsLoaded)
     val currentOnDirectionDetected by rememberUpdatedState(onDirectionDetected)
     val currentOnPageCountLoaded by rememberUpdatedState(onPageCountLoaded)
@@ -267,16 +249,9 @@ actual fun EpubNavigatorHost(
         fun ready(): EpubNavigatorFragment? =
             fragment?.takeIf { isNavigatorReady && it.isAdded && it.context != null }
 
-        fun clearSearchHighlight(nav: EpubNavigatorFragment) {
-            searchJumpJob?.cancel()
-            scope.launch {
-                runCatching { nav.applyDecorations(emptyList(), group = SEARCH_GROUP) }
-            }
-        }
-
         controller.goTo = { locator ->
             ready()?.let { nav ->
-                clearSearchHighlight(nav)
+                searchJumpJob?.cancel()
                 nav.go(locator.toReadium(), animated = true)
             }
         }
@@ -284,39 +259,36 @@ actual fun EpubNavigatorHost(
             ready()?.let { nav ->
                 searchJumpJob?.cancel()
                 val readiumLocator = locator.toReadium()
+                val currentHref = nav.currentLocator.value.href.toString().substringBefore('#')
+                val targetHref = readiumLocator.href.toString().substringBefore('#')
+                val isChapterChange = currentHref != targetHref
+
                 nav.go(readiumLocator, animated = false)
-                searchJumpJob = scope.launch {
-                    runCatching {
-                        nav.applyDecorations(
-                            listOf(searchDecoration(readiumLocator)),
-                            group = SEARCH_GROUP
-                        )
+                if (isChapterChange) {
+                    searchJumpJob = scope.launch {
+                        // Wait for target chapter WebView load, apply typography overrides,
+                        // and re-snap after reflow so the exact matched page is centered.
+                        delay(350)
+                        val activeNav = ready() ?: return@launch
+                        applyTypographyAndFontOverrides(activeNav, currentTypography, currentCustomFonts)
+                        delay(150)
+                        ready()?.go(readiumLocator, animated = false)
                     }
-                    // Wait for target chapter load and typography/normalizer reflow to settle,
-                    // then re-snap pagination so the exact matched word lands inside the viewport.
-                    delay(220)
-                    val activeNav = ready() ?: return@launch
-                    applyTypographyAndFontOverrides(activeNav, currentTypography, currentCustomFonts)
-                    delay(60)
-                    ready()?.go(readiumLocator, animated = false)
                 }
             }
         }
         controller.goNext = {
             ready()?.let { nav ->
-                clearSearchHighlight(nav)
                 nav.goForward(animated = true)
             }
         }
         controller.goPrevious = {
             ready()?.let { nav ->
-                clearSearchHighlight(nav)
                 nav.goBackward(animated = true)
             }
         }
         controller.seekToProgression = { targetProgression ->
             ready()?.let { nav ->
-                clearSearchHighlight(nav)
                 scope.launch {
                     val target = targetProgression.toDouble().coerceIn(0.0, 1.0)
                     val locator = pub?.let { opened ->
@@ -336,47 +308,11 @@ actual fun EpubNavigatorHost(
         controller.clearSelection = {
             ready()?.clearSelection()
         }
-        controller.highlightSearchResult = { locator ->
-            ready()?.let { nav ->
-                val readiumLocator = locator.toReadium()
-                scope.launch {
-                    nav.applyDecorations(
-                        listOf(searchDecoration(readiumLocator)),
-                        group = SEARCH_GROUP
-                    )
-                }
-            }
-        }
-        controller.clearSearchHighlight = {
-            ready()?.let { nav ->
-                scope.launch {
-                    nav.applyDecorations(emptyList(), group = SEARCH_GROUP)
-                }
-            }
-        }
         controller.search = { query ->
-            withContext(Dispatchers.IO) {
-                val results = mutableListOf<Locator>()
-                if (pub != null && query.isNotBlank()) {
-                    val iterator = pub.search(query).unwrapReadium<SearchIterator>()
-                    if (iterator != null) {
-                        try {
-                            var count = 0
-                            while (count < SEARCH_RESULT_LIMIT) {
-                                val page = iterator.next().unwrapReadium<LocatorCollection>()
-                                    ?: break
-                                if (page.locators.isEmpty()) break
-                                page.locators.forEach { locator ->
-                                    results += locator.toDomain()
-                                    count++
-                                }
-                            }
-                        } finally {
-                            iterator.close()
-                        }
-                    }
-                }
-                results
+            if (pub != null && query.isNotBlank()) {
+                ReadiumPublicationSearch.search(pub, query)
+            } else {
+                emptyList()
             }
         }
 
@@ -388,36 +324,11 @@ actual fun EpubNavigatorHost(
             controller.goPrevious = null
             controller.seekToProgression = null
             controller.clearSelection = null
-            controller.highlightSearchResult = null
-            controller.clearSearchHighlight = null
             controller.search = null
         }
     }
 
-    // 4. Render highlights through the official decoration API. Decorations are retained by the
-    //    navigator and re-applied to every resource, including chapters loaded later.
-    val isDarkTheme = isDarkThemeAppearance(theme, isSystemDark)
-    val isSepia = theme.mode == ThemeMode.SEPIA
-    LaunchedEffect(navigator, isNavigatorReady, highlights, isDarkTheme, isSepia) {
-        val fragment = navigator ?: return@LaunchedEffect
-        if (!isNavigatorReady || !fragment.isAdded) return@LaunchedEffect
-
-        val decorations = withContext(Dispatchers.Default) {
-            highlights.map { highlight ->
-                Decoration(
-                    id = highlight.id,
-                    locator = highlight.locator.toReadium(),
-                    style = Decoration.Style.Highlight(
-                        tint = calculateHighlightTintColor(highlight.colorHex, isDarkTheme, isSepia),
-                        isActive = false
-                    )
-                )
-            }
-        }
-        runCatching { fragment.applyDecorations(decorations, group = HIGHLIGHTS_GROUP) }
-    }
-
-    // 5. Observe the navigator's official current locator. It already carries the position and
+    // 4. Observe the navigator's official current locator. It already carries the position and
     //    total progression resolved by Readium's PositionsService.
     var lastSpineHref by remember(book.id, navigator) { mutableStateOf<String?>(null) }
     LaunchedEffect(navigator, isNavigatorReady) {
@@ -498,22 +409,10 @@ actual fun EpubNavigatorHost(
                             dismissSelection()
                             return true
                         }
-                        controller.clearSearchHighlight?.invoke()
                         currentOnTap()
                         return true
                     }
                 })
-                fragment.addDecorationListener(
-                    HIGHLIGHTS_GROUP,
-                    object : DecorableNavigator.Listener {
-                        override fun onDecorationActivated(
-                            event: DecorableNavigator.OnActivatedEvent
-                        ): Boolean {
-                            currentOnHighlightClicked(event.decoration.id)
-                            return true
-                        }
-                    }
-                )
             }
 
             DisposableEffect(fragmentActivity, fragmentTag, pub) {
@@ -659,28 +558,8 @@ actual fun EpubNavigatorHost(
 
                 SelectionMenu(
                     selection = activeSelection,
-                    maxWidth = maxWidth,
-                    maxHeight = maxHeight,
-                    theme = theme,
-                    isSystemInDarkTheme = isSystemDark,
-                    onHighlight = { colorHex ->
-                        val selection = activeSelection
-                        if (selection != null) {
-                            val id = "hl_${System.currentTimeMillis()}_${(1000..9999).random()}"
-                            currentOnAddHighlight(id, selection.domainLocator, colorHex)
-                            dismissSelection()
-                        }
-                    },
-                    onAddNote = {
-                        val selection = activeSelection
-                        if (selection != null) {
-                            val text = selection.text.ifBlank {
-                                selection.domainLocator.text?.highlight.orEmpty()
-                            }
-                            currentOnAddNoteRequested(selection.domainLocator, text)
-                            dismissSelection()
-                        }
-                    },
+                    maxWidthPx = constraints.maxWidth,
+                    maxHeightPx = constraints.maxHeight,
                     onCopy = {
                         val selection = activeSelection
                         if (selection != null) {
@@ -696,24 +575,24 @@ actual fun EpubNavigatorHost(
                             }
                             dismissSelection()
                         }
+                    },
+                    onSearchInBook = {
+                        val selection = activeSelection
+                        if (selection != null) {
+                            val text = selection.text.ifBlank {
+                                selection.domainLocator.text?.highlight.orEmpty()
+                            }.trim()
+                            dismissSelection()
+                            if (text.isNotEmpty()) {
+                                currentOnSearchSelectedText(text)
+                            }
+                        }
                     }
                 )
             }
         }
     }
 }
-
-private const val SEARCH_RESULT_LIMIT = 100
-
-private fun searchDecoration(locator: org.readium.r2.shared.publication.Locator): Decoration =
-    Decoration(
-        id = SEARCH_DECORATION_ID,
-        locator = locator,
-        style = Decoration.Style.Highlight(
-            tint = android.graphics.Color.argb(160, 255, 179, 0),
-            isActive = true
-        )
-    )
 
 private data class SelectionRect(
     val left: Float,
@@ -730,154 +609,121 @@ private data class ActiveSelection(
     val actionMode: ActionMode?
 )
 
-private data class HighlightColorSwatch(
-    val hex: String,
-    val color: androidx.compose.ui.graphics.Color,
-    val name: String
-)
-
 @Composable
 private fun SelectionMenu(
     selection: ActiveSelection?,
-    maxWidth: Dp,
-    maxHeight: Dp,
-    theme: ReaderTheme,
-    isSystemInDarkTheme: Boolean,
-    onHighlight: (String) -> Unit,
-    onAddNote: () -> Unit,
-    onCopy: () -> Unit
+    maxWidthPx: Int,
+    maxHeightPx: Int,
+    onCopy: () -> Unit,
+    onSearchInBook: () -> Unit
 ) {
     val density = LocalDensity.current
-    val swatches = rememberThemeHarmonizedSwatches(theme, isSystemInDarkTheme)
-    val menuWidth = (swatches.size * 34 + 110).dp
-    val menuHeight = 52.dp
-    val rect = selection?.rect
+    var measuredWidthPx by remember { mutableIntStateOf(with(density) { 210.dp.roundToPx() }) }
+    var measuredHeightPx by remember { mutableIntStateOf(with(density) { 46.dp.roundToPx() }) }
 
-    val (rawMenuX, rawMenuY) = remember(rect, maxWidth, maxHeight, density, menuWidth) {
+    val marginPx = with(density) { 12.dp.roundToPx() }
+    val gapPx = with(density) { 12.dp.roundToPx() }
+
+    val rect = selection?.rect
+    val (menuXPx, menuYPx) = remember(rect, maxWidthPx, maxHeightPx, measuredWidthPx, measuredHeightPx) {
         if (rect != null) {
             val rawLeft = minOf(rect.left, rect.right)
             val rawRight = maxOf(rect.left, rect.right)
             val rawTop = minOf(rect.top, rect.bottom)
             val rawBottom = maxOf(rect.top, rect.bottom)
-            val leftDp = with(density) { rawLeft.toDp() }
-            val rightDp = with(density) { rawRight.toDp() }
-            val topDp = with(density) { rawTop.toDp() }
-            val bottomDp = with(density) { rawBottom.toDp() }
 
-            val centerX = (leftDp + rightDp) / 2
-            val x = (centerX - menuWidth / 2).coerceIn(
-                12.dp,
-                (maxWidth - menuWidth - 12.dp).coerceAtLeast(12.dp)
-            )
-            val y = if (topDp >= menuHeight + 16.dp) {
-                (topDp - menuHeight - 10.dp).coerceIn(
-                    12.dp,
-                    (maxHeight - menuHeight - 12.dp).coerceAtLeast(12.dp)
-                )
-            } else {
-                (bottomDp + 10.dp).coerceIn(
-                    12.dp,
-                    (maxHeight - menuHeight - 12.dp).coerceAtLeast(12.dp)
-                )
+            val centerX = ((rawLeft + rawRight) / 2f).toInt()
+            val maxAllowedX = (maxWidthPx - measuredWidthPx - marginPx).coerceAtLeast(marginPx)
+            val x = (centerX - measuredWidthPx / 2).coerceIn(marginPx, maxAllowedX)
+
+            val maxAllowedY = (maxHeightPx - measuredHeightPx - marginPx).coerceAtLeast(marginPx)
+            val aboveY = rawTop.toInt() - measuredHeightPx - gapPx
+            val belowY = rawBottom.toInt() + gapPx
+            val y = when {
+                aboveY >= marginPx -> aboveY.coerceIn(marginPx, maxAllowedY)
+                belowY <= maxAllowedY -> belowY.coerceIn(marginPx, maxAllowedY)
+                else -> marginPx
             }
             x to y
         } else {
-            ((maxWidth - menuWidth) / 2).coerceAtLeast(12.dp) to 72.dp
+            val x = ((maxWidthPx - measuredWidthPx) / 2).coerceAtLeast(marginPx)
+            val y = with(density) { 56.dp.roundToPx() }.coerceIn(
+                marginPx,
+                (maxHeightPx - measuredHeightPx - marginPx).coerceAtLeast(marginPx)
+            )
+            x to y
         }
     }
-
-    var wasVisible by remember { mutableStateOf(false) }
-    val isVisible = selection != null
-    val positionSpec = if (wasVisible && isVisible) {
-        spring<Dp>(stiffness = Spring.StiffnessMediumLow)
-    } else {
-        snap()
-    }
-    LaunchedEffect(isVisible) {
-        wasVisible = isVisible
-    }
-
-    val menuX by animateDpAsState(
-        targetValue = rawMenuX,
-        animationSpec = positionSpec,
-        label = "selectionMenuX"
-    )
-    val menuY by animateDpAsState(
-        targetValue = rawMenuY,
-        animationSpec = positionSpec,
-        label = "selectionMenuY"
-    )
 
     AnimatedVisibility(
-        visible = isVisible,
-        enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.88f, animationSpec = tween(150)),
-        exit = fadeOut(tween(100)) + scaleOut(targetScale = 0.88f, animationSpec = tween(100)),
-        modifier = Modifier.offset { IntOffset(menuX.roundToPx(), menuY.roundToPx()) }
+        visible = selection != null,
+        enter = fadeIn(tween(120)) + scaleIn(initialScale = 0.92f, animationSpec = tween(120)),
+        exit = fadeOut(tween(90)) + scaleOut(targetScale = 0.92f, animationSpec = tween(90)),
+        modifier = Modifier.absoluteOffset { IntOffset(menuXPx, menuYPx) }
     ) {
         if (selection != null) {
-            Material3SelectionMenu(
-                swatches = swatches,
-                onHighlight = onHighlight,
-                onAddNote = onAddNote,
-                onCopy = onCopy
-            )
+            ElevatedCard(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                ),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp),
+                modifier = Modifier.onSizeChanged { size ->
+                    if (size.width > 0 && size.height > 0) {
+                        measuredWidthPx = size.width
+                        measuredHeightPx = size.height
+                    }
+                }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    TextButton(
+                        onClick = onCopy,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ContentCopy,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Copy",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
+
+                    VerticalDivider(
+                        modifier = Modifier.height(20.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                    )
+
+                    TextButton(
+                        onClick = onSearchInBook,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Search",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
         }
     }
-}
-
-@Composable
-private fun rememberThemeHarmonizedSwatches(
-    theme: ReaderTheme,
-    isSystemInDarkTheme: Boolean
-): List<HighlightColorSwatch> {
-    val isDark = isDarkThemeAppearance(theme, isSystemInDarkTheme)
-    val isSepia = theme.mode == ThemeMode.SEPIA
-
-    return remember(theme.mode, isDark, isSepia) {
-        when {
-            isSepia -> listOf(
-                HighlightColorSwatch("#F59E0B", androidx.compose.ui.graphics.Color(0xFFF59E0B), "Warm Amber"),
-                HighlightColorSwatch("#84CC16", androidx.compose.ui.graphics.Color(0xFF84CC16), "Warm Olive"),
-                HighlightColorSwatch("#0D9488", androidx.compose.ui.graphics.Color(0xFF0D9488), "Vintage Teal"),
-                HighlightColorSwatch("#E11D48", androidx.compose.ui.graphics.Color(0xFFE11D48), "Rose"),
-                HighlightColorSwatch("#78350F", androidx.compose.ui.graphics.Color(0xFF78350F), "Espresso Ink")
-            )
-            isDark -> listOf(
-                HighlightColorSwatch("#FACC15", androidx.compose.ui.graphics.Color(0xFFFACC15), "Goldenrod"),
-                HighlightColorSwatch("#4ADE80", androidx.compose.ui.graphics.Color(0xFF4ADE80), "Emerald Mint"),
-                HighlightColorSwatch("#38BDF8", androidx.compose.ui.graphics.Color(0xFF38BDF8), "Sky Cyan"),
-                HighlightColorSwatch("#F472B6", androidx.compose.ui.graphics.Color(0xFFF472B6), "Soft Rose"),
-                HighlightColorSwatch("#A5B4FC", androidx.compose.ui.graphics.Color(0xFFA5B4FC), "Luminous Iris")
-            )
-            else -> listOf(
-                HighlightColorSwatch("#FEF08A", androidx.compose.ui.graphics.Color(0xFFFEF08A), "Canary Yellow"),
-                HighlightColorSwatch("#BBF7D0", androidx.compose.ui.graphics.Color(0xFFBBF7D0), "Mint Green"),
-                HighlightColorSwatch("#BAE6FD", androidx.compose.ui.graphics.Color(0xFFBAE6FD), "Sky Blue"),
-                HighlightColorSwatch("#FBCFE8", androidx.compose.ui.graphics.Color(0xFFFBCFE8), "Pastel Pink"),
-                HighlightColorSwatch("#334155", androidx.compose.ui.graphics.Color(0xFF334155), "Deep Slate Ink")
-            )
-        }
-    }
-}
-
-private fun calculateHighlightTintColor(colorHex: String, isDark: Boolean, isSepia: Boolean): Int {
-    val base = try {
-        android.graphics.Color.parseColor(colorHex)
-    } catch (_: Exception) {
-        android.graphics.Color.YELLOW
-    }
-    val r = android.graphics.Color.red(base)
-    val g = android.graphics.Color.green(base)
-    val b = android.graphics.Color.blue(base)
-
-    val luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
-
-    val alpha = when {
-        isDark -> if (luminance > 0.65) 110 else 135
-        isSepia -> if (luminance < 0.35) 95 else 130
-        else -> if (luminance < 0.35) 88 else 140
-    }
-    return android.graphics.Color.argb(alpha, r, g, b)
 }
 
 private class SelectionActionModeCallback(
@@ -888,28 +734,28 @@ private class SelectionActionModeCallback(
 ) : ActionMode.Callback2() {
 
     private var updateJob: Job? = null
-    private var lastContentRectPollMs: Long = 0L
+    private var lastPollMs: Long = 0L
 
     override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
         menu?.clear()
         mode?.title = ""
         mode?.subtitle = ""
-        fetchSelection(mode, attempts = 12, stepDelayMs = 20L)
+        fetchSelection(mode, attempts = 6, stepDelayMs = 16L)
         return true
     }
 
     override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
         menu?.clear()
-        fetchSelection(mode, attempts = 10, stepDelayMs = 25L)
+        fetchSelection(mode, attempts = 4, stepDelayMs = 16L)
         return true
     }
 
     override fun onGetContentRect(mode: ActionMode?, view: View?, outRect: Rect?) {
         outRect?.set(0, 0, 0, 0)
         val now = System.currentTimeMillis()
-        if (now - lastContentRectPollMs >= 80L) {
-            lastContentRectPollMs = now
-            fetchSelection(mode, attempts = 6, stepDelayMs = 25L)
+        if (now - lastPollMs >= 60L) {
+            lastPollMs = now
+            fetchSelection(mode, attempts = 2, stepDelayMs = 16L)
         }
     }
 
@@ -922,7 +768,7 @@ private class SelectionActionModeCallback(
                 if (selection != null) {
                     val rect = selection.rect
                     val selectedText = selection.locator.text.highlight.orEmpty()
-                    if ((selectedText.isNotBlank() && rect != null) || attempt == attempts - 1) {
+                    if (selectedText.isNotBlank() && (rect != null || attempt == attempts - 1)) {
                         onSelectionActive(
                             ActiveSelection(
                                 readiumLocator = selection.locator,
@@ -935,7 +781,6 @@ private class SelectionActionModeCallback(
                         return@launch
                     }
                 }
-
                 if (attempt < attempts - 1) {
                     delay(stepDelayMs)
                 }
@@ -951,78 +796,12 @@ private class SelectionActionModeCallback(
     }
 }
 
-@Composable
-private fun Material3SelectionMenu(
-    swatches: List<HighlightColorSwatch>,
-    onHighlight: (colorHex: String) -> Unit,
-    onAddNote: () -> Unit,
-    onCopy: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    ElevatedCard(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp),
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            swatches.forEach { swatch ->
-                Surface(
-                    onClick = { onHighlight(swatch.hex) },
-                    shape = CircleShape,
-                    color = swatch.color,
-                    modifier = Modifier.size(28.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                ) {}
-            }
-
-            VerticalDivider(
-                modifier = Modifier
-                    .height(24.dp)
-                    .padding(horizontal = 2.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-            )
-
-            IconButton(onClick = onAddNote, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.Notes,
-                    contentDescription = "Add note",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            IconButton(onClick = onCopy, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    imageVector = Icons.Rounded.ContentCopy,
-                    contentDescription = "Copy text",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
 private fun Context.findFragmentActivity(): FragmentActivity? {
     var ctx: Context? = this
     while (ctx is ContextWrapper) {
         if (ctx is FragmentActivity) return ctx
         ctx = ctx.baseContext
     }
-    return null
-}
-
-private inline fun <reified T> Any?.unwrapReadium(): T? {
-    if (this is T) return this
-    if (this is Try.Success<*, *>) return this.value as? T
     return null
 }
 

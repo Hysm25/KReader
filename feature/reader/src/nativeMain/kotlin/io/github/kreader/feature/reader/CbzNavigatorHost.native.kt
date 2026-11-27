@@ -23,10 +23,14 @@ actual fun CbzNavigatorHost(
     readingMode: CbzReadingMode,
     imageFit: CbzImageFit,
     controller: EpubNavigatorController,
+    previousChapterTitle: String?,
+    nextChapterTitle: String?,
+    onGoToPreviousChapter: (() -> Unit)?,
+    onGoToNextChapter: (() -> Unit)?,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onPageCountLoaded: (Int) -> Unit,
-    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit,
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?, detectedMode: CbzReadingMode?) -> Unit,
     onTap: () -> Unit,
     modifier: Modifier
 ) {

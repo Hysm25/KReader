@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.BitmapRegionDecoder
 import android.graphics.Rect
 import io.github.kreader.core.model.BookSource
+import io.github.kreader.core.model.CbzReadingMode
+import io.github.kreader.core.model.isRtlText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -50,6 +52,52 @@ class AndroidCbzArchive private constructor(
         val coverName = metadata.coverEntryName ?: return@withContext null
         val entry = zipFile.getEntry(coverName) ?: return@withContext null
         decodeCoverBytes(entry, maxDimension)
+    }
+
+    /**
+     * Inspects image bounds (`inJustDecodeBounds`) of the first few valid pages to auto-detect
+     * tall Webtoon strips (`height / width >= 2.2`), falling back to Manga RTL or Comic LTR.
+     */
+    suspend fun detectPreferredReadingMode(seriesOrBookTitle: String): CbzReadingMode = withContext(Dispatchers.IO) {
+        if (closed.get() || pages.isEmpty()) {
+            return@withContext defaultPagedMode(seriesOrBookTitle)
+        }
+
+        val sampleCount = minOf(pages.size, 6)
+        val ratios = mutableListOf<Float>()
+        for (i in 0 until sampleCount) {
+            val entry = zipFile.getEntry(pages[i].entryName) ?: continue
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            runCatching {
+                zipFile.getInputStream(entry).use { stream ->
+                    BitmapFactory.decodeStream(stream, null, bounds)
+                }
+            }
+            val w = bounds.outWidth
+            val h = bounds.outHeight
+            if (w > 0 && h > 0) {
+                ratios.add(h.toFloat() / w.toFloat())
+            }
+        }
+
+        if (ratios.isNotEmpty()) {
+            val sorted = ratios.sorted()
+            val median = sorted[sorted.size / 2]
+            val average = ratios.sum() / ratios.size.toFloat()
+            if (median >= WEBTOON_ASPECT_THRESHOLD || average >= WEBTOON_ASPECT_THRESHOLD) {
+                return@withContext CbzReadingMode.WEBTOON
+            }
+        }
+
+        defaultPagedMode(seriesOrBookTitle)
+    }
+
+    private fun defaultPagedMode(seriesOrBookTitle: String): CbzReadingMode {
+        val isMangaOrArabic = metadata.isMangaRtl == true ||
+            isRtlText(seriesOrBookTitle) ||
+            isRtlText(metadata.title.orEmpty()) ||
+            isRtlText(metadata.series.orEmpty())
+        return if (isMangaOrArabic) CbzReadingMode.MANGA_RTL else CbzReadingMode.COMIC_LTR
     }
 
     suspend fun decodePage(
@@ -242,6 +290,7 @@ class AndroidCbzArchive private constructor(
     }
 
     companion object {
+        private const val WEBTOON_ASPECT_THRESHOLD = 2.2f
         private const val MAX_TEXTURE_DIMENSION = 3072
         private const val HARDWARE_SAFE_LIMIT = 4096
         private const val MAX_SINGLE_BITMAP_BYTES = 18L * 1024L * 1024L

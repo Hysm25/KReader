@@ -69,10 +69,14 @@ actual fun CbzNavigatorHost(
     readingMode: CbzReadingMode,
     imageFit: CbzImageFit,
     controller: EpubNavigatorController,
+    previousChapterTitle: String?,
+    nextChapterTitle: String?,
+    onGoToPreviousChapter: (() -> Unit)?,
+    onGoToNextChapter: (() -> Unit)?,
     onProgressChanged: (progression: Float, locator: Locator) -> Unit,
     onTableOfContentsLoaded: (List<TocItem>) -> Unit,
     onPageCountLoaded: (Int) -> Unit,
-    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit,
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?, detectedMode: CbzReadingMode?) -> Unit,
     onTap: () -> Unit,
     modifier: Modifier
 ) {
@@ -105,8 +109,11 @@ actual fun CbzNavigatorHost(
                     archive.close()
                     cbzState = DesktopCbzState.Error("No readable images found in CBZ archive.")
                 } else {
+                    val detectedMode = withContext(Dispatchers.IO) {
+                        archive.detectPreferredReadingMode(book.cbzSeriesFolder?.substringAfterLast('/') ?: book.title)
+                    }
                     onPageCountLoaded(archive.pageCount)
-                    onCbzMetadataLoaded(archive.pageCount, archive.metadata.isMangaRtl)
+                    onCbzMetadataLoaded(archive.pageCount, archive.metadata.isMangaRtl, detectedMode)
                     onTableOfContentsLoaded(
                         List(archive.pageCount) { idx ->
                             TocItem(title = "Page ${idx + 1}", locator = cbzPageLocator(idx, archive.pageCount))
@@ -155,12 +162,18 @@ actual fun CbzNavigatorHost(
 
                         DisposableEffect(pagerState, pageCount) {
                             controller.goNext = {
-                                val target = (pagerState.currentPage + 1).coerceAtMost(pageCount - 1)
-                                scope.launch { pagerState.animateScrollToPage(target) }
+                                if (pagerState.currentPage < pageCount - 1) {
+                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                                } else {
+                                    onGoToNextChapter?.invoke()
+                                }
                             }
                             controller.goPrevious = {
-                                val target = (pagerState.currentPage - 1).coerceAtLeast(0)
-                                scope.launch { pagerState.animateScrollToPage(target) }
+                                if (pagerState.currentPage > 0) {
+                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                                } else {
+                                    onGoToPreviousChapter?.invoke()
+                                }
                             }
                             controller.goTo = { locator ->
                                 scope.launch { pagerState.scrollToPage(cbzInitialPageIndex(locator, pageCount)) }
@@ -243,12 +256,18 @@ actual fun CbzNavigatorHost(
 
                         DisposableEffect(listState, pageCount) {
                             controller.goNext = {
-                                val target = (listState.firstVisibleItemIndex + 1).coerceAtMost(pageCount - 1)
-                                scope.launch { listState.animateScrollToItem(target) }
+                                if (listState.firstVisibleItemIndex < pageCount - 1) {
+                                    scope.launch { listState.animateScrollToItem(listState.firstVisibleItemIndex + 1) }
+                                } else {
+                                    onGoToNextChapter?.invoke()
+                                }
                             }
                             controller.goPrevious = {
-                                val target = (listState.firstVisibleItemIndex - 1).coerceAtLeast(0)
-                                scope.launch { listState.animateScrollToItem(target) }
+                                if (listState.firstVisibleItemIndex > 0) {
+                                    scope.launch { listState.animateScrollToItem(listState.firstVisibleItemIndex - 1) }
+                                } else {
+                                    onGoToPreviousChapter?.invoke()
+                                }
                             }
                             controller.goTo = { locator ->
                                 scope.launch { listState.scrollToItem(cbzInitialPageIndex(locator, pageCount)) }

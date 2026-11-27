@@ -81,7 +81,12 @@ fun App() {
                     onOpenGlobalSettings = { showGlobalSettings = true },
                     onDeleteBook = { book -> libraryViewModel.deleteBook(book) },
                     onDeleteBooks = { books -> libraryViewModel.deleteBooks(books) },
+                    onDeleteSeries = { series -> libraryViewModel.deleteSeries(series) },
+                    onDeleteItems = { items -> libraryViewModel.deleteItems(items) },
                     onResetBookProgress = { book -> libraryViewModel.resetBookProgress(book) },
+                    onResetSeriesProgress = { series -> libraryViewModel.resetSeriesProgress(series) },
+                    onSeriesClick = { series -> libraryViewModel.openSeries(series.id) },
+                    onDismissSeries = { libraryViewModel.dismissSeries() },
                     onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
                     onFilterChanged = { filter -> libraryViewModel.onFilterChanged(filter) },
                     onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) },
@@ -163,11 +168,34 @@ fun App() {
                     onDismiss = { showGlobalSettings = false }
                 )
             } else {
+                val libraryUiState by libraryViewModel.uiState.collectAsState()
+                val seriesForBook = remember(bookToRead.id, libraryUiState.seriesList) {
+                    bookToRead.cbzSeriesFolder?.let { folder ->
+                        libraryUiState.seriesList.find { it.id == folder }
+                    }
+                }
+                val chapterIdx = remember(bookToRead.id, seriesForBook) {
+                    seriesForBook?.chapters?.indexOfFirst { it.id == bookToRead.id } ?: -1
+                }
+                val previousChapter = if (chapterIdx > 0 && seriesForBook != null) {
+                    seriesForBook.chapters[chapterIdx - 1]
+                } else null
+                val nextChapter = if (chapterIdx >= 0 && seriesForBook != null && chapterIdx + 1 < seriesForBook.chapters.size) {
+                    seriesForBook.chapters[chapterIdx + 1]
+                } else null
+
                 val readerViewModel = rememberReaderViewModel(bookRepository, bookToRead)
                 val readerUiState by readerViewModel.uiState.collectAsState()
 
                 ReaderScreen(
                     state = readerUiState,
+                    seriesTitle = seriesForBook?.title,
+                    previousChapter = previousChapter,
+                    nextChapter = nextChapter,
+                    onSwitchChapter = { targetChapter ->
+                        val latestChapter = libraryUiState.books.find { it.id == targetChapter.id } ?: targetChapter
+                        selectedBook = latestChapter
+                    },
                     onBackClick = { selectedBook = null },
                     onToggleControls = { readerViewModel.toggleControls() },
                     onPreviousPage = {},
@@ -183,14 +211,6 @@ fun App() {
                     onIsSearchingChange = { s -> readerViewModel.updateIsSearching(s) },
                     onBookmarkToggle = { readerViewModel.toggleBookmark() },
                     onDeleteBookmark = { id -> readerViewModel.deleteBookmark(id) },
-                    onSaveHighlight = { hl -> readerViewModel.saveHighlight(hl) },
-                    onDeleteHighlight = { id -> readerViewModel.deleteHighlight(id) },
-                    onHighlightClicked = { hl -> readerViewModel.selectHighlightForDetail(hl) },
-                    onDismissHighlightDetail = { readerViewModel.selectHighlightForDetail(null) },
-                    onSaveHighlightDetail = { id, note, color -> readerViewModel.saveHighlightDetail(id, note, color) },
-                    onOpenAddNoteDialog = { loc, text -> readerViewModel.openAddNoteDialog(loc, text) },
-                    onDismissAddNoteDialog = { readerViewModel.dismissAddNoteDialog() },
-                    onSaveNewNote = { loc, note, color -> readerViewModel.saveNewNote(loc, note, color) },
                     onSettingsClick = { readerViewModel.openSettings() },
                     onDismissSettings = { readerViewModel.dismissSettings() },
                     onThemeChange = { theme -> readerViewModel.changeTheme(theme) },
@@ -210,7 +230,9 @@ fun App() {
                     onImportCustomFont = { font -> readerViewModel.importCustomFont(font) },
                     onDeleteCustomFont = { name -> readerViewModel.deleteCustomFont(name) },
                     onDirectionDetected = { isRtl -> readerViewModel.onDirectionDetected(isRtl) },
-                    onCbzMetadataLoaded = { count, isMangaRtl -> readerViewModel.onCbzMetadataLoaded(count, isMangaRtl) },
+                    onCbzMetadataLoaded = { count, isMangaRtl, detectedMode ->
+                        readerViewModel.onCbzMetadataLoaded(count, isMangaRtl, detectedMode)
+                    },
                     onCbzReadingModeChange = { mode -> readerViewModel.changeCbzReadingMode(mode) },
                     onCbzImageFitChange = { fit -> readerViewModel.changeCbzImageFit(fit) },
                     onExportMarkdown = {
