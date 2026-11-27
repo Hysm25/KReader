@@ -5,9 +5,9 @@ Serves as the root application module, packaging coordinator, and presentation c
 
 ## Interface
 - `App`: Root `@Composable` application orchestrating top-level screen switching between `LibraryScreen` and `ReaderScreen`, delegating business logic to `LibraryViewModel` and `ReaderViewModel` (`[App.kt:App]`).
-- `MainActivity`: Android `FragmentActivity` hosting Compose content, configuring edge-to-edge system insets, handling incoming open-file intents, and routing hardware volume key navigation (`[MainActivity.kt:MainActivity]`).
+- `MainActivity`: Android `FragmentActivity` hosting Compose content, configuring edge-to-edge system insets, handling incoming open-file intents (`.epub` and `.cbz`), and routing hardware volume key navigation (`[MainActivity.kt:MainActivity]`).
 - `VaultSyncBridge`: Static callback bridge triggering repository vault refresh events upon application foreground resumption (`[VaultSyncBridge.kt:VaultSyncBridge]`).
-- `main`: Desktop entry point accepting command-line arguments (`args: Array<String>`) to open EPUB files directly from desktop file managers, creating an application window hosting `App()` (`[main.kt:main]`).
+- `main`: Desktop entry point accepting command-line arguments (`args: Array<String>`) to open EPUB and CBZ files directly from desktop file managers, creating an application window hosting `App()` (`[main.kt:main]`).
 
 ## Invariants
 - `[MainActivity.kt:handleIncomingIntent]`: External book intents are transformed into `BookSource.FilePath` or `BookSource.ContentUri` and dispatched via `ExternalBookOpener.open()` into the library viewmodel without blocking the main UI thread.

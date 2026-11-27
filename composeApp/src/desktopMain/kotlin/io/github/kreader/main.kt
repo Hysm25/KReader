@@ -20,7 +20,9 @@ import java.io.File
 fun main(args: Array<String>) {
     if (args.isNotEmpty()) {
         val file = File(args[0])
-        if (file.exists() && file.isFile && file.extension.equals("epub", ignoreCase = true)) {
+        val isSupported = file.extension.equals("epub", ignoreCase = true) ||
+            file.extension.equals("cbz", ignoreCase = true)
+        if (file.exists() && file.isFile && isSupported) {
             ExternalBookOpener.open(
                 BookSource.FilePath(
                     path = file.absolutePath,
@@ -40,9 +42,12 @@ fun main(args: Array<String>) {
                 if (event.type == KeyEventType.KeyDown) {
                     val isCtrl = event.isCtrlPressed || event.isMetaPressed
                     if (isCtrl && event.key == Key.O) {
-                        // Global Ctrl+O: Open EPUB file dialog
-                        val dialog = FileDialog(null as Frame?, "Open EPUB Book", FileDialog.LOAD)
-                        dialog.setFilenameFilter { _, name -> name.lowercase().endsWith(".epub") }
+                        // Global Ctrl+O: Open EPUB or CBZ file dialog
+                        val dialog = FileDialog(null as Frame?, "Open EPUB or CBZ", FileDialog.LOAD)
+                        dialog.setFilenameFilter { _, name ->
+                            val lower = name.lowercase()
+                            lower.endsWith(".epub") || lower.endsWith(".cbz")
+                        }
                         dialog.isVisible = true
                         val dir = dialog.directory
                         val file = dialog.file

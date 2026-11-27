@@ -1,6 +1,9 @@
 package io.github.kreader.core.database
 
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CbzImageFit
+import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
 import io.github.kreader.core.model.Locator
@@ -129,5 +132,39 @@ class VaultJsonSerializationTest {
         assertEquals(1, decoded.size)
         assertEquals("Forest Green", decoded.first().name)
         assertEquals("#1B2E1E", decoded.first().backgroundColorHex)
+    }
+
+    @Test
+    fun testCbzWorkspaceAndBookmarksRoundTrip() {
+        val cbzLocator = Locator(
+            href = "page_13",
+            type = BookFormat.CBZ.mimeType,
+            title = "Page 14",
+            locations = Locator.Locations(
+                progression = 13f / 191f,
+                position = 14,
+                totalProgression = 13f / 191f
+            )
+        )
+        val workspace = VaultWorkspace(
+            books = mapOf(
+                "Manga/Vol01.cbz" to BookProgressRecord(
+                    relativePath = "Manga/Vol01.cbz",
+                    totalProgression = 13f / 191f,
+                    lastReadTimestamp = 1700000000000L,
+                    lastLocator = cbzLocator,
+                    preferencesOverride = ReaderPreferencesOverride(
+                        cbzReadingMode = CbzReadingMode.MANGA_RTL,
+                        cbzImageFit = CbzImageFit.FIT_WIDTH
+                    )
+                )
+            )
+        )
+        val decodedWs = json.decodeFromString<VaultWorkspace>(json.encodeToString(workspace))
+        val rec = decodedWs.books["Manga/Vol01.cbz"]
+        assertTrue(rec != null)
+        assertEquals(14, rec.lastLocator?.locations?.position)
+        assertEquals(CbzReadingMode.MANGA_RTL, rec.preferencesOverride?.cbzReadingMode)
+        assertEquals(CbzImageFit.FIT_WIDTH, rec.preferencesOverride?.cbzImageFit)
     }
 }

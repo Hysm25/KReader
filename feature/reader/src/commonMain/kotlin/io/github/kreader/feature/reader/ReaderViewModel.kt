@@ -7,7 +7,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import io.github.kreader.core.database.BookRepository
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CbzImageFit
+import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
@@ -47,7 +50,17 @@ class ReaderViewModel(
             book = book,
             currentLocator = book.lastLocator,
             totalProgression = book.totalProgression,
-            isRtl = isRtlText(book.title) || isRtlText(book.author.orEmpty()) || isRtlText(book.description.orEmpty())
+            isRtl = if (book.format == BookFormat.CBZ) {
+                book.isManga == true
+            } else {
+                isRtlText(book.title) || isRtlText(book.author.orEmpty()) || isRtlText(book.description.orEmpty())
+            },
+            totalPageCount = book.pageCount ?: 0,
+            cbzReadingMode = if (book.format == BookFormat.CBZ && book.isManga == true) {
+                CbzReadingMode.MANGA_RTL
+            } else {
+                CbzReadingMode.COMIC_LTR
+            }
         )
     )
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
@@ -56,6 +69,7 @@ class ReaderViewModel(
     private var globalPreferences = ReaderPreferences()
     private var typographySaveJob: Job? = null
     private var pendingTypography: ReaderTypography? = null
+    private var cbzMangaHintApplied = false
 
     init {
         observeData()
@@ -68,6 +82,16 @@ class ReaderViewModel(
 
         bookRepository.observeEffectivePreferences(book.id).onEach { prefs ->
             currentEffectivePreferences = prefs
+            val isFirstOpenCbzManga = book.format == BookFormat.CBZ &&
+                book.lastLocator == null &&
+                book.totalProgression == 0f &&
+                book.isManga == true &&
+                !cbzMangaHintApplied
+            val effectiveCbzMode = if (isFirstOpenCbzManga) {
+                CbzReadingMode.MANGA_RTL
+            } else {
+                prefs.cbzReadingMode
+            }
             _uiState.update { current ->
                 current.copy(
                     theme = prefs.theme,
@@ -77,7 +101,14 @@ class ReaderViewModel(
                     keepScreenOn = prefs.keepScreenOn,
                     volumeKeyNavigation = prefs.volumeKeyNavigation,
                     orientationLock = prefs.orientationLock,
-                    customFonts = prefs.customFonts
+                    customFonts = prefs.customFonts,
+                    cbzReadingMode = effectiveCbzMode,
+                    cbzImageFit = prefs.cbzImageFit,
+                    isRtl = if (book.format == BookFormat.CBZ) {
+                        effectiveCbzMode == CbzReadingMode.MANGA_RTL
+                    } else {
+                        current.isRtl
+                    }
                 )
             }
         }.launchIn(scope)
@@ -378,6 +409,48 @@ class ReaderViewModel(
 
     fun setTotalPageCount(count: Int) {
         _uiState.update { it.copy(totalPageCount = count) }
+    }
+
+    fun onCbzMetadataLoaded(pageCount: Int, isMangaRtl: Boolean?) {
+        _uiState.update { it.copy(totalPageCount = pageCount) }
+        if (book.format == BookFormat.CBZ &&
+            isMangaRtl == true &&
+            !cbzMangaHintApplied &&
+            book.lastLocator == null &&
+            book.totalProgression == 0f &&
+            _uiState.value.cbzReadingMode != CbzReadingMode.MANGA_RTL
+        ) {
+            cbzMangaHintApplied = true
+            changeCbzReadingMode(CbzReadingMode.MANGA_RTL)
+        }
+    }
+
+    fun changeCbzReadingMode(mode: CbzReadingMode) {
+        cbzMangaHintApplied = true
+        _uiState.update {
+            it.copy(
+                cbzReadingMode = mode,
+                isRtl = if (book.format == BookFormat.CBZ) mode == CbzReadingMode.MANGA_RTL else it.isRtl
+            )
+        }
+        scope.launch {
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                val modeOverride = mode.takeIf { it != globalPreferences.cbzReadingMode }
+                val override = (current ?: ReaderPreferencesOverride()).copy(cbzReadingMode = modeOverride)
+                override.takeUnless { it.isEmpty() }
+            }
+        }
+    }
+
+    fun changeCbzImageFit(fit: CbzImageFit) {
+        _uiState.update { it.copy(cbzImageFit = fit) }
+        scope.launch {
+            bookRepository.updateBookPreferencesOverride(book.id) { current ->
+                val fitOverride = fit.takeIf { it != globalPreferences.cbzImageFit }
+                val override = (current ?: ReaderPreferencesOverride()).copy(cbzImageFit = fitOverride)
+                override.takeUnless { it.isEmpty() }
+            }
+        }
     }
 
     fun saveCustomTheme(newTheme: CustomTheme) {

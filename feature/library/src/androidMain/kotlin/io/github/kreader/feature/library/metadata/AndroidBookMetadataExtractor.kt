@@ -10,6 +10,7 @@ import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.isRtlLanguage
 import io.github.kreader.core.model.isRtlText
+import io.github.kreader.engine.cbz.AndroidCbzArchive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -24,8 +25,77 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
 
     override suspend fun extract(source: BookSource, bookId: String): ExtractedBookMetadata = withContext(Dispatchers.IO) {
         val fileSizeBytes = queryFileSize(source)
-        val metadata = extractEpub(source, bookId, fileSizeBytes)
+        val detectedFormat = detectFormat(source)
+        val metadata = when (detectedFormat) {
+            BookFormat.CBZ -> extractCbz(source, bookId, fileSizeBytes)
+            BookFormat.EPUB -> extractEpub(source, bookId, fileSizeBytes)
+        }
         metadata.copy(localSource = source)
+    }
+
+    private fun detectFormat(source: BookSource): BookFormat {
+        val extFromName = source.displayName.substringAfterLast('.', "")
+        BookFormat.fromExtension(extFromName)?.let { return it }
+
+        val pathExt = when (source) {
+            is BookSource.FilePath -> File(source.path).extension
+            is BookSource.ContentUri -> Uri.parse(source.uriString).lastPathSegment?.substringAfterLast('.', "").orEmpty()
+            else -> ""
+        }
+        BookFormat.fromExtension(pathExt)?.let { return it }
+
+        if (source is BookSource.ContentUri) {
+            val mime = runCatching {
+                context.contentResolver.getType(Uri.parse(source.uriString))
+            }.getOrNull()
+            if (mime != null) {
+                BookFormat.fromMimeType(mime)?.let { return it }
+            }
+        }
+        return BookFormat.EPUB
+    }
+
+    private suspend fun extractCbz(
+        source: BookSource,
+        bookId: String,
+        fileSizeBytes: Long
+    ): ExtractedBookMetadata {
+        val archive = AndroidCbzArchive.open(context, source).getOrNull()
+            ?: return extractGeneric(source, BookFormat.CBZ, fileSizeBytes)
+
+        return archive.use { cbz ->
+            val safeId = bookId
+                .replace(Regex("""\.(epub|cbz)$""", RegexOption.IGNORE_CASE), "")
+                .replace('/', '_')
+                .replace('\\', '_')
+            val coverBytes = cbz.extractCoverBytes(maxDimension = 540)
+            val coverPath = if (coverBytes != null && coverBytes.isNotEmpty()) {
+                val targetCoverFile = File(coversDir, "${safeId}.jpg")
+                runCatching {
+                    targetCoverFile.writeBytes(coverBytes)
+                    targetCoverFile.absolutePath
+                }.getOrNull()
+            } else {
+                null
+            }
+
+            val fallbackTitle = source.displayName
+                .replace(Regex("""\.cbz$""", RegexOption.IGNORE_CASE), "")
+                .replace('_', ' ')
+            val resolvedTitle = cbz.metadata.title?.takeIf { it.isNotBlank() } ?: fallbackTitle
+
+            ExtractedBookMetadata(
+                title = resolvedTitle,
+                author = cbz.metadata.writer,
+                description = cbz.metadata.series?.let { "Series: $it" },
+                format = BookFormat.CBZ,
+                coverPath = coverPath,
+                isRtl = cbz.metadata.isMangaRtl == true,
+                fileSizeBytes = fileSizeBytes,
+                pageCount = cbz.metadata.pageCount,
+                isManga = cbz.metadata.isMangaRtl
+            )
+        }
     }
 
     private fun queryFileSize(source: BookSource): Long {
@@ -114,7 +184,10 @@ class AndroidBookMetadataExtractor(private val context: Context) : BookMetadataE
                     isRtlText(author) ||
                     isRtlText(description)
 
-                val safeId = bookId.replace('/', '_').replace('\\', '_')
+                val safeId = bookId
+                    .replace(Regex("""\.(epub|cbz)$""", RegexOption.IGNORE_CASE), "")
+                    .replace('/', '_')
+                    .replace('\\', '_')
                 val coverPath = extractEpubCover(zip, opfXml, opfPath, safeId)
 
                 return ExtractedBookMetadata(

@@ -16,6 +16,19 @@ enum class OrientationLock {
 }
 
 @Serializable
+enum class CbzReadingMode {
+    MANGA_RTL,
+    COMIC_LTR,
+    WEBTOON
+}
+
+@Serializable
+enum class CbzImageFit {
+    FIT_SCREEN,
+    FIT_WIDTH
+}
+
+@Serializable
 data class CustomFont(
     val name: String,
     val path: String
@@ -32,7 +45,9 @@ data class ReaderPreferences(
     val volumeKeyNavigation: Boolean = true,
     val customFonts: List<CustomFont> = emptyList(),
     val keepScreenOn: Boolean = false,
-    val orientationLock: OrientationLock = OrientationLock.AUTO
+    val orientationLock: OrientationLock = OrientationLock.AUTO,
+    val cbzReadingMode: CbzReadingMode = CbzReadingMode.COMIC_LTR,
+    val cbzImageFit: CbzImageFit = CbzImageFit.FIT_SCREEN
 )
 
 @Serializable
@@ -67,7 +82,9 @@ data class ReaderPreferencesOverride(
     val brightness: Float? = null,
     val volumeKeyNavigation: Boolean? = null,
     val keepScreenOn: Boolean? = null,
-    val orientationLock: OrientationLock? = null
+    val orientationLock: OrientationLock? = null,
+    val cbzReadingMode: CbzReadingMode? = null,
+    val cbzImageFit: CbzImageFit? = null
 ) {
     fun isEmpty(): Boolean =
         theme == null &&
@@ -78,7 +95,9 @@ data class ReaderPreferencesOverride(
         brightness == null &&
         volumeKeyNavigation == null &&
         keepScreenOn == null &&
-        orientationLock == null
+        orientationLock == null &&
+        cbzReadingMode == null &&
+        cbzImageFit == null
 }
 
 fun ReaderPreferences.mergeWith(override: ReaderPreferencesOverride?): ReaderPreferences {
@@ -106,6 +125,8 @@ fun ReaderPreferences.mergeWith(override: ReaderPreferencesOverride?): ReaderPre
         brightness = override.brightness ?: this.brightness,
         volumeKeyNavigation = override.volumeKeyNavigation ?: this.volumeKeyNavigation,
         keepScreenOn = override.keepScreenOn ?: this.keepScreenOn,
-        orientationLock = override.orientationLock ?: this.orientationLock
+        orientationLock = override.orientationLock ?: this.orientationLock,
+        cbzReadingMode = override.cbzReadingMode ?: this.cbzReadingMode,
+        cbzImageFit = override.cbzImageFit ?: this.cbzImageFit
     )
 }

@@ -99,7 +99,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.engine.TocItem
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CbzImageFit
+import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
@@ -171,6 +174,9 @@ fun DesktopReaderLayout(
     onKeepScreenOnChange: (Boolean) -> Unit = {},
     onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit = { _, _ -> },
+    onCbzReadingModeChange: (CbzReadingMode) -> Unit = {},
+    onCbzImageFitChange: (CbzImageFit) -> Unit = {},
     onExportMarkdown: (suspend () -> String?)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -372,45 +378,65 @@ fun DesktopReaderLayout(
                         contentAlignment = Alignment.Center
                     ) {
                         if (book != null) {
-                            EpubNavigatorHost(
-                                book = book,
-                                initialLocator = liveLocator ?: book.lastLocator,
-                                theme = state.theme,
-                                typography = state.typography,
-                                isScrollMode = state.isScrollMode,
-                                isTwoPageSpread = isTwoPageSpread,
-                                controller = epubController,
-                                customFonts = customFonts,
-                                highlights = state.highlights,
-                                onHighlightClicked = { highlightId ->
-                                    val h = state.highlights.find { it.id == highlightId }
-                                    if (h != null) onHighlightClicked(h)
-                                },
-                                onAddHighlight = { id, locator, colorHex ->
-                                    val newHighlight = Highlight(
-                                        id = id,
-                                        bookId = book.id,
-                                        locator = locator,
-                                        colorHex = colorHex,
-                                        annotation = null,
-                                        createdTimestamp = Clock.System.now().toEpochMilliseconds(),
-                                        modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
-                                    )
-                                    onSaveHighlight(newHighlight)
-                                },
-                                onAddNoteRequested = { locator, selectedText ->
-                                    onOpenAddNoteDialog(locator, selectedText)
-                                },
-                                onProgressChanged = { prog, loc ->
-                                    liveProgression = prog
-                                    liveLocator = loc
-                                    onProgressChanged(prog, loc)
-                                },
-                                onTableOfContentsLoaded = onTableOfContentsLoaded,
-                                onDirectionDetected = onDirectionDetected,
-                                onTap = onToggleControls,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            if (book.format == BookFormat.CBZ) {
+                                CbzNavigatorHost(
+                                    book = book,
+                                    initialLocator = liveLocator ?: book.lastLocator,
+                                    readingMode = state.cbzReadingMode,
+                                    imageFit = state.cbzImageFit,
+                                    controller = epubController,
+                                    onProgressChanged = { prog, loc ->
+                                        liveProgression = prog
+                                        liveLocator = loc
+                                        onProgressChanged(prog, loc)
+                                    },
+                                    onTableOfContentsLoaded = onTableOfContentsLoaded,
+                                    onPageCountLoaded = {},
+                                    onCbzMetadataLoaded = onCbzMetadataLoaded,
+                                    onTap = onToggleControls,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                EpubNavigatorHost(
+                                    book = book,
+                                    initialLocator = liveLocator ?: book.lastLocator,
+                                    theme = state.theme,
+                                    typography = state.typography,
+                                    isScrollMode = state.isScrollMode,
+                                    isTwoPageSpread = isTwoPageSpread,
+                                    controller = epubController,
+                                    customFonts = customFonts,
+                                    highlights = state.highlights,
+                                    onHighlightClicked = { highlightId ->
+                                        val h = state.highlights.find { it.id == highlightId }
+                                        if (h != null) onHighlightClicked(h)
+                                    },
+                                    onAddHighlight = { id, locator, colorHex ->
+                                        val newHighlight = Highlight(
+                                            id = id,
+                                            bookId = book.id,
+                                            locator = locator,
+                                            colorHex = colorHex,
+                                            annotation = null,
+                                            createdTimestamp = Clock.System.now().toEpochMilliseconds(),
+                                            modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
+                                        )
+                                        onSaveHighlight(newHighlight)
+                                    },
+                                    onAddNoteRequested = { locator, selectedText ->
+                                        onOpenAddNoteDialog(locator, selectedText)
+                                    },
+                                    onProgressChanged = { prog, loc ->
+                                        liveProgression = prog
+                                        liveLocator = loc
+                                        onProgressChanged(prog, loc)
+                                    },
+                                    onTableOfContentsLoaded = onTableOfContentsLoaded,
+                                    onDirectionDetected = onDirectionDetected,
+                                    onTap = onToggleControls,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         } else {
                             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                         }
@@ -440,38 +466,56 @@ fun DesktopReaderLayout(
                 )
             }
 
-            // Desktop Appearance & Typography Popover (Dropdown Dialog)
+            // Desktop Appearance & Typography Popover (Dropdown Dialog) or CBZ Settings Sheet
             if (showAppearancePopover) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { showAppearancePopover = false }
-                        )
-                ) {
-                    DesktopAppearancePopover(
-                        theme = state.theme,
-                        typography = state.typography,
-                        isScrollMode = state.isScrollMode,
-                        isTwoPageSpread = isTwoPageSpread,
-                        customFonts = customFonts,
-                        customThemes = customThemes,
-                        onThemeChange = onThemeChange,
-                        onTypographyChange = onTypographyChange,
-                        onScrollModeChange = onScrollModeChange,
-                        onTwoPageSpreadChange = { isTwoPageSpread = it },
+                if (state.book?.format == BookFormat.CBZ) {
+                    CbzSettingsSheet(
+                        isOpen = true,
+                        readingMode = state.cbzReadingMode,
+                        imageFit = state.cbzImageFit,
+                        keepScreenOn = state.keepScreenOn,
+                        volumeKeyNavigation = state.volumeKeyNavigation,
+                        orientationLock = state.orientationLock,
+                        onReadingModeChange = onCbzReadingModeChange,
+                        onImageFitChange = onCbzImageFitChange,
+                        onKeepScreenOnChange = onKeepScreenOnChange,
+                        onVolumeKeyNavigationChange = {},
+                        onOrientationLockChange = onOrientationLockChange,
                         onResetToDefaults = onResetToDefaults,
-                        onImportCustomFont = onImportCustomFont,
-                        onDeleteCustomFont = onDeleteCustomFont,
-                        onSaveCustomTheme = onSaveCustomTheme,
-                        onDeleteCustomTheme = onDeleteCustomTheme,
-                        onDismiss = { showAppearancePopover = false },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 56.dp, end = 20.dp)
+                        onDismiss = { showAppearancePopover = false }
                     )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { showAppearancePopover = false }
+                            )
+                    ) {
+                        DesktopAppearancePopover(
+                            theme = state.theme,
+                            typography = state.typography,
+                            isScrollMode = state.isScrollMode,
+                            isTwoPageSpread = isTwoPageSpread,
+                            customFonts = customFonts,
+                            customThemes = customThemes,
+                            onThemeChange = onThemeChange,
+                            onTypographyChange = onTypographyChange,
+                            onScrollModeChange = onScrollModeChange,
+                            onTwoPageSpreadChange = { isTwoPageSpread = it },
+                            onResetToDefaults = onResetToDefaults,
+                            onImportCustomFont = onImportCustomFont,
+                            onDeleteCustomFont = onDeleteCustomFont,
+                            onSaveCustomTheme = onSaveCustomTheme,
+                            onDeleteCustomTheme = onDeleteCustomTheme,
+                            onDismiss = { showAppearancePopover = false },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 56.dp, end = 20.dp)
+                        )
+                    }
                 }
             }
 

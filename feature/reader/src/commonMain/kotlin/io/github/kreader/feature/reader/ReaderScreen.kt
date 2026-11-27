@@ -49,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.ReaderKeyEventDispatcher
 import io.github.kreader.core.engine.TocItem
+import io.github.kreader.core.model.BookFormat
+import io.github.kreader.core.model.CbzImageFit
+import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
@@ -107,6 +110,9 @@ fun ReaderScreen(
     onOrientationLockChange: (OrientationLock) -> Unit = {},
     onDirectionDetected: (isRtl: Boolean) -> Unit = {},
     onPageCountLoaded: (Int) -> Unit = {},
+    onCbzMetadataLoaded: (pageCount: Int, isMangaRtl: Boolean?) -> Unit = { _, _ -> },
+    onCbzReadingModeChange: (CbzReadingMode) -> Unit = {},
+    onCbzImageFitChange: (CbzImageFit) -> Unit = {},
     onExportMarkdown: (suspend () -> String?)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -155,6 +161,9 @@ fun ReaderScreen(
             onKeepScreenOnChange = onKeepScreenOnChange,
             onOrientationLockChange = onOrientationLockChange,
             onDirectionDetected = onDirectionDetected,
+            onCbzMetadataLoaded = onCbzMetadataLoaded,
+            onCbzReadingModeChange = onCbzReadingModeChange,
+            onCbzImageFitChange = onCbzImageFitChange,
             onExportMarkdown = onExportMarkdown,
             modifier = modifier
         )
@@ -351,64 +360,91 @@ fun ReaderScreen(
                         )
                     }
 
-                    // Reading Viewport with padding so text never overlaps the HUD
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .widthIn(max = 840.dp)
-                            .padding(
-                                top = 40.dp + state.typography.paddingVertical.dp,
-                                bottom = 40.dp + state.typography.paddingVertical.dp
-                            )
-                    ) {
-                        // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
-                        val initialNavigatorLocator = remember(book.id, customFonts) {
+                    val isCbzBook = book.format == BookFormat.CBZ
+                    if (isCbzBook) {
+                        val initialCbzLocator = remember(book.id) {
                             liveLocator ?: book.lastLocator
                         }
-                        EpubNavigatorHost(
+                        CbzNavigatorHost(
                             book = book,
-                            initialLocator = initialNavigatorLocator,
-                            theme = state.theme,
-                            typography = state.typography,
-                            isScrollMode = state.isScrollMode,
+                            initialLocator = initialCbzLocator,
+                            readingMode = state.cbzReadingMode,
+                            imageFit = state.cbzImageFit,
                             controller = epubController,
-                            customFonts = customFonts,
-                            highlights = state.highlights,
-                            onHighlightClicked = { highlightId ->
-                                val h = state.highlights.find { it.id == highlightId }
-                                if (h != null) {
-                                    onHighlightClicked(h)
-                                }
-                            },
-                            onAddHighlight = { id, locator, colorHex ->
-                                val newHighlight = Highlight(
-                                    id = id,
-                                    bookId = book.id,
-                                    locator = locator,
-                                    colorHex = colorHex,
-                                    annotation = null,
-                                    createdTimestamp = Clock.System.now().toEpochMilliseconds(),
-                                    modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
-                                )
-                                onSaveHighlight(newHighlight)
-                            },
-                            onAddNoteRequested = { locator, selectedText ->
-                                onOpenAddNoteDialog(locator, selectedText)
-                            },
                             onProgressChanged = { prog, loc ->
                                 liveProgression = prog
                                 liveLocator = loc
                                 onProgressChanged(prog, loc)
                             },
                             onTableOfContentsLoaded = onTableOfContentsLoaded,
-                            onDirectionDetected = onDirectionDetected,
-                            onTap = onToggleControls,
                             onPageCountLoaded = { count ->
                                 totalPageCount = count
                                 onPageCountLoaded(count)
                             },
+                            onCbzMetadataLoaded = onCbzMetadataLoaded,
+                            onTap = onToggleControls,
                             modifier = Modifier.fillMaxSize()
                         )
+                    } else {
+                        // Reading Viewport with padding so text never overlaps the HUD
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .widthIn(max = 840.dp)
+                                .padding(
+                                    top = 40.dp + state.typography.paddingVertical.dp,
+                                    bottom = 40.dp + state.typography.paddingVertical.dp
+                                )
+                        ) {
+                            // Readium EPUB Navigator Host with Highlights, Annotations & Automatic Progression
+                            val initialNavigatorLocator = remember(book.id, customFonts) {
+                                liveLocator ?: book.lastLocator
+                            }
+                            EpubNavigatorHost(
+                                book = book,
+                                initialLocator = initialNavigatorLocator,
+                                theme = state.theme,
+                                typography = state.typography,
+                                isScrollMode = state.isScrollMode,
+                                controller = epubController,
+                                customFonts = customFonts,
+                                highlights = state.highlights,
+                                onHighlightClicked = { highlightId ->
+                                    val h = state.highlights.find { it.id == highlightId }
+                                    if (h != null) {
+                                        onHighlightClicked(h)
+                                    }
+                                },
+                                onAddHighlight = { id, locator, colorHex ->
+                                    val newHighlight = Highlight(
+                                        id = id,
+                                        bookId = book.id,
+                                        locator = locator,
+                                        colorHex = colorHex,
+                                        annotation = null,
+                                        createdTimestamp = Clock.System.now().toEpochMilliseconds(),
+                                        modifiedTimestamp = Clock.System.now().toEpochMilliseconds()
+                                    )
+                                    onSaveHighlight(newHighlight)
+                                },
+                                onAddNoteRequested = { locator, selectedText ->
+                                    onOpenAddNoteDialog(locator, selectedText)
+                                },
+                                onProgressChanged = { prog, loc ->
+                                    liveProgression = prog
+                                    liveLocator = loc
+                                    onProgressChanged(prog, loc)
+                                },
+                                onTableOfContentsLoaded = onTableOfContentsLoaded,
+                                onDirectionDetected = onDirectionDetected,
+                                onTap = onToggleControls,
+                                onPageCountLoaded = { count ->
+                                    totalPageCount = count
+                                    onPageCountLoaded(count)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             } else {
@@ -455,6 +491,7 @@ fun ReaderScreen(
             }
 
             // Top Bar Overlay (floating)
+            val isCbzBook = state.book?.format == BookFormat.CBZ
             AnimatedVisibility(
                 visible = state.isControlsVisible,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
@@ -465,6 +502,8 @@ fun ReaderScreen(
                     title = state.book?.title ?: "Reading",
                     chapterTitle = currentChapterTitle,
                     isBookmarked = state.isCurrentBookmarked,
+                    showSearch = !isCbzBook,
+                    isCbz = isCbzBook,
                     onBackClick = onBackClick,
                     onSearchClick = onSearchClick,
                     onBookmarkToggle = onBookmarkToggle,
@@ -569,30 +608,48 @@ fun ReaderScreen(
                 onDismiss = onDismissAddNoteDialog
             )
 
-            // Reading Settings Modal Sheet (Theme, Mode, Custom Fonts, Tashkeel Spacing)
-            ReaderSettingsSheet(
-                isOpen = state.isSettingsOpen,
-                theme = state.theme,
-                typography = state.typography,
-                isScrollMode = state.isScrollMode,
-                customFonts = customFonts,
-                customThemes = customThemes,
-                keepScreenOn = state.keepScreenOn,
-                volumeKeyNavigation = state.volumeKeyNavigation,
-                orientationLock = state.orientationLock,
-                onThemeChange = onThemeChange,
-                onTypographyChange = onTypographyChange,
-                onScrollModeChange = onScrollModeChange,
-                onResetToDefaults = onResetToDefaults,
-                onImportCustomFont = onImportCustomFont,
-                onDeleteCustomFont = onDeleteCustomFont,
-                onSaveCustomTheme = onSaveCustomTheme,
-                onDeleteCustomTheme = onDeleteCustomTheme,
-                onKeepScreenOnChange = onKeepScreenOnChange,
-                onVolumeKeyNavigationChange = onVolumeKeyNavigationChange,
-                onOrientationLockChange = onOrientationLockChange,
-                onDismiss = onDismissSettings
-            )
+            // Reading Settings Modal Sheet (dedicated CBZ sheet vs EPUB sheet)
+            if (isCbzBook) {
+                CbzSettingsSheet(
+                    isOpen = state.isSettingsOpen,
+                    readingMode = state.cbzReadingMode,
+                    imageFit = state.cbzImageFit,
+                    keepScreenOn = state.keepScreenOn,
+                    volumeKeyNavigation = state.volumeKeyNavigation,
+                    orientationLock = state.orientationLock,
+                    onReadingModeChange = onCbzReadingModeChange,
+                    onImageFitChange = onCbzImageFitChange,
+                    onKeepScreenOnChange = onKeepScreenOnChange,
+                    onVolumeKeyNavigationChange = onVolumeKeyNavigationChange,
+                    onOrientationLockChange = onOrientationLockChange,
+                    onResetToDefaults = onResetToDefaults,
+                    onDismiss = onDismissSettings
+                )
+            } else {
+                ReaderSettingsSheet(
+                    isOpen = state.isSettingsOpen,
+                    theme = state.theme,
+                    typography = state.typography,
+                    isScrollMode = state.isScrollMode,
+                    customFonts = customFonts,
+                    customThemes = customThemes,
+                    keepScreenOn = state.keepScreenOn,
+                    volumeKeyNavigation = state.volumeKeyNavigation,
+                    orientationLock = state.orientationLock,
+                    onThemeChange = onThemeChange,
+                    onTypographyChange = onTypographyChange,
+                    onScrollModeChange = onScrollModeChange,
+                    onResetToDefaults = onResetToDefaults,
+                    onImportCustomFont = onImportCustomFont,
+                    onDeleteCustomFont = onDeleteCustomFont,
+                    onSaveCustomTheme = onSaveCustomTheme,
+                    onDeleteCustomTheme = onDeleteCustomTheme,
+                    onKeepScreenOnChange = onKeepScreenOnChange,
+                    onVolumeKeyNavigationChange = onVolumeKeyNavigationChange,
+                    onOrientationLockChange = onOrientationLockChange,
+                    onDismiss = onDismissSettings
+                )
+            }
 
             SnackbarHost(
                 hostState = snackbarHostState,

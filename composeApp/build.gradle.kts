@@ -30,6 +30,7 @@ kotlin {
             implementation(project(":core:database"))
             implementation(project(":core:engine-api"))
             implementation(project(":engine:epub-adapter"))
+            implementation(project(":engine:cbz-adapter"))
             implementation(project(":feature:library"))
             implementation(project(":feature:reader"))
 

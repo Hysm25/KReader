@@ -1,13 +1,17 @@
 # Feature Reader
 
 ## Overview
-Provides the multiplatform EPUB reading viewport, Readium navigator hosting on Android, native Compose Block AST reader hosting on Desktop, floating controls overlay, typography and theme customization sheets, table of contents navigation, full-text search, and annotation management.
+Provides the multiplatform EPUB and CBZ reading viewports, Readium navigator hosting on Android, native Compose Block AST EPUB reader hosting on Desktop, native Jetpack Compose CBZ comic/manga/webtoon reader hosting (`CbzNavigatorHost`), floating controls overlay, typography/theme/comic customization sheets, table of contents navigation, full-text search, and annotation management.
 
 ## Interface
-- `ReaderViewModel`: Presentation state holder orchestrating reading sessions, bookmarks, highlights, notes, search queries, TOC, and sparse per-property typography/theme overrides (`[ReaderViewModel.kt:ReaderViewModel]`).
+- `ReaderViewModel`: Presentation state holder orchestrating reading sessions, bookmarks, highlights, notes, search queries, TOC, CBZ reading modes/image fit, and sparse per-property typography/theme/CBZ overrides (`[ReaderViewModel.kt:ReaderViewModel]`).
 - `rememberReaderViewModel`: Composable factory hook creating and retaining the `ReaderViewModel` instance (`[ReaderViewModel.kt:rememberReaderViewModel]`).
-- `ReaderScreen`: Top-level Composable scaffolding the reading container (with tablet responsive centering up to 840dp), floating top bar displaying book and current chapter title, bottom scrubber bar, settings sheets, search drawer, and note dialogs (`[ReaderScreen.kt:ReaderScreen]`).
-- `ReaderUiState`: Immutable state model holding reading session data, controls visibility, drawer states, search results, themes, and current locators (`[ReaderUiState.kt:ReaderUiState]`).
+- `ReaderScreen`: Top-level Composable scaffolding the reading container (EPUB padded up to 840dp; CBZ full-bleed viewport), floating top bar displaying book and current chapter/page title, bottom scrubber bar, EPUB/CBZ settings sheets, search drawer, and note dialogs (`[ReaderScreen.kt:ReaderScreen]`).
+- `ReaderUiState`: Immutable state model holding reading session data, controls visibility, drawer states, search results, themes, CBZ mode/fit, and current locators (`[ReaderUiState.kt:ReaderUiState]`).
+- `CbzNavigatorHost`: Multiplatform Compose CBZ comic, manga, and webtoon reader host (`[CbzNavigatorHost.kt:CbzNavigatorHost]`).
+  - **Android**: Opens `.cbz` archives via `AndroidCbzArchive` + `CbzPageLoader`, supports Manga RTL (`HorizontalPager` with `reverseLayout = true`), Comic LTR (`HorizontalPager`), and Webtoon (`LazyColumn` continuous zero-gap vertical strip), with non-conflicting pinch-to-zoom and double-tap zoom (`1x <-> 2.5x`).
+  - **Desktop (Linux/JVM)**: Renders CBZ pages via `DesktopCbzArchive` and Skia `ImageBitmap` decoding across all three reading modes.
+- `CbzSettingsSheet`: Dedicated modal settings sheet for `.cbz` publications (Reading Mode: Manga RTL / Comic LTR / Webtoon, Image Fit: Fit Screen / Fit Width, Orientation Lock, Keep Screen On, Volume Key Navigation) (`[CbzSettingsSheet.kt:CbzSettingsSheet]`).
 - `EpubNavigatorHost`: Multiplatform Compose bridge hosting the platform EPUB navigator (`[EpubNavigatorHost.kt:EpubNavigatorHost]`).
   - **Android**: Embeds Readium's `EpubNavigatorFragment` inside an `AndroidView`, submits official `EpubPreferences`, and resolves the book-wide page count from `Publication.positions()`.
   - **Desktop (Linux/JVM)**: Embeds an in-house pure Compose Multiplatform reading viewport supporting continuous vertical scrolling, virtual single/dual-page pagination with `TextMeasurer`, `.kreader/` vault theme styling, custom font loading, native RTL/LTR Arabic BiDi rendering, highlight creation (`TextQuoteSelector`), TOC jumps, and in-book search.
@@ -32,7 +36,8 @@ Provides the multiplatform EPUB reading viewport, Readium navigator hosting on A
 - `[EpubNavigatorHost.desktop.kt:DesktopLayout]`: Caches block measurements via `TextMeasurer` asynchronously on `Dispatchers.Default` to prevent UI thread layout freezing on window resize.
 - `[EpubNavigatorHost.desktop.kt:RtlNavigation]`: Automatically mirrors keyboard arrow navigation when reading RTL Arabic text (Left Arrow advances page; Right Arrow returns to previous page).
 - `[ReaderControls.kt:ReaderBottomBar]`: Top and bottom controls render in floating overlays with zero layout push; the bottom scrubber displays a concise LTR-isolated page/percentage pill (`<page> / <total>` or `<pct>%`) that never truncates or flips in RTL UI.
-- `[ReaderScreen.kt:ReaderScreen]`: Hardware volume keys intercept page flips only when `volumeKeyNavigation` is enabled in preferences.
+- `[ReaderScreen.kt:ReaderScreen]`: Hardware volume keys intercept page flips only when `volumeKeyNavigation` is enabled in preferences; routes `BookFormat.CBZ` to `CbzNavigatorHost` and `CbzSettingsSheet` without altering EPUB flows.
+- `[CbzNavigatorHost.android.kt]`: Wraps `HorizontalPager` in `LayoutDirection.Ltr` and controls Manga RTL solely via `reverseLayout = true` so system RTL locales never double-flip page turns; gesture handling leaves single-finger swipes untouched at `1x` zoom so pager/scroll physics never conflict with zoom/pan.
 
 ## Side Effects
 - `[EpubNavigatorHost.android.kt]`: Mounts an Android `FragmentContainerView`, hosts the Readium `EpubNavigatorFragment`, submits `EpubPreferences`, and registers official selection, pagination and decoration listeners.

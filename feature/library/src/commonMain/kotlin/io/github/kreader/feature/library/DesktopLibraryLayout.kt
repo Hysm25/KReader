@@ -83,6 +83,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.feature.library.filepicker.rememberFilePickerLauncher
 import io.github.kreader.feature.library.filepicker.rememberFolderPickerLauncher
 import io.github.kreader.feature.library.ui.rememberCoverPainter
@@ -105,6 +106,7 @@ fun DesktopLibraryLayout(
     onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
     onResetBookProgress: (Book) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit,
+    onFilterChanged: (BookFilter) -> Unit = {},
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
     onExportBookToMarkdown: (suspend (Book) -> String?)? = null,
     modifier: Modifier = Modifier
@@ -143,6 +145,8 @@ fun DesktopLibraryLayout(
                 totalCount = state.books.size,
                 searchQuery = state.searchQuery,
                 onSearchQueryChanged = onSearchQueryChanged,
+                selectedFilter = state.selectedFilter,
+                onFilterChanged = onFilterChanged,
                 selectedSortOrder = state.selectedSortOrder,
                 onSortOrderChanged = onSortOrderChanged,
                 onImportBook = filePickerLauncher,
@@ -175,7 +179,12 @@ fun DesktopLibraryLayout(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (state.searchQuery.isNotBlank()) "No books match \"${state.searchQuery}\"" else "No EPUB books found in vault",
+                            text = when {
+                                state.searchQuery.isNotBlank() -> "No books match \"${state.searchQuery}\""
+                                state.selectedFilter == BookFilter.COMICS -> "No CBZ comics found in vault"
+                                state.selectedFilter == BookFilter.BOOKS -> "No EPUB books found in vault"
+                                else -> "No EPUB or CBZ files found in vault"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -185,11 +194,15 @@ fun DesktopLibraryLayout(
                             OutlinedButton(onClick = { onSearchQueryChanged("") }) {
                                 Text("Clear Search")
                             }
+                        } else if (state.selectedFilter != BookFilter.ALL) {
+                            OutlinedButton(onClick = { onFilterChanged(BookFilter.ALL) }) {
+                                Text("Show All")
+                            }
                         } else {
                             FilledTonalButton(onClick = filePickerLauncher) {
                                 Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Import EPUB File")
+                                Text("Import EPUB / CBZ File")
                             }
                         }
                     }
@@ -290,6 +303,8 @@ private fun DesktopLibraryHeader(
     totalCount: Int,
     searchQuery: String,
     onSearchQueryChanged: (String) -> Unit,
+    selectedFilter: BookFilter,
+    onFilterChanged: (BookFilter) -> Unit,
     selectedSortOrder: BookSortOrder,
     onSortOrderChanged: (BookSortOrder) -> Unit,
     onImportBook: () -> Unit,
@@ -419,12 +434,24 @@ private fun DesktopLibraryHeader(
                 }
             }
 
-            // Right: Desktop Actions & Sort Menu
+            // Right: Format Filter, Desktop Actions & Sort Menu
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(start = 16.dp)
             ) {
+                listOf(
+                    BookFilter.ALL to "All",
+                    BookFilter.BOOKS to "Books",
+                    BookFilter.COMICS to "Comics"
+                ).forEach { (filterValue, label) ->
+                    FilterChip(
+                        selected = selectedFilter == filterValue,
+                        onClick = { onFilterChanged(filterValue) },
+                        label = { Text(label, fontSize = 12.sp) }
+                    )
+                }
+
                 // Sorting dropdown
                 var sortMenuExpanded by remember { mutableStateOf(false) }
                 val sortLabel = when (selectedSortOrder) {
@@ -473,7 +500,7 @@ private fun DesktopLibraryHeader(
                     }
                 }
 
-                // Import EPUB Button
+                // Import File Button
                 FilledTonalButton(
                     onClick = onImportBook,
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
@@ -485,7 +512,7 @@ private fun DesktopLibraryHeader(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Import EPUB", style = MaterialTheme.typography.labelLarge)
+                    Text("Import", style = MaterialTheme.typography.labelLarge)
                 }
 
                 // Change Vault Folder
@@ -610,7 +637,7 @@ private fun DesktopBookCard(
                     }
                 }
 
-                // Reading Progress Badge & 3-dots Context Menu Button
+                // Reading Progress & Format Badges + 3-dots Context Menu Button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -619,22 +646,42 @@ private fun DesktopBookCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val pct = (book.totalProgression * 100).toInt()
-                    if (pct > 0) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color.Black.copy(alpha = 0.7f)
+                            color = if (book.format == BookFormat.CBZ) {
+                                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.9f)
+                            } else {
+                                Color.Black.copy(alpha = 0.65f)
+                            }
                         ) {
                             Text(
-                                text = if (pct >= 100) "Completed" else "$pct%",
-                                color = Color.White,
+                                text = book.format.name,
+                                color = if (book.format == BookFormat.CBZ) {
+                                    MaterialTheme.colorScheme.onTertiaryContainer
+                                } else {
+                                    Color.White
+                                },
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
-                    } else {
-                        Spacer(modifier = Modifier.size(1.dp))
+                        val pct = (book.totalProgression * 100).toInt()
+                        if (pct > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color.Black.copy(alpha = 0.7f)
+                            ) {
+                                Text(
+                                    text = if (pct >= 100) "Completed" else "$pct%",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
 
                     // Card context menu toggle
@@ -823,7 +870,7 @@ private fun DesktopVaultOnboarding(
                 ) {
                     Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Open EPUB File Directly")
+                    Text("Open EPUB / CBZ File Directly")
                 }
             }
         }

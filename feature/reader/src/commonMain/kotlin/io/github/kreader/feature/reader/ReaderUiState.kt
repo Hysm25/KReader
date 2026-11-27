@@ -5,6 +5,8 @@ import io.github.kreader.core.engine.ReaderEngineState
 import io.github.kreader.core.engine.TocItem
 import io.github.kreader.core.model.Book
 import io.github.kreader.core.model.Bookmark
+import io.github.kreader.core.model.CbzImageFit
+import io.github.kreader.core.model.CbzReadingMode
 import io.github.kreader.core.model.CustomFont
 import io.github.kreader.core.model.CustomTheme
 import io.github.kreader.core.model.Highlight
@@ -51,7 +53,9 @@ data class ReaderUiState(
     val orientationLock: OrientationLock = OrientationLock.AUTO,
     val customFonts: List<CustomFont> = emptyList(),
     val customThemes: List<CustomTheme> = emptyList(),
-    val totalPageCount: Int = 0
+    val totalPageCount: Int = 0,
+    val cbzReadingMode: CbzReadingMode = CbzReadingMode.COMIC_LTR,
+    val cbzImageFit: CbzImageFit = CbzImageFit.FIT_SCREEN
 ) {
     val isCurrentBookmarked: Boolean
         get() = findMatchingBookmark(bookmarks, currentLocator, totalProgression) != null

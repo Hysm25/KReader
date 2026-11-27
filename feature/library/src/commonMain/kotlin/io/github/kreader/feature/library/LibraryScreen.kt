@@ -1,5 +1,6 @@
 package io.github.kreader.feature.library
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,11 +17,13 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -37,11 +40,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -67,6 +71,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.ExternalBookOpener
+import io.github.kreader.feature.library.filepicker.rememberFilePickerLauncher
 import io.github.kreader.feature.library.filepicker.rememberFolderPickerLauncher
 import io.github.kreader.feature.library.util.rememberBookShareLauncher
 
@@ -83,6 +89,7 @@ fun LibraryScreen(
     onDeleteBooks: (List<Book>) -> Unit = { books -> books.forEach(onDeleteBook) },
     onResetBookProgress: (Book) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit,
+    onFilterChanged: (BookFilter) -> Unit = {},
     onSortOrderChanged: (BookSortOrder) -> Unit = {},
     onExportBookToMarkdown: (suspend (Book) -> String?)? = null,
     modifier: Modifier = Modifier
@@ -90,6 +97,9 @@ fun LibraryScreen(
     val scope = rememberCoroutineScope()
     val folderPickerLauncher = rememberFolderPickerLauncher { uriOrPath ->
         onSelectVaultFolder(uriOrPath)
+    }
+    val filePickerLauncher = rememberFilePickerLauncher { bookSource ->
+        ExternalBookOpener.open(bookSource)
     }
     val bookShareLauncher = rememberBookShareLauncher()
 
@@ -105,6 +115,7 @@ fun LibraryScreen(
             onDeleteBooks = onDeleteBooks,
             onResetBookProgress = onResetBookProgress,
             onSearchQueryChanged = onSearchQueryChanged,
+            onFilterChanged = onFilterChanged,
             onSortOrderChanged = onSortOrderChanged,
             onExportBookToMarkdown = onExportBookToMarkdown,
             modifier = modifier
@@ -136,6 +147,7 @@ fun LibraryScreen(
     if (state.vaultPath == null) {
         VaultOnboardingView(
             onSelectFolder = folderPickerLauncher,
+            onOpenFile = filePickerLauncher,
             modifier = modifier
         )
         return
@@ -144,6 +156,20 @@ fun LibraryScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            if (!isSelectionMode) {
+                FloatingActionButton(
+                    onClick = filePickerLauncher,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = "Import EPUB or CBZ file"
+                    )
+                }
+            }
+        },
         topBar = {
             if (isSelectionMode) {
                 TopAppBar(
@@ -332,66 +358,95 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Sort bar (redundant All / EPUB chips removed per requirement 5)
+            // Format filter chips (All / Books / Comics) + Sort menu
             if (state.books.isNotEmpty()) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    val sortLabel = when (state.selectedSortOrder) {
-                        BookSortOrder.RECENTLY_READ -> "Recent"
-                        BookSortOrder.RECENTLY_ADDED -> "Added"
-                        BookSortOrder.TITLE -> "Title"
-                    }
-                    var sortMenuExpanded by remember { mutableStateOf(false) }
-                    Box {
-                        FilterChip(
-                            selected = true,
-                            onClick = { sortMenuExpanded = true },
-                            label = { Text(sortLabel) },
-                            trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.ArrowDropDown,
-                                    contentDescription = null
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val filterOptions = listOf(
+                                BookFilter.ALL to "All",
+                                BookFilter.BOOKS to "Books",
+                                BookFilter.COMICS to "Comics"
+                            )
+                            for ((filterValue, label) in filterOptions) {
+                                FilterChip(
+                                    selected = state.selectedFilter == filterValue,
+                                    onClick = { onFilterChanged(filterValue) },
+                                    label = { Text(label) }
                                 )
                             }
-                        )
-                        DropdownMenu(
-                            expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Recently Read") },
-                                onClick = {
-                                    onSortOrderChanged(BookSortOrder.RECENTLY_READ)
-                                    sortMenuExpanded = false
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        val sortLabel = when (state.selectedSortOrder) {
+                            BookSortOrder.RECENTLY_READ -> "Recent"
+                            BookSortOrder.RECENTLY_ADDED -> "Added"
+                            BookSortOrder.TITLE -> "Title"
+                        }
+                        var sortMenuExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            FilterChip(
+                                selected = true,
+                                onClick = { sortMenuExpanded = true },
+                                label = { Text(sortLabel) },
+                                trailingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.ArrowDropDown,
+                                        contentDescription = null
+                                    )
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Recently Added") },
-                                onClick = {
-                                    onSortOrderChanged(BookSortOrder.RECENTLY_ADDED)
-                                    sortMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Title") },
-                                onClick = {
-                                    onSortOrderChanged(BookSortOrder.TITLE)
-                                    sortMenuExpanded = false
-                                }
-                            )
+                            DropdownMenu(
+                                expanded = sortMenuExpanded,
+                                onDismissRequest = { sortMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Recently Read") },
+                                    onClick = {
+                                        onSortOrderChanged(BookSortOrder.RECENTLY_READ)
+                                        sortMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Recently Added") },
+                                    onClick = {
+                                        onSortOrderChanged(BookSortOrder.RECENTLY_ADDED)
+                                        sortMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Title") },
+                                    onClick = {
+                                        onSortOrderChanged(BookSortOrder.TITLE)
+                                        sortMenuExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
 
-                    val bookCountText = "${state.books.size} ${if (state.books.size == 1) "book" else "books"}"
+                    val countShown = state.displayBooks.size
+                    val countText = "$countShown ${if (countShown == 1) "item" else "items"}"
                     val headerText = if (!state.vaultName.isNullOrBlank()) {
-                        "${state.vaultName} • $bookCountText"
+                        "${state.vaultName} • $countText"
                     } else {
-                        bookCountText
+                        countText
                     }
                     Text(
                         text = headerText,
@@ -422,14 +477,14 @@ fun LibraryScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "No EPUBs in \"${state.vaultName ?: "this folder"}\"",
+                                text = "No books or comics in \"${state.vaultName ?: "this folder"}\"",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Add .epub files into this folder on your device and tap Refresh.",
+                                text = "Add .epub or .cbz files into this folder on your device and tap Refresh.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
@@ -472,6 +527,32 @@ fun LibraryScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             TextButton(onClick = { onSearchQueryChanged("") }) {
                                 Text("Clear Search")
+                            }
+                        }
+                    }
+                    state.displayBooks.isEmpty() && state.selectedFilter != BookFilter.ALL -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.MenuBook,
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            val filterName = if (state.selectedFilter == BookFilter.COMICS) "comics" else "books"
+                            Text(
+                                text = "No $filterName in this vault",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = { onFilterChanged(BookFilter.ALL) }) {
+                                Text("Show All")
                             }
                         }
                     }
@@ -529,10 +610,10 @@ fun LibraryScreen(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Delete ${selectedBookIds.size} Books from Vault?") },
+            title = { Text("Delete ${selectedBookIds.size} Items from Vault?") },
             text = {
                 Text(
-                    "This will permanently delete the selected ${selectedBookIds.size} EPUB file(s) from your books folder, along with their reading progress and annotations."
+                    "This will permanently delete the selected ${selectedBookIds.size} file(s) from your books folder, along with their reading progress and annotations."
                 )
             },
             confirmButton = {
@@ -560,6 +641,7 @@ fun LibraryScreen(
 @Composable
 fun VaultOnboardingView(
     onSelectFolder: () -> Unit,
+    onOpenFile: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -602,7 +684,7 @@ fun VaultOnboardingView(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "KReader works directly with your books folder like Obsidian. Choose a folder containing your EPUBs — your settings, progress, and notes will be preserved inside a .kreader/ folder right beside your books.",
+                text = "KReader works directly with your books folder like Obsidian. Choose a folder containing your EPUBs and CBZ comics — your settings, progress, and notes will be preserved inside a .kreader/ folder right beside your books.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -627,6 +709,25 @@ fun VaultOnboardingView(
                     text = "Choose Books Folder",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = onOpenFile,
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Open EPUB / CBZ File",
+                    style = MaterialTheme.typography.titleSmall
                 )
             }
         }

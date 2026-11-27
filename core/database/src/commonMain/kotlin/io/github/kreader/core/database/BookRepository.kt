@@ -222,22 +222,20 @@ class JsonVaultBookRepository(
     }
 
     private suspend fun refreshVaultInternal() = withContext(ioDispatcher) {
-        val epubFiles = vaultStorage.listEpubs()
+        val vaultFiles = vaultStorage.listBooks()
         val currentWorkspace = _workspace.value.books
         val existingBooksMap = _books.value.associateBy { it.id }
 
-        val newBooks = epubFiles.map { epub ->
-            val relativePath = epub.relativePath
+        val newBooks = vaultFiles.map { file ->
+            val relativePath = file.relativePath
             val existing = existingBooksMap[relativePath]
             val progressRecord = currentWorkspace[relativePath]
 
-            val cleanBase = relativePath.removeSuffix(".epub").removeSuffix(".EPUB").replace('/', '_').replace('\\', '_')
+            val cleanBase = coverCacheBaseName(relativePath)
             val coverFileName = "$cleanBase.jpg"
             val cachedCover = existing?.coverPath ?: vaultStorage.getCoverPath(coverFileName)
 
-            val cleanTitle = existing?.title ?: epub.displayName
-                .removeSuffix(".epub")
-                .removeSuffix(".EPUB")
+            val cleanTitle = existing?.title ?: stripBookExtension(file.displayName)
                 .replace('_', ' ')
 
             Book(
@@ -246,13 +244,15 @@ class JsonVaultBookRepository(
                 author = existing?.author,
                 description = existing?.description,
                 coverPath = cachedCover,
-                format = BookFormat.EPUB,
-                source = epub.source,
-                fileSizeBytes = epub.fileSizeBytes,
+                format = file.format,
+                source = file.source,
+                fileSizeBytes = file.fileSizeBytes,
                 lastReadTimestamp = progressRecord?.lastReadTimestamp ?: existing?.lastReadTimestamp,
-                addedTimestamp = epub.lastModified.takeIf { it > 0L } ?: existing?.addedTimestamp ?: 0L,
+                addedTimestamp = file.lastModified.takeIf { it > 0L } ?: existing?.addedTimestamp ?: 0L,
                 totalProgression = progressRecord?.totalProgression ?: existing?.totalProgression ?: 0f,
-                lastLocator = progressRecord?.lastLocator ?: existing?.lastLocator
+                lastLocator = progressRecord?.lastLocator ?: existing?.lastLocator,
+                pageCount = existing?.pageCount,
+                isManga = existing?.isManga
             )
         }
 
@@ -323,10 +323,10 @@ class JsonVaultBookRepository(
         saveWorkspaceJob?.cancel()
 
         // 1. Delete physical file from vault
-        vaultStorage.deleteEpub(id)
+        vaultStorage.deleteBookFile(id)
 
         // 2. Delete cover thumbnail
-        val cleanBase = id.removeSuffix(".epub").removeSuffix(".EPUB").replace('/', '_').replace('\\', '_')
+        val cleanBase = coverCacheBaseName(id)
         val coverFileName = "$cleanBase.jpg"
         vaultStorage.deleteCover(coverFileName)
 
@@ -491,7 +491,9 @@ class JsonVaultBookRepository(
                 brightness = preferences.brightness.takeIf { it != global.brightness },
                 volumeKeyNavigation = preferences.volumeKeyNavigation.takeIf { it != global.volumeKeyNavigation },
                 keepScreenOn = preferences.keepScreenOn.takeIf { it != global.keepScreenOn },
-                orientationLock = preferences.orientationLock.takeIf { it != global.orientationLock }
+                orientationLock = preferences.orientationLock.takeIf { it != global.orientationLock },
+                cbzReadingMode = preferences.cbzReadingMode.takeIf { it != global.cbzReadingMode },
+                cbzImageFit = preferences.cbzImageFit.takeIf { it != global.cbzImageFit }
             )
             updateBookPreferencesOverride(bookId) { override.takeUnless { it.isEmpty() } }
         } else {
@@ -567,8 +569,12 @@ class JsonVaultBookRepository(
         sb.appendLine("**Reading Progress:** $progPct")
         sb.appendLine()
 
-        // Extract and include full book chapters in spine reading order
-        val fullBookContent = vaultStorage.extractEpubTextContent(book.source)
+        // Extract and include full book chapters in spine reading order for EPUBs
+        val fullBookContent = if (book.format == BookFormat.EPUB) {
+            vaultStorage.extractEpubTextContent(book.source)
+        } else {
+            null
+        }
         if (!fullBookContent.isNullOrBlank()) {
             sb.appendLine(fullBookContent)
             sb.appendLine()

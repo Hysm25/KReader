@@ -14,10 +14,10 @@ actual class VaultStorage {
     actual fun getActiveVault(): String? = _activeVaultUriOrPath.value
     actual fun setActiveVault(uriOrPath: String?) { _activeVaultUriOrPath.value = uriOrPath }
     actual fun getVaultName(): String? = null
-    actual suspend fun listEpubs(): List<VaultEpubFile> = emptyList()
+    actual suspend fun listBooks(): List<VaultBookFile> = emptyList()
     actual suspend fun readConfig(fileName: String): String? = null
     actual suspend fun writeConfig(fileName: String, content: String) {}
-    actual suspend fun deleteEpub(relativePath: String): Boolean = false
+    actual suspend fun deleteBookFile(relativePath: String): Boolean = false
     actual suspend fun saveCover(coverName: String, bytes: ByteArray): String? = null
     actual suspend fun cacheExtractedCover(relativePath: String, localCoverPath: String): String? = null
     actual suspend fun getCoverPath(coverName: String): String? = null

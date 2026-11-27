@@ -83,6 +83,7 @@ fun App() {
                     onDeleteBooks = { books -> libraryViewModel.deleteBooks(books) },
                     onResetBookProgress = { book -> libraryViewModel.resetBookProgress(book) },
                     onSearchQueryChanged = { query -> libraryViewModel.onSearchQueryChanged(query) },
+                    onFilterChanged = { filter -> libraryViewModel.onFilterChanged(filter) },
                     onSortOrderChanged = { sort -> libraryViewModel.onSortOrderChanged(sort) },
                     onExportBookToMarkdown = { book -> bookRepository.exportBookToMarkdown(book.id) }
                 )
@@ -209,6 +210,9 @@ fun App() {
                     onImportCustomFont = { font -> readerViewModel.importCustomFont(font) },
                     onDeleteCustomFont = { name -> readerViewModel.deleteCustomFont(name) },
                     onDirectionDetected = { isRtl -> readerViewModel.onDirectionDetected(isRtl) },
+                    onCbzMetadataLoaded = { count, isMangaRtl -> readerViewModel.onCbzMetadataLoaded(count, isMangaRtl) },
+                    onCbzReadingModeChange = { mode -> readerViewModel.changeCbzReadingMode(mode) },
+                    onCbzImageFitChange = { fit -> readerViewModel.changeCbzImageFit(fit) },
                     onExportMarkdown = {
                         readerViewModel.exportMarkdown()
                     }

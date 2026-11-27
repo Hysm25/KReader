@@ -63,17 +63,22 @@ class LibraryViewModel(
 
                 // Asynchronously extract metadata for books missing author or cover (bounded concurrency & once per session)
                 for (book in allBooks) {
-                    if ((book.author == null || book.coverPath == null) && !extractingBookIds.contains(book.id)) {
+                    val needsMetadata = book.author == null || book.coverPath == null ||
+                        (book.format == BookFormat.CBZ && book.pageCount == null)
+                    if (needsMetadata && !extractingBookIds.contains(book.id)) {
                         extractingBookIds.add(book.id)
                         scope.launch(Dispatchers.IO) {
                             extractionSemaphore.withPermit {
                                 runCatching {
                                     val meta = metadataExtractor.extract(book.source, book.id)
+                                    val resolvedAuthor = meta.author ?: book.author ?: if (book.format == BookFormat.CBZ) "" else "Unknown Author"
                                     val updated = book.copy(
                                         title = meta.title.ifBlank { book.title },
-                                        author = meta.author ?: book.author ?: "Unknown Author",
+                                        author = resolvedAuthor,
                                         description = meta.description ?: book.description,
-                                        coverPath = meta.coverPath ?: book.coverPath
+                                        coverPath = meta.coverPath ?: book.coverPath,
+                                        pageCount = meta.pageCount ?: book.pageCount,
+                                        isManga = meta.isManga ?: book.isManga
                                     )
                                     bookRepository.upsertBook(updated)
                                 }
@@ -149,7 +154,9 @@ class LibraryViewModel(
                     source = metadata.localSource ?: source,
                     fileSizeBytes = metadata.fileSizeBytes,
                     addedTimestamp = Clock.System.now().toEpochMilliseconds(),
-                    totalProgression = 0f
+                    totalProgression = 0f,
+                    pageCount = metadata.pageCount,
+                    isManga = metadata.isManga
                 )
                 bookRepository.upsertBook(book)
                 onImported?.invoke(book)
@@ -187,7 +194,19 @@ class LibraryViewModel(
     fun resetBookProgress(book: Book) {
         scope.launch {
             runCatching {
-                val initialLoc = io.github.kreader.core.model.Locator.initial("content.xhtml", "application/epub+zip")
+                val initialLoc = when (book.format) {
+                    BookFormat.CBZ -> io.github.kreader.core.model.Locator(
+                        href = "page_0",
+                        type = BookFormat.CBZ.mimeType,
+                        title = "Page 1",
+                        locations = io.github.kreader.core.model.Locator.Locations(
+                            progression = 0f,
+                            position = 1,
+                            totalProgression = 0f
+                        )
+                    )
+                    BookFormat.EPUB -> io.github.kreader.core.model.Locator.initial("content.xhtml", BookFormat.EPUB.mimeType)
+                }
                 bookRepository.updateProgress(book.id, 0f, initialLoc, Clock.System.now().toEpochMilliseconds())
             }
         }
@@ -202,7 +221,8 @@ class LibraryViewModel(
         val filtered = books.filter { book ->
             val matchesFilter = when (filter) {
                 BookFilter.ALL -> true
-                BookFilter.EPUB -> book.format == BookFormat.EPUB
+                BookFilter.BOOKS -> book.format == BookFormat.EPUB
+                BookFilter.COMICS -> book.format == BookFormat.CBZ
             }
             val matchesQuery = if (query.isBlank()) {
                 true

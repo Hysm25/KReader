@@ -10,9 +10,10 @@ import javax.swing.JFileChooser
 @Composable
 actual fun rememberFilePickerLauncher(onFilePicked: (BookSource) -> Unit): () -> Unit {
     return {
-        val dialog = FileDialog(null as Frame?, "Select EPUB", FileDialog.LOAD)
+        val dialog = FileDialog(null as Frame?, "Select EPUB or CBZ", FileDialog.LOAD)
         dialog.setFilenameFilter { _, name ->
-            name.lowercase().endsWith(".epub")
+            val lower = name.lowercase()
+            lower.endsWith(".epub") || lower.endsWith(".cbz")
         }
         dialog.isVisible = true
         val dir = dialog.directory

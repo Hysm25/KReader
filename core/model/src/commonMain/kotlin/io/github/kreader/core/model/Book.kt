@@ -15,5 +15,7 @@ data class Book(
     val lastReadTimestamp: Long? = null,
     val addedTimestamp: Long,
     val totalProgression: Float = 0f,
-    val lastLocator: Locator? = null
+    val lastLocator: Locator? = null,
+    val pageCount: Int? = null,
+    val isManga: Boolean? = null
 )

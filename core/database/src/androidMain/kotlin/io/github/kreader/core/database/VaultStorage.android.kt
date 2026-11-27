@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.documentfile.provider.DocumentFile
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.CustomFont
 import kotlinx.coroutines.Dispatchers
@@ -144,13 +145,13 @@ actual class VaultStorage(private val context: Context) {
         }
     }
 
-    actual suspend fun listEpubs(): List<VaultEpubFile> = withContext(Dispatchers.IO) {
+    actual suspend fun listBooks(): List<VaultBookFile> = withContext(Dispatchers.IO) {
         val root = getRootDoc() ?: return@withContext emptyList()
         val kreaderDir = root.findFile(".kreader")
         if (kreaderDir != null) {
             cleanupStrayDuplicates(kreaderDir)
         }
-        val results = mutableListOf<VaultEpubFile>()
+        val results = mutableListOf<VaultBookFile>()
         scanDocumentTree(root, "", results)
         results
     }
@@ -158,7 +159,7 @@ actual class VaultStorage(private val context: Context) {
     private fun scanDocumentTree(
         dir: DocumentFile,
         parentPath: String,
-        results: MutableList<VaultEpubFile>
+        results: MutableList<VaultBookFile>
     ) {
         val children = dir.listFiles()
         for (child in children) {
@@ -167,16 +168,19 @@ actual class VaultStorage(private val context: Context) {
                 if (name == ".kreader") continue
                 val subPath = if (parentPath.isEmpty()) name else "$parentPath/$name"
                 scanDocumentTree(child, subPath, results)
-            } else if (child.isFile && name.endsWith(".epub", ignoreCase = true)) {
+            } else if (child.isFile) {
+                val ext = name.substringAfterLast('.', "")
+                val format = BookFormat.fromExtension(ext) ?: continue
                 val relPath = if (parentPath.isEmpty()) name else "$parentPath/$name"
                 results.add(
-                    VaultEpubFile(
+                    VaultBookFile(
                         relativePath = relPath,
                         displayName = name,
                         source = BookSource.ContentUri(
                             uriString = child.uri.toString(),
                             displayName = name
                         ),
+                        format = format,
                         fileSizeBytes = child.length(),
                         lastModified = child.lastModified()
                     )
@@ -240,7 +244,7 @@ actual class VaultStorage(private val context: Context) {
         }
     }
 
-    actual suspend fun deleteEpub(relativePath: String): Boolean = withContext(Dispatchers.IO) {
+    actual suspend fun deleteBookFile(relativePath: String): Boolean = withContext(Dispatchers.IO) {
         val root = getRootDoc() ?: return@withContext false
         val parts = relativePath.split("/")
         var current: DocumentFile = root
@@ -256,7 +260,7 @@ actual class VaultStorage(private val context: Context) {
             val localFile = File(localCoverPath)
             if (!localFile.exists() || localFile.length() == 0L) return@withContext null
             val ext = localFile.extension.ifBlank { "jpg" }
-            val cleanBase = relativePath.removeSuffix(".epub").removeSuffix(".EPUB").replace('/', '_').replace('\\', '_')
+            val cleanBase = coverCacheBaseName(relativePath)
             val coverName = "$cleanBase.$ext"
             val bytes = localFile.readBytes()
             saveCover(coverName, bytes)
@@ -308,11 +312,11 @@ actual class VaultStorage(private val context: Context) {
     }
 
     actual suspend fun getCoverPath(coverName: String): String? = withContext(Dispatchers.IO) {
-        val cleanBase = coverName.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+        val cleanBase = stripBookExtension(coverName).substringBeforeLast(".")
         val cacheCoversDir = File(context.cacheDir, "covers")
         val localFiles = cacheCoversDir.listFiles()
         val matchingLocal = localFiles?.firstOrNull { file ->
-            val b = file.name.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+            val b = stripBookExtension(file.name).substringBeforeLast(".")
             b == cleanBase && file.length() > 0L
         }
         if (matchingLocal != null) {
@@ -322,7 +326,7 @@ actual class VaultStorage(private val context: Context) {
         // Restore from vault .kreader/covers/ if not present in cache
         val coversDir = getOrCreateSubDir("covers") ?: return@withContext null
         val coverDoc = coversDir.listFiles().firstOrNull { doc ->
-            val b = doc.name?.removeSuffix(".epub")?.removeSuffix(".EPUB")?.substringBeforeLast(".")
+            val b = doc.name?.let { stripBookExtension(it).substringBeforeLast(".") }
             b == cleanBase
         } ?: return@withContext null
         runCatching {
@@ -339,16 +343,16 @@ actual class VaultStorage(private val context: Context) {
 
     actual suspend fun deleteCover(coverName: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            val cleanBase = coverName.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+            val cleanBase = stripBookExtension(coverName).substringBeforeLast(".")
             val cacheCover = File(context.cacheDir, "covers")
             cacheCover.listFiles()?.forEach { file ->
-                val b = file.name.removeSuffix(".epub").removeSuffix(".EPUB").substringBeforeLast(".")
+                val b = stripBookExtension(file.name).substringBeforeLast(".")
                 if (b == cleanBase) file.delete()
             }
 
             val coversDir = getOrCreateSubDir("covers")
             coversDir?.listFiles()?.forEach { doc ->
-                val b = doc.name?.removeSuffix(".epub")?.removeSuffix(".EPUB")?.substringBeforeLast(".")
+                val b = doc.name?.let { stripBookExtension(it).substringBeforeLast(".") }
                 if (b == cleanBase) doc.delete()
             }
             true

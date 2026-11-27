@@ -4,14 +4,16 @@
 Defines core domain entities, value objects, reading preference models, and locator definitions for the KReader application. This package provides platform-agnostic, serializable representations of books, bookmarks, highlights, reading progress, themes, and typography settings without dependencies on storage or UI frameworks.
 
 ## Interface
-- `Book`: Core data class representing a publication with metadata, format, source, progression, and locator references (`[Book.kt:Book]`).
-- `BookFormat`: Publication format enumeration supporting EPUB with MIME type and extension resolution (`[BookFormat.kt:BookFormat]`).
+- `Book`: Core data class representing a publication with metadata, format, source, progression, optional page count / manga hint, and locator references (`[Book.kt:Book]`).
+- `BookFormat`: Publication format enumeration supporting EPUB and CBZ with MIME type and extension resolution (`[BookFormat.kt:BookFormat]`).
 - `BookSource`: Sealed interface abstracting storage origins (`FilePath`, `ContentUri`, `InactiveSource`) (`[BookSource.kt:BookSource]`).
 - `Bookmark`: User bookmark anchor associating a publication with a locator and timestamp (`[Bookmark.kt:Bookmark]`).
 - `Highlight`: User highlight annotation associating text ranges, colors, notes, and timestamps (`[Highlight.kt:Highlight]`).
 - `Locator`: Readium-compliant location pointer referencing publication resource URLs, progression percentages, and text excerpts (`[Locator.kt:Locator]`).
-- `ReaderPreferences`: Aggregate container for theme, typography, layout, brightness, volume key navigation, and orientation preferences (`[ReaderPreferences.kt:ReaderPreferences]`).
-- `ReaderPreferencesOverride`: Sparse/granular per-book preference overrides enabling per-property local customization while maintaining dynamic inheritance from global settings (`[ReaderPreferences.kt:ReaderPreferencesOverride]`).
+- `CbzReadingMode`: CBZ comic/manga viewport mode enumeration (`MANGA_RTL`, `COMIC_LTR`, `WEBTOON`) (`[ReaderPreferences.kt:CbzReadingMode]`).
+- `CbzImageFit`: CBZ image scaling mode enumeration (`FIT_SCREEN`, `FIT_WIDTH`) (`[ReaderPreferences.kt:CbzImageFit]`).
+- `ReaderPreferences`: Aggregate container for theme, typography, layout, brightness, volume key navigation, orientation, and CBZ preferences (`[ReaderPreferences.kt:ReaderPreferences]`).
+- `ReaderPreferencesOverride`: Sparse/granular per-book preference overrides enabling per-property local customization (including CBZ reading mode and image fit) while maintaining dynamic inheritance from global settings (`[ReaderPreferences.kt:ReaderPreferencesOverride]`).
 - `ReaderTypographyOverride`: Sparse typography overrides (font, size, line height, alignment, padding, `overrideFont`) applied per-book (`[ReaderPreferences.kt:ReaderTypographyOverride]`).
 - `ReaderTheme`: Visual appearance configuration supporting light, dark (including `#000000` AMOLED black), sepia, system, system-light, and custom palettes (`[ReaderTheme.kt:ReaderTheme]`).
 - `ReaderTypography`: Font, font size, line height, letter spacing, alignment, and viewport padding configuration (`[ReaderTheme.kt:ReaderTypography]`).

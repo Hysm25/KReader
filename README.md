@@ -21,6 +21,7 @@ KReader/
 │   └── engine-api/             # Reader engine contracts, navigation controller & key dispatcher
 ├── engine/
 │   └── epub-adapter/           # Readium 3.0 (Android) & Pure Compose Block AST engine (Desktop)
+│   └── cbz-adapter/            # Native ZipFile CBZ archive engine, ComicInfo.xml parser, LRU bitmap preloader
 └── feature/
     ├── library/                # Library screen, vault onboarding, book grid, metadata extraction
     └── reader/                 # Reader screen, ReaderViewModel, navigator hosts (Android Readium & Desktop AST)
@@ -32,7 +33,7 @@ KReader/
 
 - **`composeApp`**: [./composeApp/README.md](./composeApp/README.md) - Application entry points (Android `MainActivity` and Desktop `main`), root Compose UI scaffolding (`App.kt`), desktop distribution tasks, and system lifecycle bridges.
 - **`core`**: [./core/README.md](./core/README.md) - Foundational domain entities (`model`), local-first `.kreader/` JSON vault persistence (`database`), and reader engine contracts (`engine-api`).
-- **`engine`**: [./engine/README.md](./engine/README.md) - Readium 3.0 EPUB publication engine adapter (Android production) and pure Compose Block AST EPUB engine (Desktop production) (`epub-adapter`).
+- **`engine`**: [./engine/README.md](./engine/README.md) - Readium 3.0 EPUB publication engine adapter (Android production), pure Compose Block AST EPUB engine (Desktop production) (`epub-adapter`), and native `ZipFile` CBZ comic/manga archive & bitmap engine (`cbz-adapter`).
 - **`feature`**: [./feature/README.md](./feature/README.md) - Presentation UI modules for book vault library browsing (`library`) and EPUB reader viewport controls (`reader`).
 
 ---

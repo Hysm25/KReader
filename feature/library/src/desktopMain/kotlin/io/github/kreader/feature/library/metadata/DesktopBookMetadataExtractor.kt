@@ -6,6 +6,7 @@ import io.github.kreader.core.model.BookFormat
 import io.github.kreader.core.model.BookSource
 import io.github.kreader.core.model.isRtlLanguage
 import io.github.kreader.core.model.isRtlText
+import io.github.kreader.engine.cbz.DesktopCbzArchive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -22,12 +23,58 @@ class DesktopBookMetadataExtractor(
         }
 
         val fileSizeBytes = if (file.exists()) file.length() else 0L
-        val metadata = extractEpub(file, source, bookId, fileSizeBytes)
+        val format = detectFormat(source.displayName.ifBlank { file.name })
+        val metadata = when (format) {
+            BookFormat.CBZ -> extractCbz(file, source, bookId, fileSizeBytes)
+            BookFormat.EPUB -> extractEpub(file, source, bookId, fileSizeBytes)
+        }
         val effectiveSource = if (file.exists()) BookSource.FilePath(path = file.absolutePath, displayName = source.displayName) else source
         metadata.copy(localSource = effectiveSource)
     }
 
-    private fun detectFormat(name: String): BookFormat = BookFormat.EPUB
+    private fun detectFormat(name: String): BookFormat {
+        val ext = name.substringAfterLast('.', "")
+        return BookFormat.fromExtension(ext) ?: BookFormat.EPUB
+    }
+
+    private suspend fun extractCbz(
+        file: File,
+        source: BookSource,
+        bookId: String,
+        fileSizeBytes: Long
+    ): ExtractedBookMetadata {
+        if (!file.exists()) return extractGeneric(source, BookFormat.CBZ, fileSizeBytes)
+        return runCatching {
+            DesktopCbzArchive.openFile(file).use { cbz ->
+                val safeBookId = bookId
+                    .replace(Regex("""\.(epub|cbz)$""", RegexOption.IGNORE_CASE), "")
+                    .replace('/', '_')
+                    .replace('\\', '_')
+                val coverBytes = cbz.extractCoverBytes()
+                val coverExt = cbz.metadata.coverEntryName?.substringAfterLast('.', "jpg")?.ifBlank { "jpg" } ?: "jpg"
+                val coverPath = if (coverBytes != null && coverBytes.isNotEmpty()) {
+                    val targetCoverFile = File(coversDir, "$safeBookId.$coverExt")
+                    targetCoverFile.writeBytes(coverBytes)
+                    targetCoverFile.absolutePath
+                } else {
+                    null
+                }
+                ExtractedBookMetadata(
+                    title = cbz.metadata.title?.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension.replace('_', ' '),
+                    author = cbz.metadata.writer,
+                    description = cbz.metadata.series?.let { "Series: $it" },
+                    format = BookFormat.CBZ,
+                    coverPath = coverPath,
+                    isRtl = cbz.metadata.isMangaRtl == true,
+                    fileSizeBytes = fileSizeBytes,
+                    pageCount = cbz.metadata.pageCount,
+                    isManga = cbz.metadata.isMangaRtl
+                )
+            }
+        }.getOrElse {
+            extractGeneric(source, BookFormat.CBZ, fileSizeBytes)
+        }
+    }
 
     private fun extractEpub(file: File, source: BookSource, bookId: String, fileSizeBytes: Long): ExtractedBookMetadata {
         if (!file.exists()) return extractGeneric(source, BookFormat.EPUB, fileSizeBytes)

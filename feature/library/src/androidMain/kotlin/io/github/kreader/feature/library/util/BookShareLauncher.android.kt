@@ -31,15 +31,17 @@ actual fun rememberBookShareLauncher(): (List<Book>) -> Unit {
                     } else null
                 }
                 if (uris.isNotEmpty()) {
+                    val distinctFormats = books.map { it.format }.distinct()
+                    val shareMime = if (distinctFormats.size == 1) distinctFormats.first().mimeType else "*/*"
                     val intent = if (uris.size == 1) {
                         Intent(Intent.ACTION_SEND).apply {
-                            type = "application/epub+zip"
+                            type = shareMime
                             putExtra(Intent.EXTRA_STREAM, uris.first())
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                     } else {
                         Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                            type = "application/epub+zip"
+                            type = shareMime
                             putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }

@@ -60,7 +60,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.kreader.core.model.Book
+import io.github.kreader.core.model.BookFormat
 import io.github.kreader.feature.library.ui.rememberCoverPainter
 
 @Composable
@@ -230,6 +232,35 @@ fun BookItemCard(
                         } else {
                             Spacer(modifier = Modifier.height(4.dp))
                         }
+                    }
+                }
+
+                // Subtle format badge (EPUB / CBZ) on top-start when cover art is present and not in selection mode
+                if (coverPainter != null && !isSelectionMode) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (book.format == BookFormat.CBZ) {
+                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.90f)
+                        } else {
+                            Color.Black.copy(alpha = 0.62f)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = book.format.name,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (book.format == BookFormat.CBZ) {
+                                MaterialTheme.colorScheme.onTertiaryContainer
+                            } else {
+                                Color.White
+                            },
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                 }
 
@@ -499,7 +530,7 @@ fun BookItemCard(
             },
             title = { Text("Delete from Vault?") },
             text = {
-                Text("Are you sure you want to delete '${book.title}'? This will permanently remove the EPUB file from your folder along with its reading progress, annotations, and cached cover.")
+                Text("Are you sure you want to delete '${book.title}'? This will permanently remove the ${book.format.name} file from your folder along with its reading progress, annotations, and cached cover.")
             },
             confirmButton = {
                 Button(

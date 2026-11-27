@@ -4,12 +4,12 @@
 Provides the library user interface, book discovery, Obsidian vault folder onboarding, metadata extraction, book cover caching, and sharing capabilities for KReader.
 
 ## Interface
-- `LibraryScreen`: Top-level Composable displaying the active vault books, responsive single-line search query bar with ellipsis overflow protection, compact action icons, sort menu, and vault selection button (`[LibraryScreen.kt:LibraryScreen]`).
-- `LibraryViewModel`: Presentation state holder coordinating vault file observation, background metadata parsing, cover extraction, and book imports (`[LibraryViewModel.kt:LibraryViewModel]`).
-- `LibraryUiState`: Immutable state model representing book lists, search filters, loading states, and active vault paths (`[LibraryState.kt:LibraryUiState]`).
-- `BookGrid`: Multiplatform grid composable rendering book cover cards, reading badges, context menus, and multi-selection mode (`[BookGrid.kt:BookGrid]`).
-- `BookMetadataExtractor`: Platform-specific EPUB metadata and cover image extractor interface (`[BookMetadataExtractor.kt:BookMetadataExtractor]`).
-- `PlatformFilePicker`: Platform-specific SAF folder picker launcher (`[PlatformFilePicker.kt:rememberFolderPickerLauncher]`).
+- `LibraryScreen`: Top-level Composable displaying the active vault books and comics, responsive single-line search query bar with ellipsis overflow protection, format filter chips (`All` / `Books` / `Comics`), compact action icons, sort menu, file import FAB, and vault selection button (`[LibraryScreen.kt:LibraryScreen]`).
+- `LibraryViewModel`: Presentation state holder coordinating vault file observation, background metadata parsing, cover extraction, format filtering, and book/comic imports (`[LibraryViewModel.kt:LibraryViewModel]`).
+- `LibraryUiState`: Immutable state model representing book lists, format filter (`BookFilter`), search queries, loading states, and active vault paths (`[LibraryState.kt:LibraryUiState]`).
+- `BookGrid`: Multiplatform grid composable rendering book/comic cover cards with subtle `EPUB`/`CBZ` format badges, reading progress, context menus, and multi-selection mode (`[BookGrid.kt:BookGrid]`).
+- `BookMetadataExtractor`: Platform-specific EPUB and CBZ (`ComicInfo.xml` + first-page cover) metadata extractor interface (`[BookMetadataExtractor.kt:BookMetadataExtractor]`).
+- `PlatformFilePicker`: Platform-specific SAF folder and file picker launchers accepting `.epub` and `.cbz` files (`[PlatformFilePicker.kt:rememberFolderPickerLauncher]`).
 - `BookRepositoryProvider`: Platform factory providing the active `BookRepository` (`[BookRepositoryProvider.kt:rememberBookRepository]`).
 - `CoverPainter`: Async cover image painter caching rendered thumbnails (`[CoverPainter.kt:rememberCoverPainter]`).
 - `BookShareLauncher`: Platform intent dispatcher for sharing books (`[BookShareLauncher.kt:rememberBookShareLauncher]`).
@@ -22,7 +22,7 @@ Provides the library user interface, book discovery, Obsidian vault folder onboa
 ## Side Effects
 - `[LibraryViewModel.kt:setVault]`: Requests storage access framework persistable permissions and saves the active vault URI/path in preferences.
 - `[PlatformFilePicker.android.kt]`: Launches Android `OpenDocumentTree` intent and requests persistable read and write URI permissions.
-- `[BookMetadataExtractor.android.kt]`: Reads EPUB zip streams to extract OPF metadata and writes cover thumbnails to `.kreader/covers/`.
+- `[BookMetadataExtractor.android.kt]`: Reads EPUB zip streams (OPF metadata) and CBZ archives (`ComicInfo.xml` + first sorted image cover) to write cover thumbnails to `.kreader/covers/`.
 
 ## Verification
 - Run: `./gradlew :feature:library:assemble`

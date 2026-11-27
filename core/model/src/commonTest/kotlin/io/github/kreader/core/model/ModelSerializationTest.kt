@@ -156,4 +156,35 @@ class ModelSerializationTest {
         assertEquals(true, deserialized.isScrollMode)
         assertEquals(null, deserialized.keepScreenOn)
     }
+
+    @Test
+    fun testCbzBookAndPreferencesRoundTrip() {
+        val cbzBook = Book(
+            id = "manga/vol01.cbz",
+            title = "Test Manga Vol. 1",
+            author = "Mangaka",
+            format = BookFormat.CBZ,
+            source = BookSource.FilePath(path = "/vault/manga/vol01.cbz", displayName = "vol01.cbz"),
+            addedTimestamp = 1700000000000L,
+            totalProgression = 0.5f,
+            pageCount = 192,
+            isManga = true
+        )
+        val encodedBook = json.encodeToString(cbzBook)
+        val decodedBook = json.decodeFromString<Book>(encodedBook)
+        assertEquals(BookFormat.CBZ, decodedBook.format)
+        assertEquals(192, decodedBook.pageCount)
+        assertEquals(true, decodedBook.isManga)
+        assertEquals(BookFormat.CBZ, BookFormat.fromExtension(".CBZ"))
+        assertEquals(BookFormat.CBZ, BookFormat.fromMimeType("application/x-cbz"))
+
+        val global = ReaderPreferences()
+        val cbzOverride = ReaderPreferencesOverride(
+            cbzReadingMode = CbzReadingMode.MANGA_RTL,
+            cbzImageFit = CbzImageFit.FIT_WIDTH
+        )
+        val merged = global.mergeWith(cbzOverride)
+        assertEquals(CbzReadingMode.MANGA_RTL, merged.cbzReadingMode)
+        assertEquals(CbzImageFit.FIT_WIDTH, merged.cbzImageFit)
+    }
 }

@@ -7,9 +7,11 @@ import io.github.kreader.core.model.BookSource
 
 class NativeBookMetadataExtractor : BookMetadataExtractor {
     override suspend fun extract(source: BookSource, bookId: String): ExtractedBookMetadata {
+        val ext = source.displayName.substringAfterLast('.', "")
+        val format = BookFormat.fromExtension(ext) ?: BookFormat.EPUB
         return ExtractedBookMetadata(
             title = source.displayName.substringBeforeLast('.'),
-            format = BookFormat.EPUB,
+            format = format,
             coverPath = null,
             fileSizeBytes = 0L,
             localSource = source

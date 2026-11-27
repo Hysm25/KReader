@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.FormatSize
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +54,8 @@ fun ReaderTopBar(
     title: String,
     chapterTitle: String? = null,
     isBookmarked: Boolean = false,
+    showSearch: Boolean = true,
+    isCbz: Boolean = false,
     onBackClick: () -> Unit,
     onSearchClick: () -> Unit,
     onBookmarkToggle: () -> Unit,
@@ -94,11 +97,13 @@ fun ReaderTopBar(
                 }
             },
             actions = {
-                IconButton(onClick = onSearchClick) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = "Search"
-                    )
+                if (showSearch) {
+                    IconButton(onClick = onSearchClick) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = "Search"
+                        )
+                    }
                 }
                 IconButton(onClick = onBookmarkToggle) {
                     Icon(
@@ -110,13 +115,13 @@ fun ReaderTopBar(
                 IconButton(onClick = onTocClick) {
                     Icon(
                         imageVector = Icons.Rounded.Menu,
-                        contentDescription = "Table of contents"
+                        contentDescription = if (isCbz) "Pages & bookmarks" else "Table of contents"
                     )
                 }
                 IconButton(onClick = onSettingsClick) {
                     Icon(
-                        imageVector = Icons.Rounded.FormatSize,
-                        contentDescription = "Reader settings"
+                        imageVector = if (isCbz) Icons.Rounded.Tune else Icons.Rounded.FormatSize,
+                        contentDescription = if (isCbz) "Comic & manga settings" else "Reader settings"
                     )
                 }
             },
